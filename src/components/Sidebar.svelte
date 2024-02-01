@@ -27,7 +27,6 @@ function filterSearch(): void {
 </script>
 <nav id="sidebar" class="sidebar offcanvas-start offcanvas-md" tabindex="-1" role="dialog">
     <div class="offcanvas-header position-relative justify-content-start flex-shrink-0 py-0 mt-2">
-        <a href="#top" class="visually-hidden-focusable btn btn-link fw-bold antialiased bg-body-secondary position-absolute top-50 end-0 translate-middle-y me-3 z-1">Skip to main content</a>
         <div class="col-auto ms-auto">
             <button type="button" class="btn-close d-md-none ms-1" data-bs-dismiss="offcanvas" aria-label="Close" data-bs-target="#sidebar"></button>
         </div>
