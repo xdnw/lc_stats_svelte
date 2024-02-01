@@ -35,7 +35,6 @@ const decompressJson = async (url: string) => {
 </script>
 <svelte:head>
 	<title>Home</title>
-	<meta name="description" content="Svelte demo app" />
 	<link href="https://fonts.googleapis.com/css2?family=Turret+Road:wght@800&display=swap" rel="stylesheet">
 </svelte:head>
 <Navbar />
@@ -50,7 +49,12 @@ const decompressJson = async (url: string) => {
       </svg>
     </header>
   </section>
-  <a href="/conflicts">Conflicts</a>
+  <br>
+  <hr>
+  <div class="text-center">
+    <a href="/conflicts" class="btn btn-lg btn-secondary">Conflicts</a>
+  </div>
+  
 </div>
 <Footer />
 <style lang="postcss">
