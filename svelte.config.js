@@ -16,9 +16,9 @@ const config = {
 		adapter: adapter({
 			// default options are shown. On some platforms
 			// these options are set automatically — see below
-			fallback: '404.html'
-			// pages: 'build',
-			// assets: 'build',
+			fallback: '404.html',
+			pages: "docs",
+            assets: "docs",
 			// fallback: undefined,
 			// precompress: false,
 			// strict: true
