@@ -26,24 +26,29 @@ export function htmlToElement(html: string): ChildNode | null {
     return template.content.firstChild;
 }
 
-export function modalWithCloseButton(title: string, body: string) {
+export function modalStrWithCloseButton(title: string, bodyStr: string) {
+    let bodyElem = document.createElement("div");
+    bodyElem.innerHTML = bodyStr;
+    modalWithCloseButton(title, bodyElem);
+}
+
+export function modalWithCloseButton(title: string, body: HTMLElement) {
     modal(title, body, `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`);
 }
   
-export function modal(title: string, body: string, footer: string) {
-      var myModal = document.getElementById("exampleModal");
+export function modal(title: string, body: HTMLElement, footer: string) {
+      let myModal = document.getElementById("exampleModal");
   
       var html = `<div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
           <div class="modal-dialog">
               <div class="modal-content">
                   <div class="modal-header">
-                      <h5 class="modal-title" id="exampleModalLabel">` + title +
-                      `</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                      <h5 class="modal-title" id="exampleModalLabel"></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                           <span aria-hidden="true">&times;</span>
                       </button>
                   </div>
-                  <div class="modal-body">` + body + `</div>
-                  <div class="modal-footer">` + footer + `</div>
+                  <div class="modal-body"></div>
+                  <div class="modal-footer"></div>
               </div>
           </div>
       </div>`
@@ -51,10 +56,14 @@ export function modal(title: string, body: string, footer: string) {
     if (myModal == null) {
         let myModal = htmlToElement(html);
         document.body.appendChild(myModal as Node);
-    } else {
-        myModal.innerHTML = (htmlToElement(html) as any).innerHTML;
     }
-    window.bootstrap.Modal.getOrCreateInstance(myModal as HTMLElement).show(); // Use the 'bootstrap' package to show the modal
+    let createdModal = document.getElementById("exampleModal") as HTMLElement;
+    createdModal.getElementsByClassName("modal-title")[0].innerHTML = title;
+    let myBody = createdModal.getElementsByClassName("modal-body")[0];
+    myBody.innerHTML = "";
+    myBody.appendChild(body);
+    createdModal.getElementsByClassName("modal-footer")[0].innerHTML = footer;
+    window.bootstrap.Modal.getOrCreateInstance(createdModal).show();
   }
 
 export function addTable(container: HTMLElement, id: string) {
