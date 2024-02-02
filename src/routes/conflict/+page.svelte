@@ -126,7 +126,6 @@ function loadLayout(_rawData: {
         let nation_aa = colEntry.nation_aa;
         let stats = colEntry.counts;
         let damage = colEntry.damage;
-        console.log("NAME " + colName);
         switch (type) {
             case Layout.COALITION:
                 let row = [];
@@ -147,7 +146,6 @@ function loadLayout(_rawData: {
                 break;
             }
             case Layout.NATION: {
-                console.log(JSON.stringify(nation_ids));
                 let o = 2 + alliance_ids.length * 2;
                 for (let i = 0; i < nation_ids.length; i++) {
                     let row = [];
@@ -165,7 +163,6 @@ function loadLayout(_rawData: {
     }
     for (let i = 0; i < coalitions.length; i++) {
         let colEntry = coalitions[i];
-        console.log("ADD COL " + colEntry.name);
         addRow(colEntry);
     }
     let data = {
