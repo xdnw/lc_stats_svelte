@@ -179,17 +179,23 @@ function loadLayout(_rawData: {
     setupContainer(container as HTMLElement, data);
 }
 
+let _rawData: any = null;
+let _layoutData = {
+    layout: Layout.COALITION,
+    columns: ["name","wars_off","wars_def"],
+    sort: "wars_off",
+    sortDir: "desc"
+};
+
+function loadCurrentLayout() {
+    loadLayout(_rawData, _layoutData.layout, _layoutData.columns, _layoutData.sort, _layoutData.sortDir);
+}
+
 function setupConflictTables(theId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${theId}.gzip`;
     decompressJson(url).then((data) => {
-        let startMS: number = Date.now();
-        loadLayout(data, Layout.ALLIANCE, [
-            "name",
-            "wars_off",
-            "wars_def"
-        ], "wars_off", "desc");
-        let diffMS: number = Date.now() - startMS;
-        console.log(`Time to load conflict table: ${diffMS}ms`);
+        _rawData = data;
+        loadCurrentLayout();
     });
 }
 
@@ -203,6 +209,10 @@ onMount(() => {
         }
     }
 });
+function handleClick(event: MouseEvent): void {
+    _layoutData.layout = parseInt((event.target as HTMLButtonElement).getAttribute("data-bs-layout") as string) ;
+    loadCurrentLayout();
+}
 </script>    
 <svelte:head>
 	<title>Conflict {conflictName}</title>
@@ -211,6 +221,23 @@ onMount(() => {
 <Sidebar />
 <div class="container">
     <h1>Conflict: {conflictName}</h1>
+    <ul class="nav nav-pills nav-fill" id="js-pills-1" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" id="profile-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="true" data-bs-layout={Layout.COALITION} on:click={handleClick}>
+                <i class="bi bi-cookie"></i>&nbsp;Coalition
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="billing-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="false" data-bs-layout={Layout.ALLIANCE} on:click={handleClick}>
+                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="billing-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} on:click={handleClick}>
+                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
+            </button>
+        </li>
+    </ul>
     <div id="conflict-table-1"></div>
 </div>
 <Footer />
