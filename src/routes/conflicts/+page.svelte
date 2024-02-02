@@ -37,7 +37,7 @@ onMount(() => {
     }
     (window as any).formatUrl = (data: string, type: any, row: any, meta: any) => {
         let id = row['id'];
-        let result = `<a href="conflict?id=${id}">${data}</a>`;
+        let result = `<span class='text-nowrap'>`;
         for (let i = 0; i <= 1; i++) {
             let button = document.createElement("button");
             button.setAttribute("type", "button");
@@ -46,6 +46,7 @@ onMount(() => {
             button.textContent = "C" + i;
             result += button.outerHTML;
         }
+        result += `&nbsp;<a href="conflict?id=${id}">${data}</a></span>`
         return result;
     }
 
