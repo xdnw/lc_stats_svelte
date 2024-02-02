@@ -43,7 +43,7 @@ function initConflictTables(_rawData: {
     }[],
     counts_header: string[],
     damage_header: string[],
-}, type: Layout, layout: string[]) {
+}, type: Layout, layout: string[], sortBy: string, sortDir: string) {
     let coalitions = _rawData["coalitions"];
     let counts_header = _rawData["counts_header"];
     let damage_header = _rawData["damage_header"];
@@ -52,7 +52,6 @@ function initConflictTables(_rawData: {
     let columns: string[] = [];
     let searchable: number[] = [];
     let visible: number[] = [];
-    let sort: [number, string] = [0, 'desc'];
     let cell_format: {[key: string]: number[]} = {};
     let row_format: {[key: string]: number[]} = {};
     
@@ -74,6 +73,7 @@ function initConflictTables(_rawData: {
         searchable.push(0);
         cell_format["coalitionNames"] = [0];
     }
+    let sort = [columns.indexOf(sortBy), sortDir];
 
     for (let i = 0; i < columns.length; i++) {
         if (layout.includes(columns[i])) {
@@ -117,17 +117,26 @@ function initConflictTables(_rawData: {
                 rows.push(row);
                 break;
             case Layout.ALLIANCE:
+                let offset = 2;
                 for (let i = 0; i < alliance_ids.length; i++) {
                     let row = [];
                     let alliance_id = alliance_ids[i];
                     let alliance_name = alliance_names[i];
-                    console.log(alliance_name + " | " + alliance_id);
                     row.push([alliance_name,alliance_id]);
-                    addStats2Row(row, stats[i*2+2], stats[i*2+3], damage[i*2+2], damage[i*2+3]);
+                    addStats2Row(row, stats[i*2+offset], stats[i*2+offset+1], damage[i*2+offset], damage[i*2+offset+1]);
                     rows.push(row);
                 }
                 break;
             case Layout.NATION:
+                offset = 2 + alliance_ids.length * 2;
+                for (let i = 0; i < nation_ids.length; i++) {
+                    let row = [];
+                    let nation_id = nation_ids[i];
+                    let nation_name = nation_names[i];
+                    row.push([nation_name,nation_id]);
+                    addStats2Row(row, stats[i*2+offset], stats[i*2+offset+1], damage[i*2+offset], damage[i*2+offset+1]);
+                    rows.push(row);
+                }
                 break;
 
         }
@@ -151,13 +160,13 @@ function initConflictTables(_rawData: {
 
 function setupConflictTables(theId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${theId}.gzip`;
-    decompressJson(url).then((result) => {
-        console.log(result);
-        initConflictTables(result, Layout.ALLIANCE, [
+    decompressJson(url).then((data) => {
+        console.log(data);
+        initConflictTables(data, Layout.ALLIANCE, [
             "name",
             "wars_off",
             "wars_def"
-        ]);
+        ], "wars_off", "desc");
     });
 }
 
