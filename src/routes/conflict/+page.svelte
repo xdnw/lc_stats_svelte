@@ -245,7 +245,7 @@ onMount(() => {
     (window as any).formatNation = (data: any, type: any, row: any, meta: any) => {
         let aaId = data[2] as number;
         let aaName = namesByAllianceId[aaId];
-        return `<a href="https://politicsandwar.com/nation/id=${data[1]}">${data[0]}</a> | <a href="https://politicsandwar.com/alliance/id=${data[2]}">${aaName}</a>`;
+        return `<a href="https://politicsandwar.com/nation/id=${data[1]}">${data[0]?data[0]:data[1]}</a> | <a href="https://politicsandwar.com/alliance/id=${data[2]}">${aaName}</a>`;
     }
 
     (window as any).formatAA = (data: any, type: any, row: any, meta: any) => {
