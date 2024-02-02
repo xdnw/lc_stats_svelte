@@ -15,23 +15,7 @@ enum Layout {
     NATION
 }
 
-function loadLayout(type: Layout, layout: string[], _rawData: {
-    coalitions: {
-        name: string,
-        alliance_ids: number[],
-        alliance_names: string[],
-        nation_ids: number[],
-        nation_names: string[],
-        counts: [number[], number[]],
-        damage: [number[], number[]]
-    }[],
-    counts_header: string[],
-    damage_header: string[]
-}) {
-
-}
-
-function initConflictTables(_rawData: {
+function loadLayout(_rawData: {
     coalitions: {
         name: string,
         alliance_ids: number[],
@@ -162,7 +146,7 @@ function setupConflictTables(theId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${theId}.gzip`;
     decompressJson(url).then((data) => {
         console.log(data);
-        initConflictTables(data, Layout.ALLIANCE, [
+        loadLayout(data, Layout.ALLIANCE, [
             "name",
             "wars_off",
             "wars_def"
