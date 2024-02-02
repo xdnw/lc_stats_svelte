@@ -1,23 +1,7 @@
 <script lang=ts>
-import Main from '../components/Main.svelte'
 import Navbar from '../components/Navbar.svelte'
 import Sidebar from '../components/Sidebar.svelte'
 import Footer from '../components/Footer.svelte'
-import { onMount } from 'svelte';
-import { decompressJson } from '$lib';
-
-// let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/3.gzip";
-// let data;
-// onMount(async () => {
-//   try {
-//     decompressJson(url).then((result) => {
-//       console.log(result);
-//     });
-//   } catch (error) {
-//     console.error('Error reading from S3 bucket:', error);
-//   }
-// });
-
 </script>
 <svelte:head>
 	<title>Home</title>
@@ -40,7 +24,6 @@ import { decompressJson } from '$lib';
   <div class="text-center">
     <a href="conflicts" class="btn btn-lg btn-secondary">Conflicts</a>
   </div>
-  
 </div>
 <Footer />
 <style lang="postcss">

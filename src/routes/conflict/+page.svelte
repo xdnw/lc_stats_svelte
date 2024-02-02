@@ -1,5 +1,4 @@
 <script lang=ts>
-    import Main from '../../components/Main.svelte'
     import Navbar from '../../components/Navbar.svelte'
     import Sidebar from '../../components/Sidebar.svelte'
     import Footer from '../../components/Footer.svelte'
@@ -49,9 +48,9 @@ function loadLayout(_rawData: {
         row_format = (row: HTMLElement, data: {[key: string]: any}, index: number) => {
                 let name = data['name'][0];
                 if (coalitions[0].name === name) {
-                    row.setAttribute('style', 'background-color: MistyRose');
+                    row.classList.add('bg-light');
                 } else if (coalitions[1].name === name) {
-                    row.setAttribute('style', 'background-color: AliceBlue');
+                    // row.classList.add('bg-secondary');
                 }
             }
             break;
@@ -61,9 +60,9 @@ function loadLayout(_rawData: {
             row_format = (row: HTMLElement, data: {[key: string]: any}, index: number) => {
                 let id = data['name'][1];
                 if (col1.has(id)) {
-                    row.setAttribute('style', 'background-color: MistyRose');
+                    row.classList.add('bg-light');
                 } else if (col2.has(id)) {
-                    row.setAttribute('style', 'background-color: AliceBlue');
+                    // row.classList.add('bg-secondary');
                 }
             }
             break;
@@ -127,6 +126,7 @@ function loadLayout(_rawData: {
         let nation_aa = colEntry.nation_aa;
         let stats = colEntry.counts;
         let damage = colEntry.damage;
+        console.log("NAME " + colName);
         switch (type) {
             case Layout.COALITION:
                 let row = [];
@@ -147,6 +147,7 @@ function loadLayout(_rawData: {
                 break;
             }
             case Layout.NATION: {
+                console.log(JSON.stringify(nation_ids));
                 let o = 2 + alliance_ids.length * 2;
                 for (let i = 0; i < nation_ids.length; i++) {
                     let row = [];
@@ -164,6 +165,7 @@ function loadLayout(_rawData: {
     }
     for (let i = 0; i < coalitions.length; i++) {
         let colEntry = coalitions[i];
+        console.log("ADD COL " + colEntry.name);
         addRow(colEntry);
     }
     let data = {

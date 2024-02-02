@@ -1,6 +1,5 @@
 <script lang=ts>
 	/** @type {import('./$types').PageData} */
-    import Main from '../../components/Main.svelte'
     import Navbar from '../../components/Navbar.svelte'
     import Sidebar from '../../components/Sidebar.svelte'
     import Footer from '../../components/Footer.svelte'
@@ -86,9 +85,9 @@ onMount(() => {
                 row_format: (row: HTMLElement, data: {[key: string]: any}, index: number) => {
                     let end = data.end;
                     if (end == -1) {
-                        row.setAttribute('style', 'background-color: MistyRose');
+                        row.classList.add('bg-warning');
                     } else if (end < Date.now() - 432000000) {
-                        row.setAttribute('style', 'background-color: AliceBlue');
+                        row.classList.add('bg-light');
                     }
                 },
                 sort: sort
