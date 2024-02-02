@@ -9,38 +9,26 @@
 let idsByCoalitionName: {[key: string]: number[]} = {};
 let namesByAllianceId: {[key: number]: string} = {};
 
-function coalitionNames(data: string, type: unknown, row: unknown, meta: unknown): string {
-    let button = document.createElement("button");
-    button.setAttribute("type", "button");
-    button.setAttribute("class", "btn btn-primary btn-sm");
-    // make button call function showNames with data
-    button.setAttribute("onclick", `showNames('${data}')`);
-    button.textContent = data[0];
-    return button.outerHTML;
+enum Layout {
+    COALITION,
+    ALLIANCE,
+    NATION
 }
 
-function showNames(coalitionName: string) {
-    let alliance_ids = idsByCoalitionName[coalitionName];
-    let alliance_names = alliance_ids.map((id) => namesByAllianceId[id]);
-    
-    var modalTitle = coalitionName + " Alliances";
-    let ul = document.createElement("ul");
-    for (let i = 0; i < alliance_ids.length; i++) {
-        let alliance_id = alliance_ids[i];
-        let alliance_name = alliance_names[i];
-        let a = document.createElement("a");
-        a.setAttribute("href", "https://politicsandwar.com/alliance/id=" + alliance_id);
-        a.textContent = alliance_name;
-        let li = document.createElement("li");
-        li.appendChild(a);
-        ul.appendChild(li);
-    }
-    // modal body is coalition ids joined by comma + the list
-    let idsStr = alliance_ids.join(", ");
-    let modalBody = document.createElement("div");
-    modalBody.textContent = idsStr;
-    modalBody.appendChild(ul);
-    modalWithCloseButton(modalTitle, modalBody);
+function loadLayout(type: Layout, layout: string[], _rawData: {
+    coalitions: {
+        name: string,
+        alliance_ids: number[],
+        alliance_names: string[],
+        nation_ids: number[],
+        nation_names: string[],
+        counts: [number[], number[]],
+        damage: [number[], number[]]
+    }[],
+    counts_header: string[],
+    damage_header: string[]
+}) {
+
 }
 
 function initConflictTables(_rawData: {
@@ -54,8 +42,8 @@ function initConflictTables(_rawData: {
         damage: [number[], number[]]
     }[],
     counts_header: string[],
-    damage_header: string[]
-}) {
+    damage_header: string[],
+}, type: Layout, layout: string[]) {
     let coalitions = _rawData["coalitions"];
     let counts_header = _rawData["counts_header"];
     let damage_header = _rawData["damage_header"];
@@ -68,8 +56,6 @@ function initConflictTables(_rawData: {
     let cell_format: {[key: string]: number[]} = {};
     let row_format: {[key: string]: number[]} = {};
     
-    let searchColNames = ["names","wars_off"]
-
     { // columns
         columns.push("name");
         for (let i = 0; i < counts_header.length; i++) {
@@ -88,45 +74,67 @@ function initConflictTables(_rawData: {
         searchable.push(0);
         cell_format["coalitionNames"] = [0];
     }
+
+    for (let i = 0; i < columns.length; i++) {
+        if (layout.includes(columns[i])) {
+            visible.push(i);
+        }
+    }
+
+
     cell_format["formatNumber"] = Array.from({length: columns.length}, (_, i) => i + 1);
-    for (let i = 0; i < coalitions.length; i++) {
-        let colEntry = coalitions[i];
-        let name = colEntry["name"];
+    let addStats2Row = (row: any[], offStats: any, defStats: any, damageTaken: any, damageDealt: any) => {
+        for (let i = 0; i < offStats.length; i++) {
+            let offStat = offStats[i];
+            let defStat = defStats[i];
+            let totalStat = offStat + defStat;
+            row.push(offStat);
+            row.push(defStat);
+            row.push(totalStat);
+        }
+        for (let i = 0; i < damageTaken.length; i++) {
+            let damageTakenStat = damageTaken[i];
+            let damageDealtStat = damageDealt[i];
+            let damageNetStat = damageDealtStat - damageTakenStat;
+            row.push(damageTakenStat);
+            row.push(damageDealtStat);
+            row.push(damageNetStat);
+        }
+    };
+    let addRow = (colEntry: any) => {
+        let colName = colEntry["name"];
         let alliance_ids = colEntry["alliance_ids"];
         let alliance_names = colEntry["alliance_names"];
         let nation_ids = colEntry["nation_ids"];
         let nation_names = colEntry["nation_names"];
         let stats = colEntry["counts"];
         let damage = colEntry["damage"];
+        switch (type) {
+            case Layout.COALITION:
+                let row = [];
+                row.push([colName,alliance_ids,alliance_names]);
+                addStats2Row(row, stats[0], stats[1], damage[0], damage[1]);
+                rows.push(row);
+                break;
+            case Layout.ALLIANCE:
+                for (let i = 0; i < alliance_ids.length; i++) {
+                    let row = [];
+                    let alliance_id = alliance_ids[i];
+                    let alliance_name = alliance_names[i];
+                    console.log(alliance_name + " | " + alliance_id);
+                    row.push([alliance_name,alliance_id]);
+                    addStats2Row(row, stats[i*2+2], stats[i*2+3], damage[i*2+2], damage[i*2+3]);
+                    rows.push(row);
+                }
+                break;
+            case Layout.NATION:
+                break;
 
-        let row = [];
-        row.push([name,alliance_ids,alliance_names]);
-        {
-            let offStats = stats[0];
-            let defStats = stats[1];
-
-            for (let i = 0; i < offStats.length; i++) {
-                let offStat = offStats[i];
-                let defStat = defStats[i];
-                let totalStat = offStat + defStat;
-                row.push(offStat);
-                row.push(defStat);
-                row.push(totalStat);
-            }
-
-            let damageTaken = damage[0];
-            let damageDealt = damage[1];
-
-            for (let i = 0; i < damageTaken.length; i++) {
-                let damageTakenStat = damageTaken[i];
-                let damageDealtStat = damageDealt[i];
-                let damageNetStat = damageDealtStat - damageTakenStat;
-                row.push(damageTakenStat);
-                row.push(damageDealtStat);
-                row.push(damageNetStat);
-            }
         }
-       rows.push(row);
+    }
+    for (let i = 0; i < coalitions.length; i++) {
+        let colEntry = coalitions[i];
+        addRow(colEntry);
     }
     let data = {
         columns: columns,
@@ -144,7 +152,12 @@ function initConflictTables(_rawData: {
 function setupConflictTables(theId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${theId}.gzip`;
     decompressJson(url).then((result) => {
-        initConflictTables(result);
+        console.log(result);
+        initConflictTables(result, Layout.ALLIANCE, [
+            "name",
+            "wars_off",
+            "wars_def"
+        ]);
     });
 }
 

@@ -1,3 +1,19 @@
+export function addFormatters() {
+    (window as any).formatNumber = (data: number, type: any, row: any, meta: any) => {
+        return data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    (window as any).formatMoney = (data: number, type: any, row: any, meta: any) => {
+        return "$" + data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    (window as any).formatDate = (data: number, type: any, row: any, meta: any) => {
+        if (data == -1) return "N/A";
+        let date = new Date(data);
+        return date.toISOString().split('T')[0];
+    }
+}
+
 export const decompress = async (url: string) => {
     const ds = new DecompressionStream('gzip');
     const response = await fetch(url);
@@ -107,7 +123,8 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             for (let func in cell_format) {
                 let cols: number[] = cell_format[func];
                 for (let col of cols) {
-                    cellFormatByCol[col] = (window as any)[func] as Function;
+                    let funcObj = (window as any)[func] as Function;
+                    cellFormatByCol[col] = funcObj;
                 }
             }
         }
@@ -139,7 +156,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             } else {
                 th = title;
             }
-            tf = "<button class='toggle-vis btn btn-danger' data-column='" + i + "'>-" + title + "</button>";
+            tf = "<button class='toggle-vis btn btn-sm btn-outline-danger' data-column='" + i + "'>-" + title + "</button>";
         }
         jqTable.find("thead tr").append("<th>" + th + "</th>");
         let rows = jqTable.find("tfoot tr").append("<th>" + tf + "</th>");
@@ -206,6 +223,9 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             e.stopPropagation();
          });
     });
+    $("button").click(function(e) {
+        e.stopPropagation();
+     });
 
 	jqContainer.find('.toggle-vis').on('click', function (e) {
 		e.preventDefault();
