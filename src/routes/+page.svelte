@@ -38,7 +38,7 @@ import { decompressJson } from '$lib';
   <br>
   <hr>
   <div class="text-center">
-    <a href="/conflicts" class="btn btn-lg btn-secondary">Conflicts</a>
+    <a href="conflicts" class="btn btn-lg btn-secondary">Conflicts</a>
   </div>
   
 </div>
