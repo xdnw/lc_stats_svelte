@@ -229,7 +229,7 @@ function handleClick(event: MouseEvent): void {
 <Navbar />
 <Sidebar />
 <div class="container">
-    <h1>Conflict: {conflictName}</h1>
+    <h1><a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}</h1>
     <ul class="nav nav-pills nav-fill" id="js-pills-1" role="tablist">
         <li class="nav-item">
             <button class="nav-link active" id="profile-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="true" data-bs-layout={Layout.COALITION} on:click={handleClick}>
