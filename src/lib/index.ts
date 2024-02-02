@@ -256,7 +256,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
 		// move elem
 		if (e.target.parentElement && e.target.parentElement.tagName == "TH") {
 			(e.target as any).oldParent = e.target.parentElement;
-			jqContainer.find(".table-toggles").after(e.target);
+			jqContainer.find(".table-toggles").append(e.target);
 		} else {
 			(e.target as any).oldParent.append(e.target);
 		}
