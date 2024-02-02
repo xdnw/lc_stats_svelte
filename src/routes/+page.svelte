@@ -4,21 +4,7 @@ import Navbar from '../components/Navbar.svelte'
 import Sidebar from '../components/Sidebar.svelte'
 import Footer from '../components/Footer.svelte'
 import { onMount } from 'svelte';
-
-const decompress = async (url: string) => {
-  const ds = new DecompressionStream('gzip');
-  const response = await fetch(url);
-  const blob_in = await response.blob();
-  const stream_in = blob_in.stream().pipeThrough(ds);
-  const blob_out = await new Response(stream_in).blob();
-  return await blob_out.text();
-};
-
-const decompressJson = async (url: string) => {
-    let result = await decompress(url);
-    return JSON.parse(atob(result));
-};
-
+import { decompressJson } from '$lib';
 
 // let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/3.gzip";
 // let data;
