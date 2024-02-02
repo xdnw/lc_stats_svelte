@@ -84,20 +84,20 @@ export function modal(title: string, body: HTMLElement, footer: string) {
 
 export function addTable(container: HTMLElement, id: string) {
     container.innerHTML = "<div class=\"table-toggles\"></div>" +
-    "<table id=\"" + id + "\" class=\"locutus-table table compact table-striped table-bordered table-sm\" style=\"width:100%\">" +
+    "<table id=\"" + id + "\" class=\"table compact table-bordered table-sm d-none\" style=\"width:100%\">" +
     "<thead class=\"table-danger\"><tr></tr></thead>" +
     "<tbody></tbody>" +
     "<tfoot><tr></tr></tfoot>" +
     "</table>";
 }
 
-export function setupContainer(container: HTMLElement, data: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: {[key: string]: number[];}, sort: [number, string]}) {
+export function setupContainer(container: HTMLElement, data: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
     addTable(container, uuidv4());
     let table = container.getElementsByTagName("table")[0];
     setupTable(container, table, data);
 }
 
-export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, dataSetRoot: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: {[key: string]: number[];}, sort: [number, string]}) {
+export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, dataSetRoot: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
     let jqContainer = $(containerElem);
     let jqTable = $(tableElem);
 
@@ -118,28 +118,30 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
 		}
 		dataObj.push(obj);
 	});
-        let cellFormatByCol: { [key: string]: any } = {};
-        if (cell_format != null) {
-            for (let func in cell_format) {
-                let cols: number[] = cell_format[func];
-                for (let col of cols) {
-                    let funcObj = (window as any)[func] as Function;
-                    cellFormatByCol[col] = funcObj;
-                }
+
+    let cellFormatByCol: { [key: string]: any } = {};
+    if (cell_format != null) {
+        for (let func in cell_format) {
+            let cols: number[] = cell_format[func];
+            for (let col of cols) {
+                let funcObj = (window as any)[func] as Function;
+                cellFormatByCol[col] = funcObj;
             }
         }
+    }
 
-    let columnsInfo: { data: string, className: string, render?: any, visible?: boolean }[] = [];
+    let columnsInfo: { data: string, className?: string, render?: any, visible?: boolean }[] = [];
     if (dataColumns.length > 0) {
         for (let i = 0; i < dataColumns.length; i++) {
-            let columnInfo: { data: string; className: string; render?: any } = {"data": dataColumns[i], "className": 'details-control'};
+            let columnInfo: { data: string; className: string; render?: any } = {data: dataColumns[i], className: 'details-control'};
             let renderFunc = cellFormatByCol[i];
             if (renderFunc != null) {
-                columnInfo["render"] = renderFunc;
+                columnInfo.render = renderFunc;
             }
             columnsInfo.push(columnInfo);
         }
     }
+
     for(let i = 0; i < columnsInfo.length; i++) {
         let columnInfo = columnsInfo[i];
         let title = columnInfo["data"];
@@ -156,11 +158,15 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             } else {
                 th = title;
             }
-            tf = "<button class='toggle-vis btn btn-sm btn-outline-danger' data-column='" + i + "'>-" + title + "</button>";
+            if (i != 0) {
+                tf = "<button class='toggle-vis btn btn-sm btn-outline-danger' data-column='" + i + "'>-" + title + "</button>";
+            } else {
+                tf = '';
+            }
         }
         jqTable.find("thead tr").append("<th>" + th + "</th>");
         let rows = jqTable.find("tfoot tr").append("<th>" + tf + "</th>");
-        if (typeof columnInfo["visible"] === 'boolean' && columnInfo["visible"] === false) {
+        if (i != 0 && typeof columnInfo["visible"] === 'boolean' && columnInfo["visible"] === false) {
             let row = rows.children().last();
             let toggle = row.children().first();
             (toggle[0] as any).oldParent = row[0];
@@ -168,22 +174,29 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
         }
     }
 
+    let searchSet = new Set<number>(searchableColumns);
+
     // table initialization
     let table = (jqTable as any).DataTable( {
         data: dataObj,
-        "columns": columnsInfo,
-        "order": [sort],
+        paging: true,
+        deferRender: true,
+        orderClasses: false,
+        columns: columnsInfo,
+        order: [sort],
         lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
+        createdRow: row_format,
         initComplete: function () {
             let that = this.api();
             that.columns().every( function (index: number) {
-                var column = that.column( index );
-                let title = columnsInfo[index]["data"];
+                if (!searchSet.has(index)) return;
+                let column = that.column( index );
+                let title = columnsInfo[index].data;
                 if (title != null) {
                     let data = column.data();
                     let unique = data.unique();
                     let uniqueCount = unique.count();
-                    if (uniqueCount > 1 && uniqueCount < 24 && uniqueCount < data.count() / 2 && (searchableColumns == null || searchableColumns.includes(index))) {
+                    if (uniqueCount > 1 && uniqueCount < 24 && uniqueCount < data.count() / 2) {
                         let select = $('<select><option value=""></option></select>')
                             .appendTo($(column.header()).empty() )
                             .on( 'change', function () {
@@ -223,6 +236,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             e.stopPropagation();
          });
     });
+
     $("button").click(function(e) {
         e.stopPropagation();
      });
@@ -259,7 +273,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             }
         });
         if (rows == "") rows = "No extra info";
-        return '<table class="table table-striped table-bordered table-sm" cellspacing="0" border="0">'+rows+'</table>';
+        return '<table class="table table-bordered table-sm" cellspacing="0" border="0">'+rows+'</table>';
     }
 
     // Add event listener for opening and closing details
@@ -278,4 +292,6 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             tr.addClass('shown');
         }
     });
+
+    tableElem.classList.remove("d-none");
 }

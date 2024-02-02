@@ -9,6 +9,8 @@
 let idsByCoalitionName: {[key: string]: number[]} = {};
 let namesByAllianceId: {[key: number]: string} = {};
 
+let conflictName = "";
+
 enum Layout {
     COALITION,
     ALLIANCE,
@@ -16,10 +18,12 @@ enum Layout {
 }
 
 function loadLayout(_rawData: {
+    name: string,
     coalitions: {
         name: string,
         alliance_ids: number[],
         alliance_names: string[],
+        nation_aa: number[],
         nation_ids: number[],
         nation_names: string[],
         counts: [number[], number[]],
@@ -28,6 +32,7 @@ function loadLayout(_rawData: {
     counts_header: string[],
     damage_header: string[],
 }, type: Layout, layout: string[], sortBy: string, sortDir: string) {
+    conflictName = _rawData["name"];
     let coalitions = _rawData["coalitions"];
     let counts_header = _rawData["counts_header"];
     let damage_header = _rawData["damage_header"];
@@ -37,8 +42,35 @@ function loadLayout(_rawData: {
     let searchable: number[] = [];
     let visible: number[] = [];
     let cell_format: {[key: string]: number[]} = {};
-    let row_format: {[key: string]: number[]} = {};
-    
+    let row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null = null;
+
+    switch (type) {
+        case Layout.COALITION:
+        row_format = (row: HTMLElement, data: {[key: string]: any}, index: number) => {
+                let name = data['name'][0];
+                if (coalitions[0].name === name) {
+                    row.setAttribute('style', 'background-color: MistyRose');
+                } else if (coalitions[1].name === name) {
+                    row.setAttribute('style', 'background-color: AliceBlue');
+                }
+            }
+            break;
+        case Layout.ALLIANCE:
+            let col1: Set<number> = new Set<number>(coalitions[0].alliance_ids);
+            let col2: Set<number> = new Set<number>(coalitions[1].alliance_ids);
+            row_format = (row: HTMLElement, data: {[key: string]: any}, index: number) => {
+                let id = data['name'][1];
+                if (col1.has(id)) {
+                    row.setAttribute('style', 'background-color: MistyRose');
+                } else if (col2.has(id)) {
+                    row.setAttribute('style', 'background-color: AliceBlue');
+                }
+            }
+            break;
+        case Layout.NATION:
+            break;
+    }
+
     { // columns
         columns.push("name");
         for (let i = 0; i < counts_header.length; i++) {
@@ -57,7 +89,7 @@ function loadLayout(_rawData: {
         searchable.push(0);
         cell_format["coalitionNames"] = [0];
     }
-    let sort = [columns.indexOf(sortBy), sortDir];
+    let sort: [number, string] = [columns.indexOf(sortBy), sortDir];
 
     for (let i = 0; i < columns.length; i++) {
         if (layout.includes(columns[i])) {
@@ -85,14 +117,16 @@ function loadLayout(_rawData: {
             row.push(damageNetStat);
         }
     };
+
     let addRow = (colEntry: any) => {
-        let colName = colEntry["name"];
-        let alliance_ids = colEntry["alliance_ids"];
-        let alliance_names = colEntry["alliance_names"];
-        let nation_ids = colEntry["nation_ids"];
-        let nation_names = colEntry["nation_names"];
-        let stats = colEntry["counts"];
-        let damage = colEntry["damage"];
+        let colName = colEntry.name;
+        let alliance_ids = colEntry.alliance_ids;
+        let alliance_names = colEntry.alliance_names;
+        let nation_ids = colEntry.nation_ids;
+        let nation_names = colEntry.nation_names;
+        let nation_aa = colEntry.nation_aa;
+        let stats = colEntry.counts;
+        let damage = colEntry.damage;
         switch (type) {
             case Layout.COALITION:
                 let row = [];
@@ -100,28 +134,31 @@ function loadLayout(_rawData: {
                 addStats2Row(row, stats[0], stats[1], damage[0], damage[1]);
                 rows.push(row);
                 break;
-            case Layout.ALLIANCE:
-                let offset = 2;
+            case Layout.ALLIANCE: {
+                let o = 2;
                 for (let i = 0; i < alliance_ids.length; i++) {
                     let row = [];
                     let alliance_id = alliance_ids[i];
                     let alliance_name = alliance_names[i];
                     row.push([alliance_name,alliance_id]);
-                    addStats2Row(row, stats[i*2+offset], stats[i*2+offset+1], damage[i*2+offset], damage[i*2+offset+1]);
+                    addStats2Row(row, stats[i*2+o], stats[i*2+o+1], damage[i*2+o], damage[i*2+o+1]);
                     rows.push(row);
                 }
                 break;
-            case Layout.NATION:
-                offset = 2 + alliance_ids.length * 2;
+            }
+            case Layout.NATION: {
+                let o = 2 + alliance_ids.length * 2;
                 for (let i = 0; i < nation_ids.length; i++) {
                     let row = [];
                     let nation_id = nation_ids[i];
                     let nation_name = nation_names[i];
+                    let nation_aa = 
                     row.push([nation_name,nation_id]);
-                    addStats2Row(row, stats[i*2+offset], stats[i*2+offset+1], damage[i*2+offset], damage[i*2+offset+1]);
+                    addStats2Row(row, stats[i*2+o], stats[i*2+o+1], damage[i*2+o], damage[i*2+o+1]);
                     rows.push(row);
                 }
                 break;
+            }
 
         }
     }
@@ -145,36 +182,35 @@ function loadLayout(_rawData: {
 function setupConflictTables(theId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${theId}.gzip`;
     decompressJson(url).then((data) => {
-        console.log(data);
+        let startMS: number = Date.now();
         loadLayout(data, Layout.ALLIANCE, [
             "name",
             "wars_off",
             "wars_def"
         ], "wars_off", "desc");
+        let diffMS: number = Date.now() - startMS;
+        console.log(`Time to load conflict table: ${diffMS}ms`);
     });
 }
-
-var conflictId = -1;
 
 onMount(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('id')) {
         let potentialId = urlParams.get('id');
         if (potentialId !== null && !isNaN(+potentialId) && Number.isInteger(+potentialId)) {
-            conflictId = +potentialId;
-            console.log('Loading conflict table ' + conflictId);
-            setupConflictTables(conflictId);
+            console.log('Loading conflict table ' +potentialId);
+            setupConflictTables(+potentialId);
         }
     }
 });
 </script>    
 <svelte:head>
-	<title>Conflict {conflictId}</title>
+	<title>Conflict {conflictName}</title>
 </svelte:head>
 <Navbar />
 <Sidebar />
 <div class="container">
-    <h1>Conflict page {conflictId}</h1>
+    <h1>Conflict: {conflictName}</h1>
     <div id="conflict-table-1"></div>
 </div>
 <Footer />

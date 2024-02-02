@@ -63,7 +63,6 @@ onMount(() => {
             let visible: number[] = [1,2,3,4,5,6,7];
             let searchable: number[] = [1];
             let cell_format: {[key: string]: number[]} = {};
-            let row_format: {[key: string]: number[]} = {};
             let sort: [number, string] = [3, 'desc'];
             let rows: any[][] = result.conflicts as any[][];
 
@@ -84,7 +83,14 @@ onMount(() => {
                 visible: visible,
                 searchable: searchable,
                 cell_format: cell_format,
-                row_format: row_format,
+                row_format: (row: HTMLElement, data: {[key: string]: any}, index: number) => {
+                    let end = data.end;
+                    if (end == -1) {
+                        row.setAttribute('style', 'background-color: MistyRose');
+                    } else if (end < Date.now() - 432000000) {
+                        row.setAttribute('style', 'background-color: AliceBlue');
+                    }
+                },
                 sort: sort
             }
 
@@ -97,7 +103,7 @@ onMount(() => {
 });
 </script>    
 <svelte:head>
-	<title>Conflict setupContainer</title>
+	<title>Conflicts</title>
 </svelte:head>
 <Navbar />
 <Sidebar />
