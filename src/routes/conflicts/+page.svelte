@@ -29,7 +29,6 @@ onMount(() => {
             li.appendChild(a);
             ul.appendChild(li);
         }
-        // modal body is coalition ids joined by comma + the list
         let idsStr = alliance_ids.join(", ");
         let modalBody = document.createElement("div");
         modalBody.textContent = idsStr;

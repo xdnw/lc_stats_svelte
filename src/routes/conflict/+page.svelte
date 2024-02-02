@@ -5,7 +5,6 @@
     import { onMount } from 'svelte';
     import { decompressJson, modalWithCloseButton, setupContainer } from '$lib';
 
-let idsByCoalitionName: {[key: string]: number[]} = {};
 let namesByAllianceId: {[key: number]: string} = {};
 
 let conflictName = "";
@@ -31,10 +30,10 @@ function loadLayout(_rawData: {
     counts_header: string[],
     damage_header: string[],
 }, type: Layout, layout: string[], sortBy: string, sortDir: string) {
-    conflictName = _rawData["name"];
-    let coalitions = _rawData["coalitions"];
-    let counts_header = _rawData["counts_header"];
-    let damage_header = _rawData["damage_header"];
+    conflictName = _rawData.name;
+    let coalitions = _rawData.coalitions;
+    let counts_header = _rawData.counts_header;
+    let damage_header = _rawData.damage_header;
 
     let rows: any[][] = [];
     let columns: string[] = [];
@@ -127,7 +126,7 @@ function loadLayout(_rawData: {
         }
     };
 
-    let addRow = (colEntry: any) => {
+    let addRow = (colEntry: any, index: number) => {
         let colName = colEntry.name;
         let alliance_ids = colEntry.alliance_ids;
         let alliance_names = colEntry.alliance_names;
@@ -138,12 +137,14 @@ function loadLayout(_rawData: {
         let damage = colEntry.damage;
         switch (type) {
             case Layout.COALITION:
+                cell_format["formatCol"] = [0];
                 let row = [];
-                row.push([colName,alliance_ids,alliance_names]);
+                row.push(index);
                 addStats2Row(row, stats[0], stats[1], damage[0], damage[1]);
                 rows.push(row);
                 break;
             case Layout.ALLIANCE: {
+                cell_format["formatAA"] = [0];
                 let o = 2;
                 for (let i = 0; i < alliance_ids.length; i++) {
                     let row = [];
@@ -156,6 +157,7 @@ function loadLayout(_rawData: {
                 break;
             }
             case Layout.NATION: {
+                cell_format["formatNation"] = [0];
                 let o = 2 + alliance_ids.length * 2;
                 for (let i = 0; i < nation_ids.length; i++) {
                     let row = [];
@@ -173,7 +175,7 @@ function loadLayout(_rawData: {
     }
     for (let i = 0; i < coalitions.length; i++) {
         let colEntry = coalitions[i];
-        addRow(colEntry);
+        addRow(colEntry, i);
     }
     let data = {
         columns: columns,
@@ -200,15 +202,65 @@ function loadCurrentLayout() {
     loadLayout(_rawData, _layoutData.layout, _layoutData.columns, _layoutData.sort, _layoutData.sortDir);
 }
 
+function setColNames(ids: number[], names: string[]) {
+    for (let i = 0; i < ids.length; i++) {
+        namesByAllianceId[ids[i]] = names[i];
+    }
+}
+
 function setupConflictTables(theId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${theId}.gzip`;
     decompressJson(url).then((data) => {
         _rawData = data;
+        setColNames(_rawData.coalitions[0].alliance_ids, _rawData.coalitions[0].alliance_names);
+        setColNames(_rawData.coalitions[1].alliance_ids, _rawData.coalitions[1].alliance_names);
         loadCurrentLayout();
     });
 }
 
 onMount(() => {
+    (window as any).showNames = (coalitionName: string, index: number) => {
+        let col = _rawData.coalitions[index];
+        let alliance_ids: number[] = col.alliance_ids;
+        var modalTitle = "Coalition " + (index + 1) + ": " + coalitionName;
+        let ul = document.createElement("ul");
+        for (let i = 0; i < alliance_ids.length; i++) {
+            let alliance_id = alliance_ids[i];
+            let alliance_name = col.alliance_names[i];
+            if (alliance_name == undefined) alliance_name = "N/A";
+            let a = document.createElement("a");
+            a.setAttribute("href", "https://politicsandwar.com/alliance/id=" + alliance_id);
+            a.textContent = alliance_name;
+            let li = document.createElement("li");
+            li.appendChild(a);
+            ul.appendChild(li);
+        }
+        let idsStr = alliance_ids.join(", ");
+        let modalBody = document.createElement("div");
+        modalBody.textContent = idsStr;
+        modalBody.appendChild(ul);
+        modalWithCloseButton(modalTitle, modalBody);
+    }
+
+    (window as any).formatNation = (data: any, type: any, row: any, meta: any) => {
+        let aaId = data[2] as number;
+        let aaName = namesByAllianceId[aaId];
+        return `<a href="https://politicsandwar.com/nation/id=${data[1]}">${data[0]}</a> | <a href="https://politicsandwar.com/alliance/id=${data[2]}">${aaName}</a>`;
+    }
+
+    (window as any).formatAA = (data: any, type: any, row: any, meta: any) => {
+        return `<a href="https://politicsandwar.com/alliance/id=${data[1]}">${data[0]}</a>`;
+    }
+
+    (window as any).formatCol = (data: any, type: any, row: any, meta: any) => {
+        let button = document.createElement("button");
+        button.setAttribute("type", "button");
+        button.setAttribute("class", "ms-1 btn btn-info btn-sm");
+        button.setAttribute("onclick", `showNames('${_rawData.coalitions[row.name].name}',${row.name})`);
+        button.textContent = "Coalition " + row.name;
+        return button.outerHTML;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('id')) {
         let potentialId = urlParams.get('id');
