@@ -43,6 +43,9 @@ function loadLayout(_rawData: {
     let cell_format: {[key: string]: number[]} = {};
     let row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null = null;
 
+    let col1: Set<number> = new Set<number>(coalitions[0].alliance_ids);
+    let col2: Set<number> = new Set<number>(coalitions[1].alliance_ids);
+
     switch (type) {
         case Layout.COALITION:
         row_format = (row: HTMLElement, data: {[key: string]: any}, index: number) => {
@@ -55,8 +58,6 @@ function loadLayout(_rawData: {
             }
             break;
         case Layout.ALLIANCE:
-            let col1: Set<number> = new Set<number>(coalitions[0].alliance_ids);
-            let col2: Set<number> = new Set<number>(coalitions[1].alliance_ids);
             row_format = (row: HTMLElement, data: {[key: string]: any}, index: number) => {
                 let id = data['name'][1];
                 if (col1.has(id)) {
@@ -67,6 +68,15 @@ function loadLayout(_rawData: {
             }
             break;
         case Layout.NATION:
+            row_format = (row: HTMLElement, data: {[key: string]: any}, index: number) => {
+                let id = data['name'][2];
+                if (col1.has(id)) {
+                    row.classList.add('bg-light');
+                } else if (col2.has(id)) {
+                    // row.classList.add('bg-secondary');
+                }
+            }
+
             break;
     }
 
@@ -123,7 +133,7 @@ function loadLayout(_rawData: {
         let alliance_names = colEntry.alliance_names;
         let nation_ids = colEntry.nation_ids;
         let nation_names = colEntry.nation_names;
-        let nation_aa = colEntry.nation_aa;
+        let nation_aas = colEntry.nation_aa;
         let stats = colEntry.counts;
         let damage = colEntry.damage;
         switch (type) {
@@ -151,8 +161,8 @@ function loadLayout(_rawData: {
                     let row = [];
                     let nation_id = nation_ids[i];
                     let nation_name = nation_names[i];
-                    let nation_aa = 
-                    row.push([nation_name,nation_id]);
+                    let nation_aa = nation_aas[i];
+                    row.push([nation_name,nation_id,nation_aa]);
                     addStats2Row(row, stats[i*2+o], stats[i*2+o+1], damage[i*2+o], damage[i*2+o+1]);
                     rows.push(row);
                 }

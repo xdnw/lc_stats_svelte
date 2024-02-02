@@ -83,12 +83,16 @@ export function modal(title: string, body: HTMLElement, footer: string) {
   }
 
 export function addTable(container: HTMLElement, id: string) {
-    container.innerHTML = "<div class=\"table-toggles\"></div>" +
-    "<table id=\"" + id + "\" class=\"table compact table-bordered table-sm d-none\" style=\"width:100%\">" +
-    "<thead class=\"table-danger\"><tr></tr></thead>" +
-    "<tbody></tbody>" +
-    "<tfoot><tr></tr></tfoot>" +
-    "</table>";
+    container.innerHTML = `
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
+        <i class="bi bi-table"></i>&nbsp;Customize
+    </button>
+    <div class="collapse table-toggles" id="tblCol"></div>
+    <table id="${id}" class="table compact table-bordered table-sm d-none" style="width:100%">
+        <thead class="table-danger"><tr></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr></tr></tfoot>
+    </table>`;
 }
 
 export function setupContainer(container: HTMLElement, data: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
@@ -98,6 +102,7 @@ export function setupContainer(container: HTMLElement, data: {columns: string[],
 }
 
 export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, dataSetRoot: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
+    let startMS: number = Date.now();
     let jqContainer = $(containerElem);
     let jqTable = $(tableElem);
 
@@ -251,7 +256,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
 		// move elem
 		if (e.target.parentElement && e.target.parentElement.tagName == "TH") {
 			(e.target as any).oldParent = e.target.parentElement;
-			jqContainer.find(".dataTables_length").after(e.target);
+			jqContainer.find(".table-toggles").after(e.target);
 		} else {
 			(e.target as any).oldParent.append(e.target);
 		}

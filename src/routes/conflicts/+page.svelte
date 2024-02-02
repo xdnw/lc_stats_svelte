@@ -59,7 +59,7 @@ onMount(() => {
             }
 
             let columns: string[] = result.headers as string[];
-            let visible: number[] = [1,2,3,4,5,6,7];
+            let visible: number[] = [1,2,3,4,5,6,7,10];
             let searchable: number[] = [1];
             let cell_format: {[key: string]: number[]} = {};
             let sort: [number, string] = [3, 'desc'];
@@ -70,9 +70,15 @@ onMount(() => {
                 allianceIdsByCoalition[conflict[1]] = [conflict[8],conflict[9]];
             }
 
+            columns.push("total")
+            for (let i in rows) {
+                let damage = rows[i][6] + rows[i][7];
+                rows[i].push(damage);
+            }
+
             cell_format["formatUrl"] = [1];
             cell_format["formatNumber"] = [4, 5];
-            cell_format["formatMoney"] = [6, 7];
+            cell_format["formatMoney"] = [6, 7, 10];
             cell_format["formatDate"] = [2,3];
 
             let container = document.getElementById('conflictTable');
