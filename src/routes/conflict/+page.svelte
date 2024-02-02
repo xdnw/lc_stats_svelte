@@ -1,16 +1,23 @@
 <script lang=ts>
-	/** @type {import('./$types').PageData} */
-	export let data: {id: number};
-    import Main from '../../../components/Main.svelte'
-    import Navbar from '../../../components/Navbar.svelte'
-    import Sidebar from '../../../components/Sidebar.svelte'
-    import Footer from '../../../components/Footer.svelte'
+    import Main from '../../components/Main.svelte'
+    import Navbar from '../../components/Navbar.svelte'
+    import Sidebar from '../../components/Sidebar.svelte'
+    import Footer from '../../components/Footer.svelte'
     import { onMount } from 'svelte';
-  import { decompressJson, setupContainer } from '$lib';
+    import { decompressJson, setupContainer } from '$lib';
 
 // let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip";
 
+var conflictId = -1;
+
 onMount(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('id')) {
+        let potentialId = urlParams.get('id');
+        if (potentialId !== null && !isNaN(+potentialId) && Number.isInteger(+potentialId)) {
+            conflictId = +potentialId;
+        }
+    }
     console.log('Conflict page mounted');
     try {
         // decompressJson(url).then((result) => {
@@ -42,12 +49,12 @@ onMount(() => {
 });
 </script>    
 <svelte:head>
-	<title>Conflict {data.id}</title>
+	<title>Conflict {conflictId}</title>
 </svelte:head>
 <Navbar />
 <Sidebar />
 <div class="container">
-    <h1>Conflict page {data.id}</h1>
+    <h1>Conflict page {conflictId}</h1>
     <div id="conflictTable"></div>
 </div>
 <Footer />
