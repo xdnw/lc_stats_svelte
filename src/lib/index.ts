@@ -1,13 +1,13 @@
 export function addFormatters() {
-    (window as any).formatNumber = (data: number, type: any, row: any, meta: any) => {
-        return data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    (window as any).formatNumber = (data: number, type: any, row: any, meta: any): string => {
+        return data.toLocaleString("en-US");
     }
 
-    (window as any).formatMoney = (data: number, type: any, row: any, meta: any) => {
-        return "$" + data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    (window as any).formatMoney = (data: number, type: any, row: any, meta: any): string => {
+        return "$" + data.toLocaleString("en-US");
     }
 
-    (window as any).formatDate = (data: number, type: any, row: any, meta: any) => {
+    (window as any).formatDate = (data: number, type: any, row: any, meta: any): string => {
         if (data == -1) return "N/A";
         let date = new Date(data);
         return date.toISOString().split('T')[0];
@@ -79,7 +79,7 @@ export function modal(title: string, body: HTMLElement, footer: string) {
     myBody.innerHTML = "";
     myBody.appendChild(body);
     createdModal.getElementsByClassName("modal-footer")[0].innerHTML = footer;
-    window.bootstrap.Modal.getOrCreateInstance(createdModal).show();
+    (window as any).bootstrap.Modal.getOrCreateInstance(createdModal).show();
   }
 
 export function addTable(container: HTMLElement, id: string) {
@@ -272,7 +272,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
                 if (!table.column(index).visible()) {
                     rows += '<tr>'+
                         '<td>' + title + '</td>'+
-                        '<td>'+d[title]+'</td>'+
+                        '<td>'+d[title].toLocaleString("en-US") +'</td>'+
                         '</tr>';
                 }
             }
