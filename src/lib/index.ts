@@ -1,10 +1,11 @@
+// import pson
 export function addFormatters() {
     (window as any).formatNumber = (data: number, type: any, row: any, meta: any) => {
-        return data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return data.toLocaleString("en-US");
     }
 
     (window as any).formatMoney = (data: number, type: any, row: any, meta: any) => {
-        return "$" + data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return "$" + data.toLocaleString("en-US");
     }
 
     (window as any).formatDate = (data: number, type: any, row: any, meta: any) => {
@@ -14,18 +15,35 @@ export function addFormatters() {
     }
 }
 
+async function streamToUint8Array(readableStream: any): Promise<Uint8Array> {
+    const reader = readableStream.getReader();
+    const chunks = [];
+    let result;
+    while (!result?.done) {
+        result = await reader.read();
+        if (!result.done) {
+            chunks.push(result.value);
+        }
+    }
+    return new Uint8Array(chunks.reduce((acc, val) => acc.concat(Array.from(val)), []));
+}
+
 export const decompress = async (url: string) => {
     const ds = new DecompressionStream('gzip');
     const response = await fetch(url);
     const blob_in = await response.blob();
     const stream_in = blob_in.stream().pipeThrough(ds);
     const blob_out = await new Response(stream_in).blob();
-    return await blob_out.text();
+    return blob_out;
 };
   
-export const decompressJson = async (url: string) => {
+export const decompressBson = async (url: string) => {
     let result = await decompress(url);
-    return JSON.parse(atob(result));
+    let stream: ReadableStream<Uint8Array> = await result.stream();
+    let uint8Array = await streamToUint8Array(stream);
+    var PSON = dcodeIO.PSON;
+    var pson = new PSON.StaticPair([]);
+    return pson.decode(uint8Array);
 };
 
 export function uuidv4(): string {
@@ -124,13 +142,16 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
 		dataObj.push(obj);
 	});
 
-    let cellFormatByCol: { [key: string]: any } = {};
+    let cellFormatByCol: { [key: number]: (data: number, type: any, row: any, meta: any) => void } = {};
     if (cell_format != null) {
         for (let func in cell_format) {
             let cols: number[] = cell_format[func];
             for (let col of cols) {
                 let funcObj = (window as any)[func] as Function;
-                cellFormatByCol[col] = funcObj;
+                cellFormatByCol[col] = funcObj as any;
+                if (funcObj == null) {
+                    console.log("No function found for " + func);
+                }
             }
         }
     }

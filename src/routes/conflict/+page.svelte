@@ -3,9 +3,7 @@
     import Sidebar from '../../components/Sidebar.svelte'
     import Footer from '../../components/Footer.svelte'
     import { onMount } from 'svelte';
-    import { decompressJson, modalWithCloseButton, setupContainer } from '$lib';
-
-let namesByAllianceId: {[key: number]: string} = {};
+    import { addFormatters, decompressBson, modalWithCloseButton, setupContainer } from '$lib';
 
 let conflictName = "";
 
@@ -75,7 +73,6 @@ function loadLayout(_rawData: {
                     // row.classList.add('bg-secondary');
                 }
             }
-
             break;
     }
 
@@ -98,15 +95,21 @@ function loadLayout(_rawData: {
         cell_format["coalitionNames"] = [0];
     }
     let sort: [number, string] = [columns.indexOf(sortBy), sortDir];
-
+    cell_format["formatNumber"] = [];
+    cell_format["formatMoney"] = [];
     for (let i = 0; i < columns.length; i++) {
         if (layout.includes(columns[i])) {
             visible.push(i);
         }
+        if (i > 0) {
+            if (columns[i].includes("_value")) {
+                cell_format["formatMoney"].push(i);
+            } else {
+                cell_format["formatNumber"].push(i);
+            }
+        }
     }
 
-
-    cell_format["formatNumber"] = Array.from({length: columns.length}, (_, i) => i + 1);
     let addStats2Row = (row: any[], offStats: any, defStats: any, damageTaken: any, damageDealt: any) => {
         for (let i = 0; i < offStats.length; i++) {
             let offStat = offStats[i];
@@ -202,15 +205,9 @@ function loadCurrentLayout() {
     loadLayout(_rawData, _layoutData.layout, _layoutData.columns, _layoutData.sort, _layoutData.sortDir);
 }
 
-function setColNames(ids: number[], names: string[]) {
-    for (let i = 0; i < ids.length; i++) {
-        namesByAllianceId[ids[i]] = names[i];
-    }
-}
-
-function setupConflictTables(theId: number) {
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${theId}.gzip`;
-    decompressJson(url).then((data) => {
+function setupConflictTables(conflictId: number) {
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
+    decompressBson(url).then((data) => {
         _rawData = data;
         setColNames(_rawData.coalitions[0].alliance_ids, _rawData.coalitions[0].alliance_names);
         setColNames(_rawData.coalitions[1].alliance_ids, _rawData.coalitions[1].alliance_names);
@@ -218,7 +215,16 @@ function setupConflictTables(theId: number) {
     });
 }
 
+let namesByAllianceId: {[key: number]: string} = {};
+function setColNames(ids: number[], names: string[]) {
+    for (let i = 0; i < ids.length; i++) {
+        namesByAllianceId[ids[i]] = names[i];
+    }
+}
+
 onMount(() => {
+    addFormatters();
+    
     (window as any).showNames = (coalitionName: string, index: number) => {
         let col = _rawData.coalitions[index];
         let alliance_ids: number[] = col.alliance_ids;

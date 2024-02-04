@@ -4,9 +4,9 @@
     import Sidebar from '../../components/Sidebar.svelte'
     import Footer from '../../components/Footer.svelte'
     import { onMount } from 'svelte';
-  import { decompressJson, modalWithCloseButton, setupContainer, addFormatters } from '$lib';
+    import { decompressBson, modalWithCloseButton, setupContainer, addFormatters } from '$lib';
 
-let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip";
+    let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip";
 
 onMount(() => {
     addFormatters();
@@ -51,7 +51,7 @@ onMount(() => {
     }
 
     try {
-        decompressJson(url).then((result) => {
+        decompressBson(url).then((result) => {
             let alliance_ids = result.alliance_ids;
             let alliance_names = result.alliance_names;
             for (let i = 0; i < alliance_ids.length; i++) {
@@ -68,6 +68,7 @@ onMount(() => {
             for (let i = 0; i < rows.length; i++) {
                 let conflict = rows[i];
                 allianceIdsByCoalition[conflict[1]] = [conflict[8],conflict[9]];
+                console.log("Start end: " + conflict[0] + " | " + conflict[1] + " | " + conflict[2] + " | " + conflict[3])
             }
 
             columns.push("total")
