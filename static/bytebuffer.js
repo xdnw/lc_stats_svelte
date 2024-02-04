@@ -1578,8 +1578,8 @@
      * @expose
      */
     ByteBuffer.zigZagDecode32 = function(n) {
-        if (typeof n === 'bigint') {
-            return Number(((n >> BigInt(1)) ^ -(n & BigInt(1))));
+        if (n > 0x7fffffff) {
+            return Math.round(Math.floor(n / 2) - (n % 2 != 0 ? 1 : 0));
         }
         return ((n >>> 1) ^ -(n & 1)) | 0; // // ref: src/google/protobuf/wire_format_lite.h
     };
@@ -1661,7 +1661,6 @@
         var c = 0,
             value = 0 >>> 0,
             b;
-        var bigInt = BigInt(0);
         do {
             if (!this.noAssert && offset > this.limit) {
                 var err = Error("Truncated");
@@ -1672,35 +1671,24 @@
             if (c < 4) {
                 value |= (b & 0x7f) << (7*c);
             } else if (c < 10) {
-                if (c == 4) {
-                    bigInt = BigInt(value);
-                    value = null;
-                }
-                bigInt += (BigInt(b & 0x7f) << BigInt(7*c));
+                let valCopy = Number(value);
+                value += (b & 0x7f) * Math.pow(2, 7*c);
             }
-            // if bigint convert back to number
             ++c;
         } while ((b & 0x80) !== 0);
-        if (value == null) {
-            if (relative) {
-                this.offset = offset;
-                return bigInt;
-            }
-            return {
-                "value": bigInt,
-                "length": c
-            };
-        } else {
+        if (value <= 2147483647) {
             value |= 0;
-            if (relative) {
-                this.offset = offset;
-                return value;
-            }
-            return {
-                "value": value,
-                "length": c
-            };
+        } else {
+            value = Math.floor(value);
         }
+        if (relative) {
+            this.offset = offset;
+            return value;
+        }
+        return {
+            "value": value,
+            "length": c
+        };
     };
 
     /**

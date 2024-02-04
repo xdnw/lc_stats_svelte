@@ -68,7 +68,6 @@ onMount(() => {
             for (let i = 0; i < rows.length; i++) {
                 let conflict = rows[i];
                 allianceIdsByCoalition[conflict[1]] = [conflict[8],conflict[9]];
-                console.log("Start end: " + conflict[0] + " | " + conflict[1] + " | " + conflict[2] + " | " + conflict[3])
             }
 
             columns.push("total")
