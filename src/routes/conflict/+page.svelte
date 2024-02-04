@@ -196,8 +196,8 @@ function loadLayout(_rawData: {
 let _rawData: any = null;
 let _layoutData = {
     layout: Layout.COALITION,
-    columns: ["name","wars_off","wars_def"],
-    sort: "wars_off",
+    columns: ["name", "loss_value_net", "wars_off", "wars_def", "wars_off","wars_def", "loss_value_dealt", "loss_value"],
+    sort: "loss_value_net",
     sortDir: "desc"
 };
 
