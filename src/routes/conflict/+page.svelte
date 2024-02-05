@@ -308,9 +308,9 @@ function handleClick(event: MouseEvent): void {
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} href="#">
+            <button class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION}>
                 <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Not Finished: Graphs
-            </a>
+            </button>
         </li>
     </ul>
     <div id="conflict-table-1"></div>
