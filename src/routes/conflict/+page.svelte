@@ -6,6 +6,7 @@
     import { addFormatters, decompressBson, modalWithCloseButton, setupContainer } from '$lib';
 
 let conflictName = "";
+let conflictId = -1;
 
 enum Layout {
     COALITION,
@@ -269,7 +270,8 @@ onMount(() => {
 
     const id = new URLSearchParams(window.location.search).get('id');
     if (id && !isNaN(+id) && Number.isInteger(+id)) {
-        setupConflictTables(+id);
+        conflictId = +id;
+        setupConflictTables(conflictId);
     }
 });
 function handleClick(event: MouseEvent): void {
@@ -299,6 +301,16 @@ function handleClick(event: MouseEvent): void {
             <button class="nav-link" id="billing-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} on:click={handleClick}>
                 <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
             </button>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} href="tiering/?id={conflictId}">
+                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} href="#">
+                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Not Finished: Graphs
+            </a>
         </li>
     </ul>
     <div id="conflict-table-1"></div>

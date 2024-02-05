@@ -280,7 +280,7 @@ function sliderValueToDate(value: number) {
 <Navbar />
 <Sidebar />
 <div class="container-fluid" style="min-height: calc(100vh - 203px);">
-    <h1><a href="conflict?id={conflictId}"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}</h1>
+    <h1><a href="conflict?id={conflictId}"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict Tiering: {conflictName}</h1>
     <div class="row" id="charts">
     </div>
 
