@@ -267,13 +267,9 @@ onMount(() => {
         return button.outerHTML;
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('id')) {
-        let potentialId = urlParams.get('id');
-        if (potentialId !== null && !isNaN(+potentialId) && Number.isInteger(+potentialId)) {
-            console.log('Loading conflict table ' +potentialId);
-            setupConflictTables(+potentialId);
-        }
+    const id = new URLSearchParams(window.location.search).get('id');
+    if (id && !isNaN(+id) && Number.isInteger(+id)) {
+        setupConflictTables(+id);
     }
 });
 function handleClick(event: MouseEvent): void {
@@ -286,7 +282,7 @@ function handleClick(event: MouseEvent): void {
 </svelte:head>
 <Navbar />
 <Sidebar />
-<div class="container">
+<div class="container" style="min-height: calc(100vh - 203px);">
     <h1><a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}</h1>
     <ul class="nav nav-pills nav-fill" id="js-pills-1" role="tablist">
         <li class="nav-item">

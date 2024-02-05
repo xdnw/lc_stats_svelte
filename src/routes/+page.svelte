@@ -4,12 +4,12 @@ import Sidebar from '../components/Sidebar.svelte'
 import Footer from '../components/Footer.svelte'
 import { onMount } from 'svelte';
   import { decompressBson } from '$lib';
-// let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/test.gzip";
-// onMount(() => {
-//   decompressBson(url).then((result) => {
-//     console.log("Result " + JSON.stringify(result));
-//   });
-// });
+let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/test.gzip";
+onMount(() => {
+  decompressBson(url).then((result) => {
+    console.log("Result " + JSON.stringify(result));
+  });
+});
 </script>
 <svelte:head>
 	<title>Home</title>
