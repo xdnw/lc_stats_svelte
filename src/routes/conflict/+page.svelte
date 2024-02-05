@@ -308,8 +308,13 @@ function handleClick(event: MouseEvent): void {
             </a>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION}>
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Not Finished: Graphs
+            <button class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
+                <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
             </button>
         </li>
     </ul>

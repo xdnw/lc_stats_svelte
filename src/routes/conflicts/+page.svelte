@@ -1,4 +1,5 @@
 <script lang=ts>
+	import { base } from '$app/paths';
 	/** @type {import('./$types').PageData} */
     import Navbar from '../../components/Navbar.svelte'
     import Sidebar from '../../components/Sidebar.svelte'
@@ -113,7 +114,7 @@ onMount(() => {
 <Navbar />
 <Sidebar />
 <div class="container" style="min-height: calc(100vh - 203px);">
-    <h1><a href="#"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflicts</h1>
+    <h1><a href="{base}"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflicts</h1>
     <div id="conflictTable"></div>
 </div>
 <Footer />

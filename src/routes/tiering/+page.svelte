@@ -69,6 +69,7 @@ let UNITS_PER_CITY: {[key: string]: number} = {
     "TANK": 1250,
     "AIRCRAFT": 75,
     "SHIP": 15,
+    "INFRA": 1
 }
 
 let _chartLayouts: {[key: string]: {
@@ -76,6 +77,11 @@ let _chartLayouts: {[key: string]: {
     normalize: boolean
     chart: Chart | null
 }} = {
+    "tiering": {
+        metrics: ["NATION"],
+        normalize: false,
+        chart: null
+    },
     "avg_mil": {
         metrics: ["SOLDIER","TANK","AIRCRAFT","SHIP"],
         normalize: true,
@@ -86,8 +92,13 @@ let _chartLayouts: {[key: string]: {
         normalize: false,
         chart: null
     },
-    "tiering": {
-        metrics: ["NATION"],
+    "avg_infra": {
+        metrics: ["INFRA"],
+        normalize: true,
+        chart: null
+    },
+    "infra": {
+        metrics: ["INFRA"],
         normalize: false,
         chart: null
     },
