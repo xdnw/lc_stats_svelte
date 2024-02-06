@@ -14,6 +14,22 @@ enum Layout {
     NATION
 }
 
+function trimHeader(header: string) {
+    if (header.includes("_value")) {
+        header = "~$" + header.replace("_value", "");
+    }
+    if (header.includes("_loss")) {
+        header = header.replace("_loss", "");
+    }
+    if (header.includes("loss_")) {
+        header = header.replace("loss_", "");
+    }
+    if (header === "~$loss") {
+        header = "damage";
+    }
+    return header.replaceAll("_", " ");
+}
+
 function loadLayout(_rawData: {
     name: string,
     coalitions: {
@@ -75,21 +91,23 @@ function loadLayout(_rawData: {
                 }
             }
             break;
-    }
+    }  
 
     { // columns
         columns.push("name");
         for (let i = 0; i < counts_header.length; i++) {
-            let header = counts_header[i];
-            columns.push(header + "_off");
-            columns.push(header + "_def");
-            columns.push(header + "_total");
+            let header = trimHeader(counts_header[i]);
+            console.log(header);
+            columns.push("off:" + header);
+            columns.push("def:" + header);
+            columns.push("both:" + header);
         }
         for (let i = 0; i < damage_header.length; i++) {
-            let header = damage_header[i];
-            columns.push(header);
-            columns.push(header + "_dealt");
-            columns.push(header + "_net");
+            let header = trimHeader(damage_header[i]);
+            console.log(header);
+            columns.push("loss:" + header);
+            columns.push("dealt:" + header.replace("_loss", "").replace("loss_", ""));
+            columns.push("net:" + header.replace("_loss", "").replace("loss_", ""));
         }
 
         searchable.push(0);
@@ -103,7 +121,7 @@ function loadLayout(_rawData: {
             visible.push(i);
         }
         if (i > 0) {
-            if (columns[i].includes("_value")) {
+            if (columns[i].includes("~") || columns[i].includes("damage") || (columns[i].includes("infra") && !columns[i].includes("attacks"))) {
                 cell_format["formatMoney"].push(i);
             } else {
                 cell_format["formatNumber"].push(i);
@@ -174,7 +192,6 @@ function loadLayout(_rawData: {
                 }
                 break;
             }
-
         }
     }
     for (let i = 0; i < coalitions.length; i++) {
@@ -195,10 +212,38 @@ function loadLayout(_rawData: {
 }
 
 let _rawData: any = null;
+let breakdownCols = ["GROUND_TANKS_MUNITIONS_USED_UNNECESSARY","DOUBLE_FORTIFY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR","AIRSTRIKE_SOLDIERS_NONE","AIRSTRIKE_SOLDIERS_SHOULD_USE_GROUND","AIRSTRIKE_TANKS_NONE","AIRSTRIKE_SHIP_NONE","AIRSTRIKE_INACTIVE_NO_GROUND","AIRSTRIKE_INACTIVE_NO_SHIP","AIRSTRIKE_FAILED_NOT_DOGFIGHT","AIRSTRIKE_AIRCRAFT_NONE","AIRSTRIKE_AIRCRAFT_NONE_INACTIVE","AIRSTRIKE_AIRCRAFT_LOW","AIRSTRIKE_INFRA","AIRSTRIKE_MONEY","NAVAL_MAX_VS_NONE"].map(col => `off:${col.toLowerCase().replaceAll("_", " ")} attacks`);
+let layouts:{[key: string]: {sort: string, columns: string[]}} = {
+    // net damage, o/w d/w inflicted received
+    Summary: {
+        sort: "off:wars", 
+        columns: ["name","net:damage","off:wars","def:wars","dealt:damage","loss:damage"]
+    },
+    Dealt: {
+        sort: "dealt:damage", 
+        columns:["name", "dealt:infra", "dealt:~$soldier", "dealt:~$tank", "dealt:~$aircraft", "dealt:~$ship", "dealt:~$unit", "dealt:~$consume", "dealt:~$loot", "dealt:damage"]
+    },
+    Received: {
+        sort: "loss:damage", 
+        columns:["name", "loss:infra", "loss:~$soldier", "loss:~$tank", "loss:~$aircraft", "loss:~$ship", "loss:~$unit", "loss:~$consume", "loss:~$loot", "loss:damage"]
+    },
+    Units: {
+        sort: "dealt:~$unit",
+        columns: ["name", "dealt:soldier", "dealt:tank", "dealt:aircraft", "dealt:ship", "dealt:~$unit", "loss:soldier", "loss:tank", "loss:aircraft", "loss:ship", "loss:~$unit"]
+    },
+    Consumption: {
+        sort: "name",
+        columns: ["name", "loss:~$building", "loss:gasoline", "loss:munitions", "loss:steel", "loss:aluminum", "loss:consume gas", "loss:consume mun"]
+    },
+    Attacks: {
+        sort: "off:attacks",
+        columns: ["name", "off:attacks", ...breakdownCols]
+    }
+}
 let _layoutData = {
     layout: Layout.COALITION,
-    columns: ["name", "loss_value_net", "wars_off", "wars_def", "wars_off","wars_def", "loss_value_dealt", "loss_value"],
-    sort: "loss_value_net",
+    columns: layouts.Attacks.columns,
+    sort: layouts.Attacks.sort,
     sortDir: "desc"
 };
 
@@ -284,7 +329,7 @@ function handleClick(event: MouseEvent): void {
 </svelte:head>
 <Navbar />
 <Sidebar />
-<div class="container" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid" style="min-height: calc(100vh - 203px);">
     <h1><a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}</h1>
     <ul class="nav nav-pills nav-fill" id="js-pills-1" role="tablist">
         <li class="nav-item">

@@ -106,7 +106,7 @@ export function addTable(container: HTMLElement, id: string) {
         <i class="bi bi-table"></i>&nbsp;Customize
     </button>
     <div class="collapse table-toggles" id="tblCol"></div>
-    <table id="${id}" class="table compact table-bordered table-sm d-none" style="width:100%">
+    <table id="${id}" class="table compact table-bordered d-none" style="width:100%">
         <thead class="table-danger"><tr></tr></thead>
         <tbody></tbody>
         <tfoot><tr></tr></tfoot>
@@ -185,7 +185,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
                 th = title;
             }
             if (i != 0) {
-                tf = "<button class='toggle-vis btn btn-sm btn-outline-danger' data-column='" + i + "'>-" + title + "</button>";
+                tf = "<button class='toggle-vis btn btn-sm btn-outline-danger' data-column='" + i + "'>" + title + "</button>";
             } else {
                 tf = '';
             }
@@ -299,7 +299,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             }
         });
         if (rows == "") rows = "No extra info";
-        return '<table class="table table-bordered table-sm" cellspacing="0" border="0">'+rows+'</table>';
+        return '<table class="table table-striped table-bordered compact" cellspacing="0" border="0">'+rows+'</table>';
     }
 
     // Add event listener for opening and closing details
