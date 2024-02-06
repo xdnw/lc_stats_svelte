@@ -97,14 +97,12 @@ function loadLayout(_rawData: {
         columns.push("name");
         for (let i = 0; i < counts_header.length; i++) {
             let header = trimHeader(counts_header[i]);
-            console.log(header);
             columns.push("off:" + header);
             columns.push("def:" + header);
             columns.push("both:" + header);
         }
         for (let i = 0; i < damage_header.length; i++) {
             let header = trimHeader(damage_header[i]);
-            console.log(header);
             columns.push("loss:" + header);
             columns.push("dealt:" + header.replace("_loss", "").replace("loss_", ""));
             columns.push("net:" + header.replace("_loss", "").replace("loss_", ""));
@@ -160,8 +158,7 @@ function loadLayout(_rawData: {
         switch (type) {
             case Layout.COALITION:
                 cell_format["formatCol"] = [0];
-                let row = [];
-                row.push(index);
+                let row = [index];
                 addStats2Row(row, stats[0], stats[1], damage[0], damage[1]);
                 rows.push(row);
                 break;
@@ -242,13 +239,34 @@ let layouts:{[key: string]: {sort: string, columns: string[]}} = {
 }
 let _layoutData = {
     layout: Layout.COALITION,
-    columns: layouts.Attacks.columns,
-    sort: layouts.Attacks.sort,
-    sortDir: "desc"
+    columns: layouts.Summary.columns,
+    sort: layouts.Summary.sort,
+    order: "desc"
 };
 
+function loadLayoutFromQuery(query: URLSearchParams) {
+    let layout = query.get('layout');
+    if (layout) {
+        if (layout === "coalition") {
+            _layoutData.layout = Layout.COALITION;
+        } else if (layout === "alliance" || layout === "1") {
+            _layoutData.layout = Layout.ALLIANCE;
+        } else if (layout === "nation" || layout === "2") {
+            _layoutData.layout = Layout.NATION;
+        }
+    }
+    let sort = query.get('sort');
+    if (sort) {
+        _layoutData.sort = sort;
+    }
+    let order = query.get('order');
+    if (order) {
+        _layoutData.order = order;
+    }
+}
+
 function loadCurrentLayout() {
-    loadLayout(_rawData, _layoutData.layout, _layoutData.columns, _layoutData.sort, _layoutData.sortDir);
+    loadLayout(_rawData, _layoutData.layout, _layoutData.columns, _layoutData.sort, _layoutData.order);
 }
 
 function setupConflictTables(conflictId: number) {
@@ -305,22 +323,32 @@ onMount(() => {
     }
 
     (window as any).formatCol = (data: any, type: any, row: any, meta: any) => {
+        let index = row.name;
         let button = document.createElement("button");
+        console.log("ROW " + JSON.stringify(row))
         button.setAttribute("type", "button");
-        button.setAttribute("class", "ms-1 btn btn-info btn-sm");
-        button.setAttribute("onclick", `showNames('${_rawData.coalitions[row.name].name}',${row.name})`);
-        button.textContent = "Coalition " + row.name;
+        button.setAttribute("class", "ms-1 btn btn-info btn-sm fw-bold opacity-75");
+        button.setAttribute("onclick", `showNames('${_rawData.coalitions[index].name}',${index})`);
+        button.textContent = _rawData.coalitions[index].name;
         return button.outerHTML;
     }
 
-    const id = new URLSearchParams(window.location.search).get('id');
+    let queryParams = new URLSearchParams(window.location.search);
+    loadLayoutFromQuery(queryParams)
+    const id = queryParams.get('id');
     if (id && !isNaN(+id) && Number.isInteger(+id)) {
         conflictId = +id;
         setupConflictTables(conflictId);
     }
 });
+function setQueryParam(param: string, value: any) {
+    let url = new URL(window.location.href);
+    url.searchParams.set(param, value);
+    window.history.pushState({}, '', url.toString());
+}
 function handleClick(event: MouseEvent): void {
-    _layoutData.layout = parseInt((event.target as HTMLButtonElement).getAttribute("data-bs-layout") as string) ;
+    _layoutData.layout = parseInt((event.target as HTMLButtonElement).getAttribute("data-bs-layout") as string);
+    setQueryParam('layout', _layoutData.layout);
     loadCurrentLayout();
 }
 </script>    
@@ -329,40 +357,60 @@ function handleClick(event: MouseEvent): void {
 </svelte:head>
 <Navbar />
 <Sidebar />
-<div class="container-fluid" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
     <h1><a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}</h1>
-    <ul class="nav nav-pills nav-fill" id="js-pills-1" role="tablist">
-        <li class="nav-item">
-            <button class="nav-link active" id="profile-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="true" data-bs-layout={Layout.COALITION} on:click={handleClick}>
-                <i class="bi bi-cookie"></i>&nbsp;Coalition
-            </button>
+        <ul class="nav nav-tabs nav-fill m-0 p-0">
+            <li class="nav-item me-1">
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.COALITION ? "bg-light" : ""}" id="profile-pill" data-bs-layout={Layout.COALITION} on:click={handleClick}>
+                    <i class="bi bi-cookie"></i>&nbsp;Coalition
+                </button>
+            </li>
+            <li class="nav-item me-1">
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.ALLIANCE ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.ALLIANCE} on:click={handleClick}>
+                    <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
+                </button>
+            </li>
+            <li class="nav-item me-1">
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.NATION ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.NATION} on:click={handleClick}>
+                    <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
+                </button>
+            </li>
+            <li class="nav-item me-1">
+                <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold"  data-bs-layout={Layout.NATION} href="tiering/?id={conflictId}">
+                    <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
+                </a>
+            </li>
+            <li class="nav-item me-1">
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
+                    <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
+                </button>
+            </li>
+            <li class="nav-item me-1">
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
+                    <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
+                    <i class="bi bi-share-fill"></i>&nbsp;TODO: War Web
+                </button>
+            </li>
+        </ul>
+        <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-1">
+        <li class="p-1">
+            Layout Picker:
         </li>
-        <li class="nav-item">
-            <button class="nav-link" id="billing-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="false" data-bs-layout={Layout.ALLIANCE} on:click={handleClick}>
-                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
-            </button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="billing-pill" data-bs-toggle="pill" type="button" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} on:click={handleClick}>
-                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
-            </button>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} href="tiering/?id={conflictId}">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
-            </a>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
-            </button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="billing-pill" role="tab" aria-selected="false" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
-                <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
-            </button>
-        </li>
-    </ul>
-    <div id="conflict-table-1"></div>
+        {#each Object.keys(layouts) as key}
+            <li>
+            <button class="btn btn-sm m-1 btn-secondary btn-outline-primary opacity-75 fw-bold {_layoutData.columns === layouts[key].columns ? "active" : ""}" on:click={() => {
+                _layoutData.columns = layouts[key].columns;
+                _layoutData.sort = layouts[key].sort;
+                setQueryParam('sort', _layoutData.sort);
+                loadCurrentLayout();
+            }}>{key}</button>
+            </li>
+        {/each}
+        </ul>
+    <div class="p-1" id="conflict-table-1"></div>
 </div>
 <Footer />
