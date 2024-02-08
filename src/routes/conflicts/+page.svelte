@@ -44,7 +44,7 @@ onMount(() => {
         for (let i = 0; i <= 1; i++) {
             let button = document.createElement("button");
             button.setAttribute("type", "button");
-            button.setAttribute("class", "ms-1 btn btn-info btn-sm fw-bold opacity-75");
+            button.setAttribute("class", "ms-1 btn btn-info btn-sm fw-bold");
             button.setAttribute("onclick", `showNames('${data}',${i})`);
             button.textContent = 'C'+(i+1);
             result += button.outerHTML;

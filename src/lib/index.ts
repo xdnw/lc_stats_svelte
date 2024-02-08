@@ -1,4 +1,3 @@
-// import pson
 export function addFormatters() {
     (window as any).formatNumber = (data: number, type: any, row: any, meta: any): string => {
         return data.toLocaleString("en-US");

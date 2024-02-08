@@ -8,12 +8,6 @@
 let conflictName = "";
 let conflictId = -1;
 
-enum Layout {
-    COALITION,
-    ALLIANCE,
-    NATION
-}
-
 function trimHeader(header: string) {
     if (header.includes("_value")) {
         header = "~$" + header.replace("_value", "");
@@ -237,6 +231,13 @@ let layouts:{[key: string]: {sort: string, columns: string[]}} = {
         columns: ["name", "off:attacks", ...breakdownCols]
     }
 }
+
+enum Layout {
+    COALITION,
+    ALLIANCE,
+    NATION,
+}
+
 let _layoutData = {
     layout: Layout.COALITION,
     columns: layouts.Summary.columns,
@@ -381,12 +382,12 @@ function handleClick(event: MouseEvent): void {
                 </a>
             </li>
             <li class="nav-item me-1">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
                     <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
                 </button>
             </li>
             <li class="nav-item me-1">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
+                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
                     <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
                 </button>
             </li>
