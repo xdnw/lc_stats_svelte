@@ -471,22 +471,30 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
     <div class="p-1" id="conflict-table-1"></div>
     {#if _layoutData.layout == Layout.COALITION}
     <hr>
-    <div class="m-0" id="visualization"></div>
-    <hr>
     <div class="row m-0">
+        {#if _rawData?.cb}
         <div class="col-md-6 col-sm-12">
             <div class="col-md-12 ms-2 p-2 rounded border">
             <h3>Casus Belli</h3>
             <pre>
                 {_rawData?.cb}
             </pre>
+            </div>
+        </div>
+        {/if}
+        {#if _rawData?.status}
+        <div class="col-md-6 col-sm-12">
+            <div class="col-md-12 ms-2 p-2 rounded border">
             <h3>Status</h3>
             <pre>
                 {_rawData?.status}
             </pre>
             </div>
         </div>
+        {/if}
     </div>
+    <hr>
+    <div class="m-0" id="visualization"></div>
     {/if}
 </div>
 <Footer />
