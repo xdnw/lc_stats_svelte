@@ -482,15 +482,6 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
             <pre>
                 {_rawData?.status}
             </pre>
-
-            {#if _rawData?.posts}
-            {#each Object.keys(_rawData.posts) as announcement}
-                <p>
-                    {announcement}
-                </p>
-            {/each}
-            {/if}
-
             </div>
         </div>
     </div>
