@@ -26,6 +26,10 @@ function trimHeader(header: string) {
 
 function loadLayout(_rawData: {
     name: string,
+    wiki: string,
+    cb: string,
+    status: string,
+    posts: {[key: string]: [number, string, number]},
     coalitions: {
         name: string,
         alliance_ids: number[],
@@ -200,6 +204,9 @@ function loadLayout(_rawData: {
     }
     let container = document.getElementById("conflict-table-1");
     setupContainer(container as HTMLElement, data);
+    if (_rawData.posts) {
+        loadPosts(_rawData.posts);
+    }
 }
 
 let _rawData: any = null;
@@ -326,7 +333,6 @@ onMount(() => {
     (window as any).formatCol = (data: any, type: any, row: any, meta: any) => {
         let index = row.name;
         let button = document.createElement("button");
-        console.log("ROW " + JSON.stringify(row))
         button.setAttribute("type", "button");
         button.setAttribute("class", "ms-1 btn btn-info btn-sm fw-bold opacity-75");
         button.setAttribute("onclick", `showNames('${_rawData.coalitions[index].name}',${index})`);
@@ -352,9 +358,53 @@ function handleClick(event: MouseEvent): void {
     setQueryParam('layout', _layoutData.layout);
     loadCurrentLayout();
 }
+function loadPosts(posts: {[key: string]: [number, string, number]}) {
+    // DOM element where the Timeline will be attached
+    var container = document.getElementById('visualization');
+
+    // Create a DataSet (allows two way data-binding)
+    var items = new vis.DataSet();
+
+    // Loop through the posts and add them to the DataSet
+    for (let key in posts) {
+        let post = posts[key];
+        let id = post[0];
+        let url = "https://forum.politicsandwar.com/index.php?/topic/" + id + '-' + post[1];
+        let timestamp = post[2];
+
+        // Convert the timestamp to a Date object
+        let date = new Date(timestamp);
+
+        // Add the post to the DataSet
+        items.add({id: id, content: `<a href="${url}" target="_blank">${key}</a>`, start: date});
+    }
+
+    let start = _rawData.start;
+    let end = _rawData.end;
+    if (end === -1) end = Date.now();
+    var options = {
+        start: start,
+        end: end,
+        height: '75vh',
+        width: '100%',
+        // clickToUse: true,
+        zoomKey: 'ctrlKey',
+        orientation: 'top',
+        verticalScroll: true,
+        // zoomable: false,
+    };
+
+    // Create a Timeline
+    var timeline = new vis.Timeline(container, items, options);
+    timeline.addCustomTime(start, 't1');
+    timeline.addCustomTime(end, 't2');
+}
+
 </script>    
 <svelte:head>
 	<title>Conflict {conflictName}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css"/>
 </svelte:head>
 <Navbar />
 <Sidebar />
@@ -413,5 +463,37 @@ function handleClick(event: MouseEvent): void {
         {/each}
         </ul>
     <div class="p-1" id="conflict-table-1"></div>
+    {#if _layoutData.layout == Layout.COALITION}
+    <hr>
+    <div class="m-0" id="visualization"></div>
+    <hr>
+    <div class="row m-0">
+        <div class="col-md-6 col-sm-12">
+            <div class="col-md-12 ms-2 p-2 rounded border">
+            {#if _rawData?.wiki}
+                <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
+                <hr class="mt-1">
+            {/if}
+            <h3>Casus Belli</h3>
+            <pre>
+                {_rawData?.cb}
+            </pre>
+            <h3>Status</h3>
+            <pre>
+                {_rawData?.status}
+            </pre>
+
+            {#if _rawData?.posts}
+            {#each Object.keys(_rawData.posts) as announcement}
+                <p>
+                    {announcement}
+                </p>
+            {/each}
+            {/if}
+
+            </div>
+        </div>
+    </div>
+    {/if}
 </div>
 <Footer />

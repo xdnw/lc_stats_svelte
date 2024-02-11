@@ -61,7 +61,7 @@ onMount(() => {
                 allianceNameById[parseInt(alliance_ids[i])] = alliance_names[i];
             }
             let columns: string[] = result.headers as string[];
-            let visible: number[] = [1,2,3,4,5,6,7,8,9,16];
+            let visible: number[] = [1,2,3,4,5,6,7,8,9];
             let searchable: number[] = [1];
             let cell_format: {[key: string]: number[]} = {};
             let sort: [number, string] = [5, 'desc'];
@@ -82,8 +82,8 @@ onMount(() => {
             }
 
             cell_format["formatUrl"] = [1];
-            cell_format["formatNumber"] = [6, 7];
-            cell_format["formatMoney"] = [8,9,16];
+            cell_format["formatNumber"] = [6, 7, 16];
+            cell_format["formatMoney"] = [8,9];
             cell_format["formatDate"] = [4,5];
 
             let container = document.getElementById('conflictTable');
