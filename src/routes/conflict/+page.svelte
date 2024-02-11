@@ -409,7 +409,13 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
 <Navbar />
 <Sidebar />
 <div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
-    <h1><a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}</h1>
+    <h1>
+        <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
+        {#if _rawData?.wiki}
+            <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
+            <hr class="mt-1">
+        {/if}
+    </h1>
         <ul class="nav nav-tabs nav-fill m-0 p-0">
             <li class="nav-item me-1">
                 <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.COALITION ? "bg-light" : ""}" id="profile-pill" data-bs-layout={Layout.COALITION} on:click={handleClick}>
@@ -470,10 +476,6 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
     <div class="row m-0">
         <div class="col-md-6 col-sm-12">
             <div class="col-md-12 ms-2 p-2 rounded border">
-            {#if _rawData?.wiki}
-                <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
-                <hr class="mt-1">
-            {/if}
             <h3>Casus Belli</h3>
             <pre>
                 {_rawData?.cb}
