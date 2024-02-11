@@ -281,7 +281,7 @@ function setupConflictTables(conflictId: number) {
         setColNames(_rawData.coalitions[0].alliance_ids, _rawData.coalitions[0].alliance_names);
         setColNames(_rawData.coalitions[1].alliance_ids, _rawData.coalitions[1].alliance_names);
         loadCurrentLayout();
-        if (_rawData.posts) {
+        if (_rawData.posts && Object.keys(_rawData.posts).length) {
             loadPosts(_rawData.posts);
         }
     });
