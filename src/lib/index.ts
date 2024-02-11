@@ -283,13 +283,24 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
 	function format (d: any) {
         let rows = "";
         table.columns().every( function (index: any) {
+            let numFormat = [];
+            if (cell_format.formatNumber != null) {
+                numFormat.push(cell_format.formatNumber);
+            }
+            if (cell_format.formatMoney != null) {
+                numFormat.push(cell_format.formatMoney);
+            }
             let columnInfo = columnsInfo[index];
             let title = columnInfo["data"];
             if (title != null) {
                 if (!table.column(index).visible()) {
+                    let data = d[title];
+                    if (numFormat.includes(index)) {
+                        data = data.toLocaleString("en-US");
+                    }
                     rows += '<tr>'+
                         '<td>' + title + '</td>'+
-                        '<td>'+d[title].toLocaleString("en-US") +'</td>'+
+                        '<td>'+data+'</td>'+
                         '</tr>';
                 }
             }

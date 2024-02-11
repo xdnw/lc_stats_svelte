@@ -255,13 +255,18 @@ function getDataSets(turn: number, metrics: string[], normalizePerCity: boolean 
                 let city = coalition.cities[k];
                 let value = dataByCities[k];
                 if (normalizePerCity) {
-                    let nations = coalition.day_data[0][dayI][k];
-                    let factor = nations;
-                    if (perCity) {
-                        factor *= perCity;
-                    }
-                    if (factor) {
-                        value /= (factor * city);
+                    let dayData = coalition.day_data[0][dayI];
+                    if (dayData != null) {
+                        let nations = dayData[k];
+                        let factor = nations;
+                        if (perCity) {
+                            factor *= perCity;
+                        }
+                        if (factor) {
+                            value /= (factor * city);
+                        }
+                    } else {
+                        value = 0;
                     }
                 }
                 row[city - minCity] = value;
