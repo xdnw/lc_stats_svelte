@@ -204,9 +204,6 @@ function loadLayout(_rawData: {
     }
     let container = document.getElementById("conflict-table-1");
     setupContainer(container as HTMLElement, data);
-    if (_rawData.posts) {
-        loadPosts(_rawData.posts);
-    }
 }
 
 let _rawData: any = null;
@@ -284,6 +281,9 @@ function setupConflictTables(conflictId: number) {
         setColNames(_rawData.coalitions[0].alliance_ids, _rawData.coalitions[0].alliance_names);
         setColNames(_rawData.coalitions[1].alliance_ids, _rawData.coalitions[1].alliance_names);
         loadCurrentLayout();
+        if (_rawData.posts) {
+            loadPosts(_rawData.posts);
+        }
     });
 }
 
