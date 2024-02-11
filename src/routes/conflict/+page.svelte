@@ -493,8 +493,8 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
         </div>
         {/if}
     </div>
+    {/if}
     <hr>
     <div class="m-0" id="visualization"></div>
-    {/if}
 </div>
 <Footer />
