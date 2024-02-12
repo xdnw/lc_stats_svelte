@@ -200,6 +200,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
 
     let searchSet = new Set<number>(searchableColumns);
     table = (jqTable as any).DataTable( {
+        colReorder: true,
         data: dataObj,
         paging: true,
         deferRender: true,
