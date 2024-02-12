@@ -1,9 +1,24 @@
+/*
+Shared typescript for all pages
+*/
+
+/**
+ * Format a timestamp (milliseconds) to a YYYY-MM-DD string
+ * @param data epoch time millis
+ * @returns date string
+ */
 export function formatDate(data: number | null): string {
     if (data == null || data == -1) return "N/A";
     let date = new Date(data as number);
     return date.toISOString().split('T')[0];
 }
 
+/**
+ * Format a number to have commas
+ * For large tables this is much faster than js locale formatting
+ * @param num The
+ * @returns string with commas
+ */
 function commafy(num: number): string {
     var parts = (''+(num<0?-num:num)).split("."), s=parts[0], L, i=L= s.length, o='';
     while(i--){ o = (i===0?'':((L-i)%3?'':',')) 
@@ -11,6 +26,13 @@ function commafy(num: number): string {
     return (num<0?'-':'') + o + (parts[1] ? '.' + parts[1] : ''); 
 }
 
+/**
+ * Add the formatting functions to the window object
+ * - These are used by the setupTable function to format columns
+ * - formatNumber
+ * - formatMoney
+ * - formatDate
+ */
 export function addFormatters() {
     (window as any).formatNumber = (data: number, type: any, row: any, meta: any): string => {
         if (data == 0) return '0';
@@ -29,6 +51,12 @@ export function addFormatters() {
     }
 }
 
+/**
+ * Helper function for reading the AWS S3 bucket data (json)
+ * Convert a compressed data stream to a byte array
+ * @param readableStream the compressed data stream
+ * @returns 
+ */
 async function streamToUint8Array(readableStream: any): Promise<Uint8Array> {
     const reader = readableStream.getReader();
     const chunks = [];
@@ -42,7 +70,13 @@ async function streamToUint8Array(readableStream: any): Promise<Uint8Array> {
     return new Uint8Array(chunks.reduce((acc, val) => acc.concat(Array.from(val)), []));
 }
 
-export const decompress = async (url: string) => {
+/**
+ * Helper function for reading and decompressing gzip json from a url
+ * Used by the decompressBson function
+ * @param url The s3 bucket url
+ * @returns decompressed binary stream
+ */
+const decompress = async (url: string) => {
     const ds = new DecompressionStream('gzip');
     const response = await fetch(url);
     const blob_in = await response.blob();
@@ -51,6 +85,11 @@ export const decompress = async (url: string) => {
     return blob_out;
 };
   
+/**
+ * Read gzip json from a url and return a javascript object
+ * @param url The s3 bucket url
+ * @returns json object
+ */
 export const decompressBson = async (url: string) => {
     let result = await decompress(url);
     let stream: ReadableStream<Uint8Array> = result.stream();
@@ -60,6 +99,12 @@ export const decompressBson = async (url: string) => {
     return pson.decode(uint8Array);
 };
 
+/**
+ * Generate UUID v4
+ * Used for creating unique ids for html elements
+ * https://en.wikipedia.org/wiki/Universally_unique_identifier
+ * @returns uuid string
+ */
 export function uuidv4(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -67,6 +112,12 @@ export function uuidv4(): string {
     });
 }
 
+/**
+ * Convert a string to an html element
+ * Less verbose than using document.createElement
+ * @param html string (e.g. '<div>hello</div>')
+ * @returns an HTMLElement
+ */
 export function htmlToElement(html: string): HTMLElement {
     var template = document.createElement('template');
     html = html.trim();
@@ -74,16 +125,37 @@ export function htmlToElement(html: string): HTMLElement {
     return template.content.firstChild as HTMLElement;
 }
 
+/**
+ * Create a closeable modal with a title and body (html string)
+ * Modals are from bootstrap: <https://www.gethalfmoon.com/docs/modal/>
+ * This is used for the coalition buttons that display the alliances in a coalition
+ * @param title The title of the modal
+ * @param bodyStr The body html, must be escaped beforehand if it contains user input
+ */
 export function modalStrWithCloseButton(title: string, bodyStr: string) {
     let bodyElem = document.createElement("div");
     bodyElem.innerHTML = bodyStr;
     modalWithCloseButton(title, bodyElem);
 }
 
+/**
+ * Create closeable modal with a title and body (HTMLElement)
+ * Modals are from bootstrap: <https://www.gethalfmoon.com/docs/modal/>
+ * This is used for the coalition buttons that display the alliances in a coalition
+ * @param title The title of the modal
+ * @param body the body element
+ */
 export function modalWithCloseButton(title: string, body: HTMLElement) {
     modal(title, body, `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`);
 }
-  
+
+/**
+ * Create a modal with a footer
+ * Modals are from bootstrap: <https://www.gethalfmoon.com/docs/modal/>
+ * @param title the text in modal title bar
+ * @param body the element for modal body
+ * @param footer the element for modal footer (e.g. a close button)
+ */
 export function modal(title: string, body: HTMLElement, footer: string) {
       let myModal = document.getElementById("exampleModal");
   
@@ -112,9 +184,32 @@ export function modal(title: string, body: HTMLElement, footer: string) {
     myBody.appendChild(body);
     createdModal.getElementsByClassName("modal-footer")[0].innerHTML = footer;
     (window as any).bootstrap.Modal.getOrCreateInstance(createdModal).show();
-  }
+}
 
-export function addTable(container: HTMLElement, id: string) {
+/**
+ * Setup a container with a table and its data
+ * - Clear the container
+ * - Add a table to the container with a customize button and empty collapse div
+ * - call setupTable with the table element and the data
+ * @param container 
+ * @param data 
+ */
+export function setupContainer(container: HTMLElement, data: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
+    container.innerHTML = "";
+    addTable(container, uuidv4());
+    let table = container.getElementsByTagName("table")[0];
+    setupTable(container, table, data);
+}
+
+/**
+ * Add the default table layout to a container
+ * This includes a button for 'customize' and class=collapse for it (though no buttons are added into it yet)
+ * Currently the container is cleared and a new table is created when layouts are changed
+ * 
+ * @param container The element to add the table to
+ * @param id the id to give the table (i.e. the uuid v4 string)
+ */
+function addTable(container: HTMLElement, id: string) {
     container.appendChild(htmlToElement(`<button class="btn btn-sm m-1 mb-0 btn-secondary btn-outline-primary opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
     <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
     container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol"></div>`));
@@ -126,36 +221,50 @@ export function addTable(container: HTMLElement, id: string) {
     </table>`));
 }
 
-export function setupContainer(container: HTMLElement, data: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
-    container.innerHTML = "";
-    addTable(container, uuidv4());
-    let table = container.getElementsByTagName("table")[0];
-    setupTable(container, table, data);
-}
+/**
+ * Setup a table element, as well as its container
+ * - Adds the table toggles (customize) to the container's collapse
+ * @param containerElem 
+ * @param tableElem 
+ * @param dataSetRoot 
+ */
+function setupTable(containerElem: HTMLElement, 
+    tableElem: HTMLElement, 
+    dataSetRoot: {
+        columns: string[], // Name of the columns of the table (including all the custom ones not displayed)
+        data: any[][], // 2d array of the table data in the order [row index][column index] - may be combination of numbers or string
+        searchable: number[],  // the index of the columns that are searchable
+        visible: number[], // the index of the columns that are visible
+        cell_format: {[key: string]: number[];},  // a map of the cell format function name to a list of column indexes e.g. `cell_format.formatNumber = [2,3,4]`
+        row_format: ((row: HTMLElement, data /* row data */: {[key: string]: any}, index /* row index */: number) => void) | null, // A function to format the row (or null)
+        sort: [number, string] // the column index to sort by, and sort method (asc or desc)
+        }
+    ) {
 
-export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, dataSetRoot: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
     let jqTable = $(tableElem);
-    let visibleColumns = dataSetRoot["visible"];
-    let dataColumns = dataSetRoot["columns"];
-    
-    let dataList = dataSetRoot["data"];
-    let dataObj: {}[] = [];
-        dataList.forEach(function (row, index) {
-            let obj: {[key: string]: any} = {}; // Add index signature
-            for (let i = 0; i < dataColumns.length; i++) {
-                obj[dataColumns[i]] = row[i];
-            }
-            dataObj.push(obj);
-        });
-
-    let table: any = null;
     let jqContainer = $(containerElem);
-    let searchableColumns = dataSetRoot["searchable"];
-    let cell_format = dataSetRoot["cell_format"];
-    let row_format = dataSetRoot["row_format"];
-    let sort = dataSetRoot["sort"];
+
+    let visibleColumns = dataSetRoot.visible;
+    let dataColumns = dataSetRoot.columns;
+    let dataList = dataSetRoot.data;
+    let searchableColumns = dataSetRoot.searchable;
+    let searchSet = new Set<number>(searchableColumns); // faster
+    let cell_format = dataSetRoot.cell_format;
+    let row_format = dataSetRoot.row_format;
+    let sort = dataSetRoot.sort;
     if (sort == null) sort = [0, 'asc'];
 
+    // Convert the 2d array of cell data to an object list which maps the header name => cell data
+    let dataObj: {}[] = [];
+    dataList.forEach(function (row, index) {
+        let obj: {[key: string]: any} = {}; // Add index signature
+        for (let i = 0; i < dataColumns.length; i++) {
+            obj[dataColumns[i]] = row[i];
+        }
+        dataObj.push(obj);
+    });
+
+    // Convert the cell format function names to their respective js functions
     let cellFormatByCol: { [key: number]: (data: number, type: any, row: any, meta: any) => void } = {};
     if (cell_format != null) {
         for (let func in cell_format) {
@@ -170,6 +279,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
         }
     }
 
+    // Convert the column names and format to the column info object (used by DataTables.js)
     let columnsInfo: { data: string, className?: string, render?: any, visible?: boolean }[] = [];
     if (dataColumns.length > 0) {
         for (let i = 0; i < dataColumns.length; i++) {
@@ -184,6 +294,8 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             columnsInfo.push(columnInfo);
         }
     }
+
+    // Set column visibility and add the search input to the header
     for(let i = 0; i < columnsInfo.length; i++) {
         let columnInfo = columnsInfo[i];
         let title = columnInfo["data"];
@@ -215,18 +327,28 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             toggle = jqContainer.find(".table-toggles").append(toggle);
         }
     }
-
-    let searchSet = new Set<number>(searchableColumns);
-    table = (jqTable as any).DataTable( {
-        colReorder: true,
-        data: dataObj,
-        paging: true,
-        deferRender: true,
-        orderClasses: false,
+    
+    let table = (jqTable as any).DataTable( {
+        // the array of column info
         columns: columnsInfo,
-        order: [sort],
+        // Allow column reordering (colReorder extension)
+        colReorder: true,
+        // the array of row objects to display
+        data: dataObj,
+        // Pagination
+        paging: true,
+        // Pagination settings
         lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
+        // Render after initialization (faster)
+        deferRender: true,
+        // Disable ordering (faster)
+        orderClasses: false,
+        // Set default column sort
+        order: [sort],
+        // Set row formatting (i.e. coalition colors)
         createdRow: row_format,
+        // Setup searchable dropdown for columns with unique values
+        // Not used currently
         initComplete: function () {
             let that = this.api();
             that.columns().every( function (index: number) {
@@ -262,7 +384,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
         }
     });
         
-    // Apply the search
+    // Apply the search for input fields
     table.columns().every( function (index: number) {
         var column = table.column( index );
         let myInput = $( 'input', column.header() );
@@ -278,10 +400,12 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
          });
     });
 
+    // Prevent the search input from triggering the row details toggle
     $("button").click(function(e) {
         e.stopPropagation();
      });
 
+    // Handle clicking the show/hide column buttons
 	jqContainer.find('.toggle-vis').on('click', function (e) {
 		e.preventDefault();
 		// Get the column API object
@@ -298,7 +422,8 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
 		}
     });
 
-    /* Formatting function for row details - modify as you need */
+    // Formatting function for row details
+    // This displays the hidden columns as a table when a row is clicked
 	function format (d: any) {
         let rows = "";
         table.columns().every( function (index: any) {
@@ -328,7 +453,7 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
         return '<table class="table table-striped table-bordered compact" cellspacing="0" border="0">'+rows+'</table>';
     }
 
-    // Add event listener for opening and closing details
+    // Add event listener for opening and closing details (of the hidden columns table)
     jqTable.find('tbody').on('click', 'td.details-control', function () {
         let tr = $(this).closest('tr');
         let row = table.row( tr );
@@ -344,5 +469,6 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
             tr.addClass('shown');
         }
     });
+    // Show the table (faster to only display after setup)
     tableElem.classList.remove("d-none");
 }

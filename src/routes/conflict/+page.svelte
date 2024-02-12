@@ -1,13 +1,18 @@
 <script lang=ts>
-    import Navbar from '../../components/Navbar.svelte'
-    import Sidebar from '../../components/Sidebar.svelte'
-    import Footer from '../../components/Footer.svelte'
-    import { onMount } from 'svelte';
-    import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer } from '$lib';
+/**
+ * This page is for viewing a single conflict
+*/
+import Navbar from '../../components/Navbar.svelte'
+import Sidebar from '../../components/Sidebar.svelte'
+import Footer from '../../components/Footer.svelte'
+import { onMount } from 'svelte';
+import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer } from '$lib';
 
+// Set after page load
 let conflictName = "";
 let conflictId = -1;
 
+// Rename function so the table columns are more compact
 function trimHeader(header: string) {
     if (header.includes("_value")) {
         header = "~$" + header.replace("_value", "");
