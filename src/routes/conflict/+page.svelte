@@ -3,7 +3,7 @@
     import Sidebar from '../../components/Sidebar.svelte'
     import Footer from '../../components/Footer.svelte'
     import { onMount } from 'svelte';
-    import { addFormatters, decompressBson, modalWithCloseButton, setupContainer } from '$lib';
+    import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer } from '$lib';
 
 let conflictName = "";
 let conflictId = -1;
@@ -323,11 +323,11 @@ onMount(() => {
     (window as any).formatNation = (data: any, type: any, row: any, meta: any) => {
         let aaId = data[2] as number;
         let aaName = namesByAllianceId[aaId];
-        return `<a href="https://politicsandwar.com/nation/id=${data[1]}">${data[0]?data[0]:data[1]}</a> | <a href="https://politicsandwar.com/alliance/id=${data[2]}">${aaName}</a>`;
+        return '<a href="https://politicsandwar.com/alliance/id=' + data[2] + '">' + aaName + '</a> | <a href="https://politicsandwar.com/nation/id=' + data[1] + '">'  + (data[0]?data[0]:data[1]) + '</a>';
     }
 
     (window as any).formatAA = (data: any, type: any, row: any, meta: any) => {
-        return `<a href="https://politicsandwar.com/alliance/id=${data[1]}">${data[0]}</a>`;
+        return '<a href="https://politicsandwar.com/alliance/id=' + data[1] + '">' + data[0] + '</a>';
     }
 
     (window as any).formatCol = (data: any, type: any, row: any, meta: any) => {
@@ -495,6 +495,7 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
     </div>
     {/if}
     <hr>
+    <h4>{formatDate(_rawData?.start)} - {formatDate(_rawData?.end)}</h4>
     <div class="m-0" id="visualization"></div>
 </div>
 <Footer />

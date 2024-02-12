@@ -1,16 +1,31 @@
+export function formatDate(data: number | null): string {
+    if (data == null || data == -1) return "N/A";
+    let date = new Date(data as number);
+    return date.toISOString().split('T')[0];
+}
+
+function commafy(num: number): string {
+    var parts = (''+(num<0?-num:num)).split("."), s=parts[0], L, i=L= s.length, o='';
+    while(i--){ o = (i===0?'':((L-i)%3?'':',')) 
+                    +s.charAt(i) +o }
+    return (num<0?'-':'') + o + (parts[1] ? '.' + parts[1] : ''); 
+}
+
 export function addFormatters() {
     (window as any).formatNumber = (data: number, type: any, row: any, meta: any): string => {
-        return data.toLocaleString("en-US");
+        if (data == 0) return '0';
+        if (data < 1000 && data > -1000) return data.toString();
+        return commafy(data);
     }
 
     (window as any).formatMoney = (data: number, type: any, row: any, meta: any): string => {
-        return "$" + data.toLocaleString("en-US");
+        if (data == 0) return '$0';
+        if (data < 1000 && data > -1000) return '$' + data.toString();
+        return '$' + commafy(data);
     }
 
     (window as any).formatDate = (data: number, type: any, row: any, meta: any): string => {
-        if (data == -1) return "N/A";
-        let date = new Date(data);
-        return date.toISOString().split('T')[0];
+        return formatDate(data);
     }
 }
 
@@ -158,10 +173,13 @@ export function setupTable(containerElem: HTMLElement, tableElem: HTMLElement, d
     let columnsInfo: { data: string, className?: string, render?: any, visible?: boolean }[] = [];
     if (dataColumns.length > 0) {
         for (let i = 0; i < dataColumns.length; i++) {
-            let columnInfo: { data: string; className: string; render?: any } = {data: dataColumns[i], className: 'details-control'};
+            let columnInfo: { orderDataType?: string, data: string; className: string; render?: any } = {data: dataColumns[i], className: 'details-control'};
             let renderFunc = cellFormatByCol[i];
             if (renderFunc != null) {
                 columnInfo.render = renderFunc;
+                if (renderFunc == (window as any).formatNumber || renderFunc == (window as any).formatMoney) {
+                    columnInfo.orderDataType = 'numeric-comma';
+                }
             }
             columnsInfo.push(columnInfo);
         }

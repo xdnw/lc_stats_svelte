@@ -273,7 +273,7 @@ function getDataSets(turn: number, metrics: string[], normalizePerCity: boolean 
             }
 
             let dataSet = {
-                label: "C" + i + " " + metricName.toLowerCase() + "s",
+                label: "C" + (i + 1) + " " + metricName.toLowerCase() + "s",
                 data: row,
                 backgroundColor: `rgb(${i == 0 ? ratio * (j + 2) + 64 : ratio * (j)}, ${ratio * (j)}, ${i == 1 ? ratio * (j + 2) + 64 : ratio * (j)})`,
                 stack: '' + i,
