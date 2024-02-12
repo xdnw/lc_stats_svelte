@@ -1,6 +1,8 @@
 Frontend for https://wars.locutus.link written in svelte
 (built to static js/html with node.js / vite)
 
+`npm run dev`
+or
 `npm build dev`
 
 Svelte: <https://kit.svelte.dev/>
@@ -15,6 +17,7 @@ bytebuffer.js (forked and modified to support longs)
 PSON (forked and modified to support longs)
 
 Backend hosted on AWS
+- message me on discord to be whitelisted
 
 ## Pages
 (in `/src`)
