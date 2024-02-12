@@ -8,13 +8,13 @@ or
 Svelte: <https://kit.svelte.dev/>
 
 Libraries used:
-bootstrap (js/css/icons)
-halfmoon (modern: bootstrap theme)
-chart.js
-datatables + colreorder, numeric-comma
-jquery
-bytebuffer.js (forked and modified to support longs)
-PSON (forked and modified to support longs)
+- bootstrap (js/css/icons)
+- halfmoon (modern: bootstrap theme)
+- chart.js
+- datatables + colreorder, numeric-comma
+- jquery
+- bytebuffer.js (forked and modified to support longs)
+- PSON (forked and modified to support longs)
 
 Backend hosted on AWS
 - message me on discord to be whitelisted
