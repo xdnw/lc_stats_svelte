@@ -2,14 +2,15 @@
 import Navbar from '../components/Navbar.svelte'
 import Sidebar from '../components/Sidebar.svelte'
 import Footer from '../components/Footer.svelte'
-import { onMount } from 'svelte';
-  import { decompressBson } from '$lib';
-let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/test.gzip";
-onMount(() => {
-  decompressBson(url).then((result) => {
-    console.log("Result " + JSON.stringify(result));
-  });
-});
+// Unused code, testing
+// import { onMount } from 'svelte';
+// import { decompressBson } from '$lib';
+// let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/test.gzip";
+// onMount(() => {
+//   decompressBson(url).then((result) => {
+//     console.log("Result " + JSON.stringify(result));
+//   });
+// });
 </script>
 <svelte:head>
 	<title>Home</title>
@@ -17,6 +18,7 @@ onMount(() => {
 </svelte:head>
 <Navbar />
 <Sidebar />
+<!-- Ensure minimum page height so footer is at bottom -->
 <div class="container-fluid" style="min-height: calc(100vh - 203px);">
   <section>
     <header class="welcome-header">
@@ -35,6 +37,7 @@ onMount(() => {
 </div>
 <Footer />
 <style lang="postcss">
+/* The css for the animated logo */
 section {
 	display: flex;
 	flex-direction: column;
