@@ -3,7 +3,7 @@ Frontend for https://wars.locutus.link written in svelte
 
 `npm run dev`
 or
-`npm build dev`
+`npm run build`
 
 Svelte: <https://kit.svelte.dev/>
 
