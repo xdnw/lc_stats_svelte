@@ -17,6 +17,7 @@ PSON (forked and modified to support longs)
 Backend hosted on AWS
 
 ## Pages
+(in `/src`)
 - `page.svelte` (which has a locutus logo and a link to the conflicts page)
 - `conflicts/page.svelte` (which loads the `conflicts.gzip` and displays them)
 - `conflict/page.svelte` (loads `/conflicts/<id>.gzip` and displays a table for a specific conflict, as well as the timeline
