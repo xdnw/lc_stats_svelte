@@ -1,4 +1,7 @@
 <script lang=ts>
+/**
+ * This page is for viewing tiering charts for a conflict 
+*/
 import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
