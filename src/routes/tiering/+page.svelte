@@ -22,6 +22,9 @@ onMount(() => {
         setupChartData(conflictId);
     }
 
+    // Update chart function (called from the slider) 
+    // This gets the turn set, sets the label to the date, grabs the new dataset and sets the chart data
+    // No change if there's no data for that turn
     (window as any).updateChart = (slider: HTMLInputElement, turnStr: string) => {
         let turn = parseInt(turnStr);
         ((((slider.parentElement) as HTMLElement).querySelector("label")) as HTMLLabelElement).innerText = "Date: " + sliderValueToDate(turn);
