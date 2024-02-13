@@ -2,15 +2,73 @@
 import Navbar from '../components/Navbar.svelte'
 import Sidebar from '../components/Sidebar.svelte'
 import Footer from '../components/Footer.svelte'
-// Unused code, testing
-// import { onMount } from 'svelte';
-// import { decompressBson } from '$lib';
-// let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/test.gzip";
-// onMount(() => {
-//   decompressBson(url).then((result) => {
-//     console.log("Result " + JSON.stringify(result));
-//   });
-// });
+import { onMount } from 'svelte';
+
+// The matrix background animation
+onMount(() => {
+  let c: HTMLCanvasElement, ctx: CanvasRenderingContext2D, matrix: string[], font_size: number, columns: number, drops: number[];
+  c = document.getElementById("c") as HTMLCanvasElement;
+  ctx = c.getContext("2d") as CanvasRenderingContext2D;
+  //making the canvas full screen
+  c.height = window.innerHeight;
+  c.width = window.innerWidth;
+  //characters - taken from the unicode charset
+  let charset: string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789@#$%^&*()*&^%+-/~{[|`]}";
+  //converting the string into an array of single characters
+  matrix = charset.split("");
+
+  font_size = 12;
+  let fontStr: string = `${font_size}px monospace`;
+  columns = c.width/font_size; //number of columns for the rain
+  //an array of drops - one per column
+  drops = [];
+  //x below is the x coordinate
+  //1 = y co-ordinate of the drop(same for every drop initially)
+  for(let x = 0; x < columns; x++)
+      drops[x] = Math.floor(Math.random()*c.height); 
+
+  // Start the animation
+  let frameCount: number = 0;
+  //drawing the characters
+  function draw() {
+      frameCount++;
+      if (frameCount % 6 === 0) {
+          //Black BG for the canvas
+          //translucent BG to show trail
+          if (frameCount % 24 === 0) {
+              if (document.documentElement.getAttribute("data-bs-theme") === 'dark') {
+                  ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
+              } else {
+                  ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+              }
+              ctx.fillRect(0, 0, c.width, c.height);
+          }
+
+          ctx.fillStyle = "#FEB64B";//green text
+          ctx.font = fontStr;
+          //looping over drops
+          for(let i = 0; i < drops.length; i++) {
+              //a random character to print
+              const text: string = matrix[Math.floor(Math.random()*matrix.length)];
+              //x = i*font_size, y = value of drops[i]*font_size
+              ctx.fillText(text, i*font_size, drops[i]*font_size);
+
+              //sending the drop back to the top randomly after it has crossed the screen
+              //adding a randomness to the reset to make the drops scattered on the Y axis
+              if(drops[i]*font_size > c.height && Math.random() > 0.975)
+                  drops[i] = 0;
+
+              //incrementing Y coordinate
+              drops[i]++;
+          }
+      }
+      // Call the next frame
+      requestAnimationFrame(draw);
+  }
+  draw();
+  }
+);
+
 </script>
 <svelte:head>
 	<title>Home</title>
@@ -18,6 +76,7 @@ import Footer from '../components/Footer.svelte'
 </svelte:head>
 <Navbar />
 <Sidebar />
+<canvas id="c"></canvas>
 <!-- Ensure minimum page height so footer is at bottom -->
 <div class="container-fluid" style="min-height: calc(100vh - 203px);">
   <section>
@@ -37,6 +96,13 @@ import Footer from '../components/Footer.svelte'
 </div>
 <Footer />
 <style lang="postcss">
+/* background canvas style */
+canvas {
+  display: block;
+  position: absolute; /* Required for z-index to work */
+  z-index: -1; /* Any negative number to put it behind other elements */
+}
+
 /* The css for the animated logo */
 section {
 	display: flex;
