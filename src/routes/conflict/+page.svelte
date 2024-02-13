@@ -543,7 +543,7 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
         </li>
         {#each Object.keys(layouts) as key}
             <li>
-            <button class="btn btn-sm m-1 btn-secondary btn-outline-primary opacity-75 fw-bold {_layoutData.columns === layouts[key].columns ? "active" : ""}" on:click={() => {
+            <button class="btn btn-sm m-1 btn-secondary btn-outline-info opacity-75 fw-bold {_layoutData.columns === layouts[key].columns ? "active" : ""}" on:click={() => {
                 // Set the layout variable and recreate the table
                 _layoutData.columns = layouts[key].columns;
                 _layoutData.sort = layouts[key].sort;

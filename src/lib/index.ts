@@ -210,12 +210,12 @@ export function setupContainer(container: HTMLElement, data: {columns: string[],
  * @param id the id to give the table (i.e. the uuid v4 string)
  */
 function addTable(container: HTMLElement, id: string) {
-    container.appendChild(htmlToElement(`<button class="btn btn-sm m-1 mb-0 btn-secondary btn-outline-primary opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
+    container.appendChild(htmlToElement(`<button class="btn btn-sm m-1 mb-0 btn-secondary btn-outline-info opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
     <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
     container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol"></div>`));
     container.appendChild(document.createElement("hr"));
     container.appendChild(htmlToElement(`<table id="${id}" class="table compact table-bordered d-none" style="width:100%">
-        <thead class="table-danger"><tr></tr></thead>
+        <thead class="table-info"><tr></tr></thead>
         <tbody></tbody>
         <tfoot><tr></tr></tfoot>
     </table>`));
@@ -313,7 +313,8 @@ function setupTable(containerElem: HTMLElement,
                 th = title;
             }
             if (i != 0) {
-                tf = "<button class='toggle-vis btn btn-sm btn-outline-danger' data-column='" + i + "'>" + title + "</button>";
+                let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
+                tf = "<button class='toggle-vis btn btn-sm opacity-75 fw-bold m-1 " + color + "' data-column='" + i + "'>" + title + "</button>";
             } else {
                 tf = '';
             }
