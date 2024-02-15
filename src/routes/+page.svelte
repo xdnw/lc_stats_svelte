@@ -127,7 +127,7 @@ section {
 	stroke-width: 4;
 	stroke: rgb(59, 70, 73); /* Set the outline color */
 	fill: rgb(254, 182, 75); /* Set the fill color */
-	font-size: 75px;
+	font-size: 6vw;
 	/* text-shadow:1px 1px 0 hsl(36, 99%, 65%),2px 2px 0 hsl(36, 99%, 62%),3px 3px 0 hsl(36, 99%, 60%),4px 4px 0 hsl(36, 99%, 58%),5px 5px 0 hsl(36, 99%, 56%),6px 6px 0 hsl(36, 99%, 54%),7px 7px 0 hsl(36, 99%, 52%),8px 8px 0 hsl(36, 99%, 50%),0 0 5px rgba(255,255,255,.05),1px 1px 3px rgba(255,255,255,.2),2px 2px 5px rgba(255,255,255,.2),4px 4px 10px rgba(255,255,255,.2),8px 8px 10px rgba(255,255,255,.2),16px 16px 20px rgba(255,255,255,.3); */
 	text-shadow:1px 1px 0 hsl(36, 99%, 32.5%),2px 2px 0 hsl(36, 99%, 31%),3px 3px 0 hsl(36, 99%, 30%),4px 4px 0 hsl(36, 99%, 29%),5px 5px 0 hsl(36, 99%, 28%),6px 6px 0 hsl(36, 99%, 27%),7px 7px 0 hsl(36, 99%, 26%),8px 8px 0 hsl(36, 99%, 25%),0 0 5px rgba(255,255,255,.05),1px 1px 3px rgba(255,255,255,.2),2px 2px 5px rgba(255,255,255,.2),4px 4px 10px rgba(255,255,255,.2),8px 8px 10px rgba(255,255,255,.2),16px 16px 20px rgba(255,255,255,.3);
 }
