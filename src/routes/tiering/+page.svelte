@@ -398,9 +398,9 @@ function sliderValueToDate(value: number) {
             </button>
         </li>
         <li class="nav-item">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-share-fill"></i>&nbsp;TODO: War Web
-            </button>
+            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
+                <i class="bi bi-share-fill"></i>&nbsp;War Web
+            </a>
         </li>
     </ul>
     <div class="row" id="charts">

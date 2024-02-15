@@ -65,7 +65,7 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
                 if (name == 0) {
                     row.classList.add('bg-danger-subtle');
                 } else if (name == 1) {
-                    row.classList.add('bg-primary-subtle');
+                    row.classList.add('bg-info-subtle');
                 }
             }
             break;
@@ -75,7 +75,7 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
                 if (col1.has(id)) {
                     row.classList.add('bg-danger-subtle');
                 } else if (col2.has(id)) {
-                    row.classList.add('bg-primary-subtle');
+                    row.classList.add('bg-info-subtle');
                 }
             }
             break;
@@ -85,7 +85,7 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
                 if (col1.has(id)) {
                     row.classList.add('bg-danger-subtle');
                 } else if (col2.has(id)) {
-                    row.classList.add('bg-primary-subtle');
+                    row.classList.add('bg-info-subtle');
                 }
             }
             break;
@@ -482,7 +482,7 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
                 </button>
             </li>
             <li class="nav-item me-1">
-                <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold"  data-bs-layout={Layout.NATION} href="tiering/?id={conflictId}">
+                <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
                     <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
                 </a>
             </li>
@@ -497,9 +497,9 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" data-bs-layout={Layout.NATION} on:click={() => alert("Coming soon")}>
-                    <i class="bi bi-share-fill"></i>&nbsp;TODO: War Web
-                </button>
+                <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
+                    <i class="bi bi-share-fill"></i>&nbsp;War Web
+                </a>
             </li>
         </ul>
         <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-1">
