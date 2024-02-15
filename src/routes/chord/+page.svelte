@@ -349,6 +349,13 @@ function setupChord(matrix: number[][], labels: string[], colors: string[]) {
         {/each}
     {/if}
     </div>
+    <pre>
+        TODO: Buttons for alliances
+        generated headers (i.e. net damage/counts)
+        Fix data ranges for some types
+        Add tooltip with values
+        Save/load from query string
+    </pre>
     <div class="container bg-light border">
         <div id="my_dataviz"></div>
         <!-- <div id="chartId"></div> -->
