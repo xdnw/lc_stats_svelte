@@ -465,59 +465,59 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
             <hr class="mt-1">
         {/if}
     </h1>
-        <ul class="nav nav-tabs nav-fill m-0 p-0">
-            <li class="nav-item me-1">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.COALITION ? "bg-light" : ""}" id="profile-pill" data-bs-layout={Layout.COALITION} on:click={handleClick}>
-                    <i class="bi bi-cookie"></i>&nbsp;Coalition
-                </button>
-            </li>
-            <li class="nav-item me-1">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.ALLIANCE ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.ALLIANCE} on:click={handleClick}>
-                    <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
-                </button>
-            </li>
-            <li class="nav-item me-1">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.NATION ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.NATION} on:click={handleClick}>
-                    <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
-                </button>
-            </li>
-            <li class="nav-item me-1">
-                <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
-                    <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
-                </a>
-            </li>
-            <li class="nav-item me-1">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                    <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
-                </button>
-            </li>
-            <li class="nav-item me-1">
-                <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                    <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
-                </button>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
-                    <i class="bi bi-share-fill"></i>&nbsp;War Web
-                </a>
-            </li>
-        </ul>
-        <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-1">
-        <li class="p-1">
-            Layout Picker:
+    <ul class="nav nav-tabs nav-fill m-0 p-0">
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.COALITION ? "bg-light" : ""}" id="profile-pill" data-bs-layout={Layout.COALITION} on:click={handleClick}>
+                <i class="bi bi-cookie"></i>&nbsp;Coalition
+            </button>
         </li>
-        {#each Object.keys(layouts) as key}
-            <li>
-            <button class="btn btn-sm m-1 btn-secondary btn-outline-info opacity-75 fw-bold {_layoutData.columns === layouts[key].columns ? "active" : ""}" on:click={() => {
-                // Set the layout variable and recreate the table
-                _layoutData.columns = layouts[key].columns;
-                _layoutData.sort = layouts[key].sort;
-                setQueryParam('sort', _layoutData.sort);
-                loadCurrentLayout();
-            }}>{key}</button>
-            </li>
-        {/each}
-        </ul>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.ALLIANCE ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.ALLIANCE} on:click={handleClick}>
+                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.NATION ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.NATION} on:click={handleClick}>
+                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
+                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
+            </a>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
+            </button>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
+                <i class="bi bi-share-fill"></i>&nbsp;War Web
+            </a>
+        </li>
+    </ul>
+    <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-1">
+    <li class="p-1">
+        Layout Picker:
+    </li>
+    {#each Object.keys(layouts) as key}
+        <li>
+        <button class="btn btn-sm m-1 btn-secondary btn-outline-info opacity-75 fw-bold {_layoutData.columns === layouts[key].columns ? "active" : ""}" on:click={() => {
+            // Set the layout variable and recreate the table
+            _layoutData.columns = layouts[key].columns;
+            _layoutData.sort = layouts[key].sort;
+            setQueryParam('sort', _layoutData.sort);
+            loadCurrentLayout();
+        }}>{key}</button>
+        </li>
+    {/each}
+    </ul>
     <div class="p-1" id="conflict-table-1"></div>
     <!-- If coalition layout, then display the CB and Status -->
     {#if _layoutData.layout == Layout.COALITION}

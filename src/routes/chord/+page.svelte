@@ -1,8 +1,16 @@
 <script lang="ts">
   import { decompressBson, type Conflict } from "$lib";
   import { onMount } from "svelte";
+  import Navbar from "../../components/Navbar.svelte";
+  import Sidebar from "../../components/Sidebar.svelte";
 //   import * as d3 from "d3";
+
+let conflictName = "";
 let conflictId = -1;
+
+let _rawData: Conflict | null = null;
+let _allowedAllianceIds: number[] = [];
+let _currentHeaderName: string = "wars";
 
 onMount(() => {
     let queryParams = new URLSearchParams(window.location.search);
@@ -11,65 +19,77 @@ onMount(() => {
         conflictId = +id;
         setupWebFromId(conflictId);
     }
+});
     
+function handleButtonClick(headerName: string) {
+    _currentHeaderName = headerName;
+    setupWebWithCurrentLayout();
+}
 
 function setupWebFromId(conflictId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
     decompressBson(url).then((data) => {
-        setupWeb(data);
+        _rawData = data;
+        conflictName = data.name;
+        _allowedAllianceIds = [...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids];
+        setupWebWithCurrentLayout();
     });
 }
 
-function setupWeb(data: Conflict) {
-    console.log("WAR WEB");
-        let allianceNameById: {[key: number]: string} = {}
-        data.coalitions.forEach(coalition => {
-            coalition.alliance_ids.forEach((id: number, index: number) => {
-                allianceNameById[id] = coalition.alliance_names[index];
-            });
+function setupWebWithCurrentLayout() {
+    setupWebWithLayout(_rawData as Conflict, _allowedAllianceIds, _currentHeaderName);
+}
+
+function setupWebWithLayout(data: Conflict, allowedAllianceIds: number[], header: string) {
+    let allowedAllianceIdsSet: Set<number> = new Set(allowedAllianceIds);
+    // let allowedAllianceIds: number[] = [...data.coalitions[0].alliance_ids, 11657];
+
+    let allianceNameById: {[key: number]: string} = {}
+    data.coalitions.forEach(coalition => {
+        coalition.alliance_ids.forEach((id: number, index: number) => {
+            allianceNameById[id] = coalition.alliance_names[index];
         });
-        console.log(data.war_web.headers);
-        let currentHeaderName = "loss_value";
-        
-        let allowedAllianceIds: number[] = [...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids];
-        let allowedAllianceIdsSet: Set<number> = new Set(allowedAllianceIds);
-        let allPalette: number[] = [];
-        let labels: string[] = [];
-        let allAllianceIds = [...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids];
-        for (let aaId of data.coalitions[0].alliance_ids) {
-            allPalette.push(Palette.REDS);
-            if (allowedAllianceIdsSet.has(aaId)) {
-                labels.push(allianceNameById[aaId]);
-            }
+    });
+    console.log(data.war_web.headers);
+    
+    
+    
+    let allPalette: number[] = [];
+    let labels: string[] = [];
+    let allAllianceIds = [...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids];
+    for (let aaId of data.coalitions[0].alliance_ids) {
+        allPalette.push(Palette.REDS);
+        if (allowedAllianceIdsSet.has(aaId)) {
+            labels.push(allianceNameById[aaId]);
         }
-        for (let aaId of data.coalitions[1].alliance_ids) {
-            allPalette.push(Palette.BLUES);
-            if (allowedAllianceIdsSet.has(aaId)) {
-                labels.push(allianceNameById[aaId]);
-            }
+    }
+    for (let aaId of data.coalitions[1].alliance_ids) {
+        allPalette.push(Palette.BLUES);
+        if (allowedAllianceIdsSet.has(aaId)) {
+            labels.push(allianceNameById[aaId]);
         }
-        let allColors = generateColorsFromPalettes(allPalette);
-        let colors = allColors.filter((value, index) => allowedAllianceIdsSet.has(allAllianceIds[index]));
+    }
+    let allColors = generateColorsFromPalettes(allPalette);
+    let colors = allColors.filter((value, index) => allowedAllianceIdsSet.has(allAllianceIds[index]));
 
-        let headers = data.war_web.headers;
-        let hI = headers.indexOf(currentHeaderName);
+    let headers = data.war_web.headers;
+    let hI = headers.indexOf(header);
 
-        let allMatrix = data.war_web.data[hI];
-        let matrix: number[][] = [];
+    let allMatrix = data.war_web.data[hI];
+    let matrix: number[][] = [];
 
-        for (let i = 0; i < allAllianceIds.length; i++) {
-            let aaId = allAllianceIds[i];
-            let row = allMatrix[i];
-            if (allowedAllianceIdsSet.has(aaId)) {
-                let rowSlice = row.filter((value, index) => allowedAllianceIdsSet.has(allAllianceIds[index]));
-                matrix.push(rowSlice);
-            }
+    for (let i = 0; i < allAllianceIds.length; i++) {
+        let aaId = allAllianceIds[i];
+        let row = allMatrix[i];
+        if (allowedAllianceIdsSet.has(aaId)) {
+            let rowSlice = row.filter((value, index) => allowedAllianceIdsSet.has(allAllianceIds[index]));
+            matrix.push(rowSlice);
         }
-        matrix = matrix.map(row => row.length === 0 ? new Array(labels.length).fill(0) : row);
-        matrix = matrix.map(row => row.map(value => (isNaN(value) || value < 0) ? 0 : value));
-        setupChord(matrix, labels, colors);
+    }
+    matrix = matrix.map(row => row.length === 0 ? new Array(labels.length).fill(0) : row);
+    matrix = matrix.map(row => row.map(value => (isNaN(value) || value < 0) ? 0 : value));
+    setupChord(matrix, labels, colors);
 
-    console.log(data.war_web);
 }
 
 enum Palette {
@@ -149,6 +169,9 @@ function setupChord(matrix: number[][], labels: string[], colors: string[]) {
     console.log("LABELS " + labels + " | " + labels.length);
     console.log("Color: " + JSON.stringify(colors) + " | " + colors.length);
     console.log(matrix);
+
+    // clear my_dataviz
+    d3.select("#my_dataviz").selectAll("*").remove();
 
         // create the svg area
     const svg = d3.select("#my_dataviz")
@@ -267,17 +290,69 @@ function setupChord(matrix: number[][], labels: string[], colors: string[]) {
 
 //     return [reds, greens, blues, neutrals]
 // }
-
-})
     
 </script>
 <svelte:head>
     <script src="https://d3js.org/d3.v6.js"></script>
-
 </svelte:head>
-<div class="container bg-light border">
-    <div id="my_dataviz"></div>
-    <!-- <div id="chartId"></div> -->
+<Navbar />
+<Sidebar />
+<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
+    <h1>
+        <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
+        {#if _rawData?.wiki}
+            <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
+            <hr class="mt-1">
+        {/if}
+    </h1>
+    <ul class="nav nav-tabs nav-fill m-0 p-0">
+        <li class="nav-item me-1">
+            <a href="conflict?id={conflictId}&layout=coalition" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
+                <i class="bi bi-cookie"></i>&nbsp;Coalition
+            </a>
+        </li>
+        <li class="nav-item me-1">
+            <a href="conflict?id={conflictId}&layout=alliance" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
+                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
+            </a>
+        </li>
+        <li class="nav-item me-1">
+            <a href="conflict?id={conflictId}&layout=nation" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
+                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
+            </a>
+        </li>
+        <li class="nav-item me-1">
+            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
+                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
+            </a>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold bg-light">
+                <i class="bi bi-share-fill"></i>&nbsp;War Web
+            </button>
+        </li>
+    </ul>
+    <div class="bg-light p-1 mb-1 border-bottom">
+    {#if _rawData}
+        {#each _rawData.war_web.headers as header (header)}
+        <button class="btn btn-sm m-1 mb-0 btn-secondary btn-outline-info opacity-75 fw-bold" class:active={_currentHeaderName === header} on:click={() => handleButtonClick(header)}>{header}</button>
+        {/each}
+    {/if}
+    </div>
+    <div class="container bg-light border">
+        <div id="my_dataviz"></div>
+        <!-- <div id="chartId"></div> -->
+    </div>
 </div>
 <style>
 .svg-container {
