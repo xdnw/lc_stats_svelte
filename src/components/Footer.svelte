@@ -22,7 +22,7 @@
                 <ul class="list-unstyled">
                     <li class="mb-2"><a href="https://github.com/xdnw/locutus/issues"><i class="bi bi-github"></i>&nbsp;Issue Tracker</a></li>
                     <li class="mb-2"><a href="https://discord.gg/cUuskPDrB7"><i class="bi bi-discord"></i>&nbsp;Discord Server</a></li>
-                    <li class="mb-2"><a href="discord://discord.com/users/${config.admin_id}"><i class="bi bi-person-circle"></i>&nbsp;Discord User</a></li>
+                    <li class="mb-2"><a href="discord://discord.com/users/{config.admin_id}"><i class="bi bi-person-circle"></i>&nbsp;Discord User</a></li>
                     <li class="mb-2"><a href="https://politicsandwar.com/nation/id={config.admin_nation}"><i class="bi bi-joystick"></i>&nbsp;In-Game</a></li>
                     <li class="mb-2"><a href="mailto:jessepaleg@gmail.com"><i class="bi bi-at"></i>&nbsp;Email</a></li>
                 </ul>
