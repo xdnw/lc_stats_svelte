@@ -11,8 +11,8 @@
                 <h5 class="fw-medium ms-4">{config.application}</h5>
                 <hr>
                 <ul class="list-unstyled">
-                    <li class="mb-2"><a href="https://github.com/xdnw/locutus/"><i class="bi bi-git"></i>&nbsp;Source Code</a></li>
-                    <li class="mb-2"><a href="https://github.com/xdnw/locutus/wiki"><i class="bi bi-wikipedia"></i>&nbsp;Wiki</a></li>
+                    <li class="mb-2"><a href="{config.repository_url}"><i class="bi bi-git"></i>&nbsp;Source Code</a></li>
+                    <li class="mb-2"><a href="{config.wiki_url}"><i class="bi bi-wikipedia"></i>&nbsp;Wiki</a></li>
                     <li class="mb-2"><a href="https://locutus.link:8443/job/locutus/"><i class="bi bi-box"></i>&nbsp;Jenkins</a></li>
                 </ul>
             </div>
@@ -20,11 +20,11 @@
                 <h5 class="fw-medium m-0">Get in Touch</h5>
                 <hr>
                 <ul class="list-unstyled">
-                    <li class="mb-2"><a href="https://github.com/xdnw/locutus/issues"><i class="bi bi-github"></i>&nbsp;Issue Tracker</a></li>
-                    <li class="mb-2"><a href="https://discord.gg/cUuskPDrB7"><i class="bi bi-discord"></i>&nbsp;Discord Server</a></li>
+                    <li class="mb-2"><a href="https://discord.gg/{config.discord_invite}"><i class="bi bi-discord"></i>&nbsp;Discord Server</a></li>
                     <li class="mb-2"><a href="discord://discord.com/users/{config.admin_id}"><i class="bi bi-person-circle"></i>&nbsp;Discord User</a></li>
                     <li class="mb-2"><a href="https://politicsandwar.com/nation/id={config.admin_nation}"><i class="bi bi-joystick"></i>&nbsp;In-Game</a></li>
-                    <li class="mb-2"><a href="mailto:jessepaleg@gmail.com"><i class="bi bi-at"></i>&nbsp;Email</a></li>
+                    <li class="mb-2"><a href="mailto:{config.email}"><i class="bi bi-at"></i>&nbsp;Email</a></li>
+                    <li class="mb-2"><a href="{config.repository_url}/issues"><i class="bi bi-github"></i>&nbsp;Report Issue</a></li>
                 </ul>
             </div>
             <div class="col-4">

@@ -2,6 +2,49 @@
 Shared typescript for all pages
 */
 
+export interface Conflict {
+    // name of conflict
+    name: string,
+    // wiki url stub (or null)
+    wiki: string,
+    // start date of conflict
+    start: number,
+    // end date of conflict (or -1 if ongoing)
+    end: number,
+    // casus belli (or null)
+    cb: string,
+    // conflict status (or null)
+    status: string,
+    // post name -> [post id, post url text, timestamp]
+    posts: {[key: string]: [number, string, number]},
+    coalitions: {
+        name: string, // Name of the coalition
+        alliance_ids: number[], // Alliance ids in the coalition
+        alliance_names: string[], // Alliance names in the coalition (same order as ids)
+        nation_ids: number[], // The nation id of each nation
+        nation_aa: number[], // The alliance id of each nation (same order as nation_ids)
+        nation_names: string[], // The nation name of each nation (same order as nation_ids)
+            // Two 2d Arrays of count data (i.e. # wars, # attacks)
+            // First array is self-counts, 2nd is enemy counts
+            // The indexes are coalition index + alliance index + nation index (flat)
+        // i.e. self counts for a nation at nation_ids[i] -> counts[0][j] - where j = i + alliance_ids.length + coalition_ids.length
+        counts: [number[], number[]],
+        // Two 2d Arrays of damage data (i.e. infra damage, money lost, units killed etc.)
+        // First array is self-damage, 2nd is enemy damage
+        // The indexes are coalition index + alliance index + nation index (flat)
+        // i.e. self damage for a nation at nation_ids[i] -> damage[0][j] - where j = i + alliance_ids.length + coalition_ids.length
+        damage: [number[], number[]] 
+    }[], // The array of coalitions (typically 2)
+    counts_header: string[], // The column names for the counts data
+    damage_header: string[], // The column names for the damage data
+    war_web: {
+        headers: string[],
+        // 3d array of the war web data [header index][alliance id index][alliance id index]
+        // Get the alliance ids by combining the coalition alliance ids
+        data: [][][] 
+    }
+}
+
 /**
  * Format a timestamp (milliseconds) to a YYYY-MM-DD string
  * @param data epoch time millis
