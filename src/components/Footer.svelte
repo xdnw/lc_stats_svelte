@@ -7,7 +7,7 @@
     <div class="container-md">
         <div class="row g-4">
             <div class="col-4">
-                <img src="https://cdn.discordapp.com/avatars/672237266940198960/0d78b819d401a8f983ab16242de195da.webp" style="position:absolute;" alt="Logo" width="18" height="18">
+                <img src="%sveltekit.assets%/favicon-large.webp" style="position:absolute;" alt="Logo" width="18" height="18">
                 <h5 class="fw-medium ms-4">{config.application}</h5>
                 <hr>
                 <ul class="list-unstyled">
