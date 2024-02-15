@@ -3,6 +3,7 @@ import Navbar from '../components/Navbar.svelte'
 import Sidebar from '../components/Sidebar.svelte'
 import Footer from '../components/Footer.svelte'
 import { onMount } from 'svelte';
+  import { config } from './+layout';
 
 // The matrix background animation
 onMount(() => {
@@ -74,16 +75,16 @@ onMount(() => {
 	<title>Home</title>
 	<link href="https://fonts.googleapis.com/css2?family=Turret+Road:wght@800&display=swap" rel="stylesheet">
 </svelte:head>
+<canvas id="c"></canvas>
 <Navbar />
 <Sidebar />
-<canvas id="c"></canvas>
 <!-- Ensure minimum page height so footer is at bottom -->
 <div class="container-fluid" style="min-height: calc(100vh - 203px);">
   <section>
     <header class="welcome-header">
       <svg class="welcome" style="overflow: visible;">
         <text x="50%" y="50%" dy=".35em" text-anchor="middle">
-        Locutus
+        {config.application}
         </text>
       </svg>
     </header>
@@ -98,7 +99,11 @@ onMount(() => {
 <style lang="postcss">
 /* background canvas style */
 canvas {
-  display: block;
+  width:  100%;
+  height: 100%;
+  margin: 0;
+  top: 0;
+  left: 0;
   position: absolute; /* Required for z-index to work */
   z-index: -1; /* Any negative number to put it behind other elements */
 }

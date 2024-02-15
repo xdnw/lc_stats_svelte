@@ -1,15 +1,210 @@
-<script>
+<script lang="ts">
   import { onMount } from "svelte";
 
 
 onMount(() => {
-    /*** Define parameters and tools ***/
-var width = 760,
-    height = 820,
-    outerRadius = Math.min(width, height) / 2 - 120,//100,
-    innerRadius = outerRadius - 10;
+let xxl = ["240,248,255",
+"250,235,215",
+"0,255,255",
+"127,255,212",
+"240,255,255",
+"245,245,220",
+"255,228,196",
+"0,0,0",
+"255,235,205",
+"0,0,255",
+"138,43,226",
+"165,42,42",
+"222,184,135",
+"95,158,160",
+"127,255,0",
+"210,105,30",
+"255,127,80",
+"100,149,237",
+"255,248,220",
+"220,20,60",
+"0,255,255",
+"0,0,139",
+"0,139,139",
+"184,134,11",
+"169,169,169",
+"0,100,0",
+"189,183,107",
+"139,0,139",
+"85,107,47",
+"255,140,0",
+"153,50,204",
+"139,0,0",
+"233,150,122",
+"143,188,143",
+"72,61,139",
+"47,79,79",
+"0,206,209",
+"148,0,211",
+"255,20,147",
+"0,191,255",
+"105,105,105",
+"30,144,255",
+"178,34,34",
+"255,250,240",
+"34,139,34",
+"255,0,255",
+"220,220,220",
+"248,248,255",
+"255,215,0",
+"218,165,32",
+"128,128,128",
+"0,128,0",
+"173,255,47",
+"240,255,240",
+"255,105,180",
+"205,92,92",
+"75,0,130",
+"255,255,240",
+"240,230,140",
+"230,230,250",
+"255,240,245",
+"124,252,0",
+"255,250,205",
+"173,216,230",
+"240,128,128",
+"224,255,255",
+"250,250,210",
+"144,238,144",
+"211,211,211",
+"255,182,193",
+"255,160,122",
+"32,178,170",
+"135,206,250",
+"119,136,153",
+"176,196,222",
+"255,255,224",
+"0,255,0",
+"50,205,50",
+"250,240,230",
+"255,0,255",
+"128,0,0",
+"102,205,170",
+"0,0,205",
+"186,85,211",
+"147,112,219",
+"60,179,113",
+"123,104,238",
+"0,250,154",
+"72,209,204",
+"199,21,133",
+"25,25,112",
+"245,255,250",
+"255,228,225",
+"255,228,181",
+"255,222,173",
+"0,0,128",
+"253,245,230",
+"128,128,0",
+"107,142,35",
+"255,165,0",
+"255,69,0",
+"218,112,214",
+"238,232,170",
+"152,251,152",
+"175,238,238",
+"219,112,147",
+"255,239,213",
+"255,218,185",
+"205,133,63",
+"255,192,203",
+"221,160,221",
+"176,224,230",
+"128,0,128",
+"255,0,0",
+"188,143,143",
+"65,105,225",
+"139,69,19",
+"250,128,114",
+"244,164,96",
+"46,139,87",
+"255,245,238",
+"160,82,45",
+"192,192,192",
+"135,206,235",
+"106,90,205",
+"112,128,144",
+"255,250,250",
+"0,255,127",
+"70,130,180",
+"210,180,140",
+"0,128,128",
+"216,191,216",
+"255,99,71",
+"64,224,208",
+"238,130,238",
+"245,222,179",
+"255,255,255",
+"245,245,245",
+"255,255,0",
+"154,205,50"];
 
-var dataset = [
+function sortColors(colors: string[]): [string[], string[], string[], string[]] {
+    let reds: string[] = [], greens: string[] = [], blues: string[] = [], neutrals: string[] = [];
+
+    for (let color of colors) {
+        let [r, g, b] = color.split(',').map(Number);
+
+        if (r >= g && r > b) {
+            reds.push(color);
+        } else if (g > r && g > b) {
+            greens.push(color);
+        } else if (b > r && b >= g) {
+            blues.push(color);
+        } else {
+            neutrals.push(color);
+        }
+    }
+
+    return [reds, greens, blues, neutrals]
+}
+function convertToRGB(colors: string[]): string[] {
+    return colors.map(color => {
+        let [r, g, b] = color.split(',');
+        return `rgb(${r}, ${g}, ${b})`;
+    });
+}
+let _reds = ['250,235,215', '245,245,220', '255,228,196', '255,235,205', '165,42,42', '222,184,135', '210,105,30', '255,127,80', '255,248,220', '220,20,60', '184,134,11', '189,183,107', '255,140,0', '139,0,0', '233,150,122', '255,20,147', '178,34,34', '255,250,240', '255,215,0', '218,165,32', '255,105,180', '205,92,92', '255,255,240', '240,230,140', '255,240,245', '255,250,205', '240,128,128', '250,250,210', '255,182,193', '255,160,122', '255,255,224', '250,240,230', '128,0,0', '199,21,133', '255,228,225', '255,228,181', '255,222,173', '253,245,230', '128,128,0', '255,165,0', '255,69,0', '218,112,214', '238,232,170', '219,112,147', '255,239,213', '255,218,185', '205,133,63', '255,192,203', '255,0,0', '188,143,143', '139,69,19', '250,128,114', '244,164,96', '255,245,238', '160,82,45', '255,250,250', '210,180,140', '255,99,71', '245,222,179', '255,255,0'];
+let _greens = ['127,255,212', '127,255,0', '0,100,0', '85,107,47', '143,188,143', '34,139,34', '0,128,0', '173,255,47', '240,255,240', '124,252,0', '144,238,144', '32,178,170', '0,255,0', '50,205,50', '102,205,170', '60,179,113', '0,250,154', '72,209,204', '245,255,250', '107,142,35', '152,251,152', '46,139,87', '0,255,127', '64,224,208', '154,205,50'];
+let _blues = ['240,248,255', '0,255,255', '240,255,255', '0,0,255', '138,43,226', '95,158,160', '100,149,237', '0,255,255', '0,0,139', '0,139,139', '153,50,204', '72,61,139', '47,79,79', '0,206,209', '148,0,211', '0,191,255', '30,144,255', '248,248,255', '75,0,130', '230,230,250', '173,216,230', '224,255,255', '135,206,250', '119,136,153', '176,196,222', '0,0,205', '186,85,211', '147,112,219', '123,104,238', '25,25,112', '0,0,128', '175,238,238', '176,224,230', '65,105,225', '135,206,235', '106,90,205', '112,128,144', '70,130,180', '0,128,128'];
+let _neutrals = ['0,0,0', '169,169,169', '139,0,139', '105,105,105', '255,0,255', '220,220,220', '128,128,128', '211,211,211', '255,0,255', '221,160,221', '128,0,128', '192,192,192', '216,191,216', '238,130,238', '255,255,255', '245,245,245'];
+
+let [reds, greens, blues, neutrals] = sortColors(xxl);
+// print each
+console.log(reds);
+console.log(greens);
+console.log(blues);
+console.log(neutrals);
+function darkenColor(color: string, percentage: number): string {
+    let rgbValues = color.match(/\d+/g);
+    if (!rgbValues) {
+        throw new Error('Invalid color format');
+    }
+
+    let [r, g, b] = rgbValues.map(Number);
+
+    r = Math.floor(r * (1 - percentage / 100));
+    g = Math.floor(g * (1 - percentage / 100));
+    b = Math.floor(b * (1 - percentage / 100));
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+function generateColors(n: number) {
+    let colors = [];
+    let colorScale = d3.scaleSequential().domain([0, n]).interpolator(d3.interpolateRgbBasisClosed(convertToRGB([..._reds, ..._blues])));
+    for (let i = 0; i < n; i++) {
+        colors.push(colorScale(i));
+    }
+    return colors;
+}
+// interpolateViridis
+var matrix = [
   [3043905,1376846,77883,54676,1437528,3228,114863,477,10042,3406,1070,426,6227,108308,65243,27417,29445,5778,542207,846492,5386],
   [256977,15208910,628066,41646,453516,121805,417559,119457,226843,15999,134961,1025,8472,30179,18190,76181,133528,6568,135890,396902,5682],
   [332794,4765429,172067,10321,487659,8097,720294,1507,75954,19072,992,18,843,12246,44651,133544,48151,2535,91966,265602,147],
@@ -32,423 +227,158 @@ var dataset = [
   [1729045,1084850,8788,105699,3751744,1584,148057,1244,1343,750,5154,197,496,165068,17746,5723,33255,4088,1627476,726009,52198],
   [30525,42654,3,11773,36719,0,116,0,19,0,0,0,0,92,32,769,36,163,16999,17725,30798]
 ];
-var regions = [
-    {name: "N. America Developed", color: "rgba(255, 0, 255, 0.5)"},
-    {name: "European U. (27)", color: "rgba(0, 0, 255, 0.5)"},
-    {name: "Western Europe", color: "rgba(100, 149, 237, 0.5)"},
-    {name: "Oceania Developed", color: "rgba(244, 164, 96, 0.5)"},
-    {name: "Other Developed", color: "rgba(142, 142, 56, 0.5)"},
-    {name: "Eastern Europe", color: "rgba(198, 226, 255, 0.5)"},
-    {name: "Econ. in Transition", color: "rgba(216, 191, 216, 0.5)"},
-    {name: "N.W. Africa", color: "rgba(151, 255, 255, 0.5)"},
-    {name: "Western Africa", color: "rgba(0, 238, 238, 0.5)"},
-    {name: "Central Africa", color: "rgba(3, 168, 158, 0.5)"},
-    {name: "Eastern Africa", color: "rgba(102, 205, 170, 0.5)"},
-    {name: "Southern Africa", color: "rgba(0, 255, 127, 0.5)"},
-    {name: "N. America Developing", color: "rgba(128, 0, 128, 0.5)"},
-    {name: "Central America", color: "rgba(191, 62, 255, 0.5)"},
-    {name: "Caribbean", color: "rgba(145, 44, 238, 0.5)"},
-    {name: "South America", color: "rgba(238, 130, 238, 0.5)"},
-    {name: "Near East", color: "rgba(255, 255, 0, 0.5)"},
-    {name: "Southern Asia", color: "rgba(255, 114, 86, 0.5)"},
-    {name: "E. and S.E. Asia", color: "rgba(255, 127, 36, 0.5)"},
-    {name: "China", color: "rgba(255, 48, 48, 0.5)"},
-    {name: "Oceania Developing", color: "rgba(255, 69, 0, 0.5)"}
+// let colors: string[] = generateColors(matrix.length, "rgba(200, 0, 0, 0.5)", "rgba(255, 155, 0, 0.5)");
+let colors: string[] = generateColors(21);
+var labels = [
+    "N. America Developed",
+    "European U. (27)",
+    "Western Europe",
+    "Oceania Developed",
+    "Other Developed",
+    "Eastern Europe",
+    "Econ. in Transition",
+    "N.W. Africa",
+    "Western Africa",
+    "Central Africa",
+    "Eastern Africa",
+    "Southern Africa",
+    "N. America Developing",
+    "Central America",
+    "Caribbean",
+    "South America",
+    "Near East",
+    "Southern Asia",
+    "E. and S.E. Asia",
+    "China",
+    "Oceania Developing"
 ];
-//string url for the initial data set
-//would usually be a file path url, here it is the id
-//selector for the <pre> element storing the data
-
-//create number formatting functions
-var formatPercent = d3.format("%");
-var numberWithCommas = d3.format("0,f");
-
-//create the arc path data generator for the groups
-var arc = d3.svg.arc()
-    .innerRadius(innerRadius)
-    .outerRadius(outerRadius);
-
-//create the chord path data generator for the chords
-var path = d3.svg.chord()
-    .radius(innerRadius - 1);// subtracted 4 to separate the ribbon
-
-//define the default chord layout parameters
-//within a function that returns a new layout object;
-//that way, you can create multiple chord layouts
-//that are the same except for the data.
-function getDefaultLayout() {
-    return d3.layout.chord()
-    .padding(0.03)
-    .sortSubgroups(d3.descending)
-    .sortChords(d3.ascending);
-}  
-var last_layout; //store layout between updates
 
 
-/*** Initialize the visualization ***/
-var g = d3.select("#chart_placeholder").append("svg")
-        .attr("width", width)
-        .attr("height", height)
-    .append("g")
-        .attr("id", "circle")
-        .attr("transform", 
-              "translate(" + width / 2 + "," + height / 2 + ")");
-//the entire graphic will be drawn within this <g> element,
-//so all coordinates will be relative to the center of the circle
+// create the svg area
+const svg = d3.select("#my_dataviz")
+  .append("svg")
+    .classed("svg-content-responsive", true)
+    .attr("preserveAspectRatio", "xMinYMin meet")
+    .attr("viewBox", "0 0 600 600")
+  .append("g")
+    .attr("transform", "translate(300,300)")
+    .classed("rect", true)
+   .attr("width", 440)
+   .attr("height", 440);
 
-/* Create OR update a chord layout from a data matrix */
-function updateChords( matrix ) {
-    /* Compute chord layout. */
-    let layout = getDefaultLayout(); //create a new layout object
-    layout.matrix(matrix);
- 
-    /* Create/update "group" elements */
-    var groupG = g.selectAll("g.group")
-        .data(layout.groups(), function (d) {
-            return d.index; 
-            //use a key function in case the 
-            //groups are sorted differently 
-        });
-    
-    groupG.exit()
-        .transition()
-            .duration(1500)
-            .attr("opacity", 0)
-            .remove(); //remove after transitions are complete
-    
-    var newGroups = groupG.enter().append("g")
-        .attr("class", "group");
-    //the enter selection is stored in a variable so we can
-    //enter the <path>, <text>, and <title> elements as well
+// give this matrix to d3.chord(): it will calculates all the info we need to draw arc and ribbon
+const res = d3.chordDirected()
+    .padAngle(0.01)     // padding between entities (black arc)
+    .sortSubgroups(d3.ascending)
+      .sortChords(d3.descending)
+    (matrix)
 
-    
-    //Create the title tooltip for the new groups
-    newGroups.append("title");
-    
-    //Update the (tooltip) title text based on the data
-    groupG.select("title")
-        .text(function(d, i) {
-            return numberWithCommas(d.value) 
-                + " x (10\u00B3) in USD exports from " 
-                + regions[i].name;
-        });
+// add the groups on the inner part of the circle
+svg
+  .datum(res)
+  .append("g")
+  .classed("rect", true)
+   .attr("width", 440)
+   .attr("height", 440)
+  .selectAll("g")
+  .data(d => d.groups)
+  .join("g")
+  .append("path")
+  .style("fill", (d,i) => colors[i])
+    .style("stroke", "#222")
+    .style("stroke-width", "0.25px")
+    .attr("d", d3.arc()
+      .innerRadius(210)
+      .outerRadius(220)
+    )
 
-    //create the arc paths and set the constant attributes
-    //(those based on the group index, not on the value)
-    newGroups.append("path")
-        .attr("id", function (d) {
-            return "group" + d.index;
-            //using d.index and not i to maintain consistency
-            //even if groups are sorted
-        })
-        .style("fill", function (d) {
-            return regions[d.index].color;
-        });
-    
-    //update the paths to match the layout
-    groupG.select("path") 
-        .transition()
-            .duration(200)
-            //.attr("opacity", 0.5) //optional, just to observe the transition////////////
-        .attrTween("d", arcTween( last_layout ))
-           // .transition().duration(100).attr("opacity", 1) //reset opacity//////////////
-        ;
-    
-    //create the group labels
-    newGroups.append("svg:text")
-        .attr("xlink:href", function (d) {
-            return "#group" + d.index;
-        })
-        .attr("dy", ".35em")
-        .attr("color", "#fff")
-        .text(function (d) {
-            return regions[d.index].name; 
-        });
+// Add the links between groups
+let paths = svg
+  .datum(res)
+  .append("g")
+  .selectAll("path")
+  .data(d => d)
+  .join("path")
+    .attr("d", d3.ribbonArrow()
+      .radius(208)
+    )
+    .attr("fill-opacity", 0.75)
+    .attr("stroke-opacity", 0.5)
+    // .style("mix-blend-mode", "multiply")
+    .style("fill", d => colors[d.source.index])
+    .style("stroke",d => darkenColor(colors[d.source.index], 25))
+    .style("stroke-width", "0.5px");
 
-    //position group labels to match layout
-    groupG.select("text")
-        .transition()
-            .duration(200)
-            .attr("transform", function(d) {
-                d.angle = (d.startAngle + d.endAngle) / 2;
-                //store the midpoint angle in the data object
-                
-                return "rotate(" + (d.angle * 180 / Math.PI - 90) + ")" +
-                    " translate(" + (innerRadius + 26) + ")" + 
-                    (d.angle > Math.PI ? " rotate(180)" : " rotate(0)"); 
-                //include the rotate zero so that transforms can be interpolated
-            })
-            .attr("text-anchor", function (d) {
-                return d.angle > Math.PI ? "end" : "begin";
-            });
-    
-    
-    /* Create/update the chord paths */
-    var chordPaths = g.selectAll("path.chord")
-        .data(layout.chords(), chordKey );
-            //specify a key function to match chords
-            //between updates
-        
-    
-    //create the new chord paths
-    var newChords = chordPaths.enter()
-        .append("path")
-        .attr("class", "chord");
-    
-    // Add title tooltip for each new chord.
-    newChords.append("title");
-    
-    // Update all chord title texts
-    chordPaths.select("title")
-        .text(function(d) {
-            if (regions[d.target.index].name !== regions[d.source.index].name) {
-                return [numberWithCommas(d.source.value),
-                        " exports from ",
-                        regions[d.source.index].name,
-                        " to ",
-                        regions[d.target.index].name,
-                        "\n",
-                        numberWithCommas(d.target.value),
-                        " exports from ",
-                        regions[d.target.index].name,
-                        " to ",
-                        regions[d.source.index].name
-                        ].join(""); 
-                    //joining an array of many strings is faster than
-                    //repeated calls to the '+' operator, 
-                    //and makes for neater code!
-            } 
-            else { //source and target are the same
-                return numberWithCommas(d.source.value) 
-                    + " exports ended in " 
-                    + regions[d.source.index].name;
-            }
-        });
+let groups = svg
+  .datum(res)
+  .append("g")
+  .selectAll("g")
+  .data(d => d.groups)
+  .join("g");
 
-    //handle exiting paths:
-    chordPaths.exit()
-    .transition()
-        .duration(200)
-        .attr("opacity", 0)
-        .remove();
+groups.append("path")
+  .style("fill", (d,i) => colors[i])
+  .style("stroke", "#222")
+  .style("stroke-width", "0.25px")
+  .attr("d", d3.arc()
+    .innerRadius(210)
+    .outerRadius(220)
+  );
 
-    //update the path shape
-    chordPaths
-    .transition()
-        .duration(200)
-        //.attr("opacity", 0.5) //optional, just to observe the transition
-        .style("fill", function (d) {
-            return regions[d.source.index].color;
-        })
-        .attrTween("d", chordTween(last_layout))
-        .transition().duration(100).attr("opacity", 1) //reset opacity
-    ;
+  groups.append("text")
+  .each(d => { d.angle = (d.startAngle + d.endAngle) / 2; })
+  .attr("dy", ".35em")
+  .attr("transform", d => `
+    rotate(${(d.angle * 180 / Math.PI - 90)})
+    translate(${220 + 1})
+    ${d.angle > Math.PI ? "rotate(180)" : ""}
+  `)
+  .attr("text-anchor", d => d.angle > Math.PI ? "end" : null)
+  .style("font-size", "9px")  // Adjust the font size here
+  .text((d, i) => labels[i]);
 
-    //add the mouseover/fade out behaviour to the groups
-    //this is reset on every update, so it will use the latest
-    //chordPaths selection
-    groupG.on("mouseover", function(d) {
-        highlightChords(d);
-    });
 
-    chordPaths.on("mouseover", function(d) {
-        highlightChords(d.source);
-    });
+// Add mouseover and mouseout events to the groups
+groups.on("mouseover", function(event, d) {
+    // Get the index of the current group
+    let currentIndex = d.index;
 
-    function highlightChords(d) {
-        chordPaths.classed("fade", function (p) {
-            //returns true if *neither* the source or target of the chord
-            //matches the group that has been moused-over
-            return ((p.source.index != d.index) && (p.target.index != d.index));
-        });
-    }
-    //the "unfade" is handled with CSS :hover class on g#circle
-    //you could also do it using a mouseout event:
-    g.on("mouseout", function() {
-        if (this == g.node() )
-            //only respond to mouseout of the entire circle
-            //not mouseout events for sub-components
-            chordPaths.classed("fade", false);
-    });
-    
-    last_layout = layout; //save for next update
-}
-
-function arcTween(oldLayout) {
-    //this function will be called once per update cycle
-    
-    //Create a key:value version of the old layout's groups array
-    //so we can easily find the matching group 
-    //even if the group index values don't match the array index
-    //(because of sorting)
-    var oldGroups = {};
-    if (oldLayout) {
-        oldLayout.groups().forEach( function(groupData) {
-            oldGroups[ groupData.index ] = groupData;
-        });
-    }
-    
-    return function (d, i) {
-        var tween;
-        var old = oldGroups[d.index];
-        if (old) { //there's a matching old group
-            tween = d3.interpolate(old, d);
-        }
-        else {
-            //create a zero-width arc object
-            var emptyArc = {startAngle:d.startAngle,
-                            endAngle:d.startAngle};
-            tween = d3.interpolate(emptyArc, d);
-        }
-        
-        return function (t) {
-            return arc( tween(t) );
-        };
-    };
-}
-
-function chordKey(data) {
-    return (data.source.index < data.target.index) ?
-        data.source.index  + "-" + data.target.index:
-        data.target.index  + "-" + data.source.index;
-    
-    //create a key that will represent the relationship
-    //between these two groups *regardless*
-    //of which group is called 'source' and which 'target'
-}
-function chordTween(oldLayout) {
-    //this function will be called once per update cycle
-    
-    //Create a key:value version of the old layout's chords array
-    //so we can easily find the matching chord 
-    //(which may not have a matching index)
-    
-    var oldChords = {};
-    
-    if (oldLayout) {
-        oldLayout.chords().forEach( function(chordData) {
-            oldChords[ chordKey(chordData) ] = chordData;
-        });
-    }
-    
-    return function (d, i) {
-        //this function will be called for each active chord
-        
-        var tween;
-        var old = oldChords[ chordKey(d) ];
-        if (old) {
-            //old is not undefined, i.e.
-            //there is a matching old chord value
-            
-            //check whether source and target have been switched:
-            if (d.source.index != old.source.index ){
-                //swap source and target to match the new data
-                old = {
-                    source: old.target,
-                    target: old.source
-                };
-            }
-            
-            tween = d3.interpolate(old, d);
-        }
-        else {
-            //create a zero-width chord object
-///////////////////////////////////////////////////////////in the copy ////////////////            
-            if (oldLayout) {
-                var oldGroups = oldLayout.groups().filter(function(group) {
-                        return ( (group.index == d.source.index) ||
-                                 (group.index == d.target.index) )
-                    });
-                old = {source:oldGroups[0],
-                           target:oldGroups[1] || oldGroups[0] };
-                    //the OR in target is in case source and target are equal
-                    //in the data, in which case only one group will pass the
-                    //filter function
-                
-                if (d.source.index != old.source.index ){
-                    //swap source and target to match the new data
-                    old = {
-                        source: old.target,
-                        target: old.source
-                    };
-                }
-            }
-            else old = d;
- /////////////////////////////////////////////////////////////////               
-            var emptyChord = {
-                source: { startAngle: old.source.startAngle,
-                         endAngle: old.source.startAngle},
-                target: { startAngle: old.target.startAngle,
-                         endAngle: old.target.startAngle}
-            };
-            tween = d3.interpolate( emptyChord, d );
-        }
-
-        return function (t) {
-            //this function calculates the intermediary shapes
-            return path(tween(t));
-        };
-    };
-}
-
-updateChords(dataset); 
-
+    // Add the 'd-none' class to the paths not for the current group
+    paths.classed("d-none", p => p.source.index !== currentIndex && p.target.index !== currentIndex);
+})
+.on("mouseout", function(event, d) {
+    // Remove the 'd-none' class from all paths
+    paths.classed("d-none", false);
+});
 
 })
     
 </script>
 <svelte:head>
-    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
-    <script src="https://d3js.org/d3.v3.js"></script>
+    <script src="https://d3js.org/d3.v6.js"></script>
 </svelte:head>
-<div id="chart_placeholder"></div>
+<div class="container bg-light border">
+    <div id="my_dataviz"></div>
+    <!-- <div id="chartId"></div> -->
+</div>
 <style>
-circle {
-    fill: red!important;
-    pointer-events: all;
+.svg-container {
+  display: inline-block;
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%; /* aspect ratio */
+  vertical-align: top;
+  overflow: hidden;
 }
-body {
-    background: white;
-    width:1150px;
+.svg-content-responsive {
+  display: inline-block;
+  position: absolute;
+  top: 10px;
+  left: 0;
 }
-#chart_placeholder {
-    width: 750px;
-    height: 830px;
-}
-path.chord {
-    stroke: #000;
-    stroke-width: .10px;
-    transition: opacity 0.3s;
-}
- #circle:hover path.fade {
-    opacity: 0;
-}
-
-/*text is regions name only on chord diagram and scroll text*/
-text {
-    fill: black;
-    font-family: Arial Narrow,Arial,sans-serif;
-    text-align: center;
-    font-size: 14px;
-}
-svg {
-    font-size: 10px;
-    color: green;
-    min-height: 100%;
-    min-width: 100%;
-}
-
-.yearbuttons{/*area*/
-    float: left;
-    margin-right: 50px;
-    width: 400px;
-}
-.current{
-    background-color: white;
-    color: black;
-    font-size : 16px;
-    font-family: Arial Narrow,Arial,sans-serif;
-    border-color: black;
-    border-radius: 2em;
+svg .rect {
+  fill: gold;
+  stroke: steelblue;
+  stroke-width: 5px;
 }
 </style>
