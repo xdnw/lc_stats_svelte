@@ -445,12 +445,6 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         </div>
     {/if}
     </div>
-    <pre>
-        TODO: 
-        generated headers (i.e. net damage/counts)
-        Add tooltip with values
-        Save/load from query string
-    </pre>
     <div class="container bg-light border">
         <div id="my_dataviz"></div>
         <div class="mt-1" id="myTooltip" style="min-height:15em"></div>
