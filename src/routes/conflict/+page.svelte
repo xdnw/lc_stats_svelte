@@ -385,13 +385,6 @@ onMount(() => {
     }
 });
 
-// Set the query param
-// Called during a layout button click (handleClick)
-function setQueryParam(param: string, value: any) {
-    let url = new URL(window.location.href);
-    url.searchParams.set(param, value);
-    window.history.pushState({}, '', url.toString());
-}
 // Handle the layout button clicks
 function handleClick(event: MouseEvent): void {
     _layoutData.layout = parseInt((event.target as HTMLButtonElement).getAttribute("data-bs-layout") as string);
@@ -483,22 +476,27 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
         </li>
         <li class="nav-item me-1">
             <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
+                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
             </a>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Bubble/Time
+            </button>
         </li>
         <li class="nav-item me-1">
             <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
                 <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
             </button>
         </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
-            </button>
-        </li>
         <li class="nav-item">
             <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
-                <i class="bi bi-share-fill"></i>&nbsp;War Web
+                <i class="bi bi-share-fill"></i>&nbsp;Web
             </a>
         </li>
     </ul>

@@ -384,7 +384,17 @@ function sliderValueToDate(value: number) {
         </li>
         <li class="nav-item me-1">
             <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold bg-light">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
+                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Bubble/Time
             </button>
         </li>
         <li class="nav-item me-1">
@@ -392,14 +402,9 @@ function sliderValueToDate(value: number) {
                 <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
             </button>
         </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
-            </button>
-        </li>
         <li class="nav-item">
             <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
-                <i class="bi bi-share-fill"></i>&nbsp;War Web
+                <i class="bi bi-share-fill"></i>&nbsp;Web
             </a>
         </li>
     </ul>

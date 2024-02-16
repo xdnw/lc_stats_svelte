@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { decompressBson, type Conflict, rafDelay } from "$lib";
+  import { decompressBson, type Conflict, rafDelay, setQueryParam } from "$lib";
   import { onMount } from "svelte";
   import Navbar from "../../components/Navbar.svelte";
   import Sidebar from "../../components/Sidebar.svelte";
   import Footer from "../../components/Footer.svelte";
-//   import * as d3 from "d3";
+  import * as d3 from 'd3';
 
 let conflictName = "";
 let conflictId = -1;
@@ -18,25 +18,47 @@ onMount(() => {
     const id = queryParams.get('id');
     if (id && !isNaN(+id) && Number.isInteger(+id)) {
         conflictId = +id;
-        setupWebFromId(conflictId);
+        setupWebFromId(conflictId, queryParams);
     }
 });
+
+function setupWebFromId(conflictId: number, queryParams: URLSearchParams) {
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
+    decompressBson(url).then((data) => {
+        _rawData = data;
+        conflictName = data.name;
+        _allowedAllianceIds = new Set([...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids]);
+        
+        let header = queryParams.get('header');
+        if (header && _rawData?.war_web.headers.includes(header)) {
+            _currentHeaderName = header;
+        }
+        let idStr = queryParams.get('id[]');
+        if (idStr) {
+            let ids = idStr.split(".").map(id => +id);
+            _allowedAllianceIds = new Set(ids);
+            if (!_rawData?.coalitions[0].alliance_ids.some(id => _allowedAllianceIds.has(id)) || !_rawData?.coalitions[1].alliance_ids.some(id => _allowedAllianceIds.has(id))) {
+                _allowedAllianceIds = new Set([...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids]);
+            }
+        }
+        setupWebWithCurrentLayout();
+    });
+}
     
 function setLayoutHeader(headerName: string) {
     _currentHeaderName = headerName;
+    setQueryParam('header', headerName);
     setupWebWithCurrentLayout();
 }
 
 function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
     let coalition = _rawData?.coalitions[coalitionIndex];
     let hasAll = coalition?.alliance_ids.every(id => _allowedAllianceIds.has(id));
-    // number of alliances in this coalition in _allowedAllianceIds
     let countCoalition = coalition?.alliance_ids.filter(id => _allowedAllianceIds.has(id)).length;
     let hasAA = _allowedAllianceIds.has(allianceId);
     let otherCoalitionId = coalitionIndex === 0 ? 1 : 0;
     let otherCoalition = _rawData?.coalitions[otherCoalitionId];
     let otherHasAll = otherCoalition?.alliance_ids.every(id => _allowedAllianceIds.has(id));
-    let otherCountCoalition = otherCoalition?.alliance_ids.filter(id => _allowedAllianceIds.has(id)).length;
 
     if (hasAA) {
         if (hasAll && otherHasAll) {
@@ -52,17 +74,8 @@ function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
     } else {
         _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
     }
+    setQueryParam('id[]', Array.from(_allowedAllianceIds).join('.'));
     setupWebWithCurrentLayout();
-}
-
-function setupWebFromId(conflictId: number) {
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
-    decompressBson(url).then((data) => {
-        _rawData = data;
-        conflictName = data.name;
-        _allowedAllianceIds = new Set([...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids]);
-        setupWebWithCurrentLayout();
-    });
 }
 
 function setupWebWithCurrentLayout() {
@@ -286,6 +299,39 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
 
     let lastShowIndex: number = -1;
     let showIndex: number = -1;
+    if (alliance_ids.filter((id, index) => coalition_ids[index] === 0).length === 1) {
+        displayTable(coalition_ids.indexOf(0));
+    } else if (alliance_ids.filter((id, index) => coalition_ids[index] === 1).length === 1) {
+        displayTable(coalition_ids.indexOf(1));
+    }
+
+    function displayTable(showIndex: number) {
+        let toolTip = document.getElementById("myTooltip") as HTMLElement;
+        // where value is not 0 (of either matrix[showIndex][index] or matrix[index][showIndex])
+        let allowedIndexes = new Set(matrix[showIndex].map((value, index) => value !== 0 || matrix[index][showIndex] !== 0 ? index : -1).filter(index => index !== -1));
+        let labels = alliance_names.filter((value, index) => allowedIndexes.has(index));
+        let colorSlice = colors.filter((value, index) => allowedIndexes.has(index));
+        let data = matrix[showIndex].filter((value, index) => allowedIndexes.has(index));
+        let secondArray = matrix.map((row, index) => allowedIndexes.has(index) ? row[showIndex] : null).filter(item => item !== null);
+        // sort them
+        let indices = Array.from({length: data.length}, (_, i) => i);
+        indices.sort((a, b) => data[b] - data[a]);
+        // Use the sorted indices to sort the labels, colorSlice, data, and secondArray arrays
+        labels = indices.map(i => labels[i]);
+        colorSlice = indices.map(i => colorSlice[i]);
+        data = indices.map(i => data[i]);
+        secondArray = indices.map(i => secondArray[i]);
+
+        let table = `<h5>${alliance_names[showIndex]} - ${_currentHeaderName}</h5><table class='table fw-bold w-auto'><tr><th></th><th>To</th><th>From</th><th>Net</th></tr>`;
+        labels.forEach((label, index) => {
+            table += `<tr><td style='background-color:${darkenColor(colorSlice[index],50)};color:white'>${label}</td>`;
+            table += `<td>${data[index]}</td>`;
+            table += `<td>${secondArray[index]}</td>`;
+            table += `<td>${data[index] - secondArray[index]}</td></tr>`;
+        });
+        table += "</table>";
+        toolTip.innerHTML = table;
+    }
 
     function runShowIndex() {
         if (showIndex !== lastShowIndex) {
@@ -296,6 +342,7 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
                     .classed("d-none", true);
                 paths.filter(p => p.source.index === showIndex || p.target.index === showIndex)
                     .classed("d-none", false);
+                displayTable(showIndex);
             }
             lastShowIndex = showIndex;
         }
@@ -303,9 +350,9 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
     groups.on("click", function(event: MouseEvent, d: any) {
         showIndex = -1;
         lastShowIndex = -1;
-        console.log(alliance_names[d.index]);
         setLayoutAlliance(coalition_ids[d.index], alliance_ids[d.index])
     });
+    // Attach the tooltip to the groups
     groups.on("mouseover", function(event: MouseEvent, d: any) {
         showIndex = d.index;
         requestAnimationFrame(rafDelay(100, runShowIndex));
@@ -320,10 +367,10 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         showIndex = -1;
         requestAnimationFrame(rafDelay(100, runShowIndex));
     });
-}
+    }
 </script>
 <svelte:head>
-    <script src="https://d3js.org/d3.v6.js"></script>
+    <!-- <script src="https://d3js.org/d3.v6.js"></script> -->
 </svelte:head>
 <Navbar />
 <Sidebar />
@@ -353,22 +400,27 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         </li>
         <li class="nav-item me-1">
             <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tiering
+                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
             </a>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
+            </button>
+        </li>
+        <li class="nav-item me-1">
+            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Bubble/Time
+            </button>
         </li>
         <li class="nav-item me-1">
             <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
                 <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
             </button>
         </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-graph-up"></i>&nbsp;TODO: Graphs
-            </button>
-        </li>
         <li class="nav-item">
             <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold bg-light">
-                <i class="bi bi-share-fill"></i>&nbsp;War Web
+                <i class="bi bi-share-fill"></i>&nbsp;Web
             </button>
         </li>
     </ul>
@@ -395,14 +447,13 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
     </div>
     <pre>
         TODO: 
-        Click SVG alliance triggers show/hide
         generated headers (i.e. net damage/counts)
         Add tooltip with values
         Save/load from query string
     </pre>
     <div class="container bg-light border">
         <div id="my_dataviz"></div>
-        <!-- <div id="chartId"></div> -->
+        <div class="mt-1" id="myTooltip" style="min-height:15em"></div>
     </div>
     <br>
     <Footer />

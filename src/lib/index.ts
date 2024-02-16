@@ -264,6 +264,14 @@ function addTable(container: HTMLElement, id: string) {
     </table>`));
 }
 
+// Set the query param
+// Called during a layout button click (handleClick)
+export function setQueryParam(param: string, value: any) {
+    let url = new URL(window.location.href);
+    url.searchParams.set(param, value);
+    window.history.pushState({}, '', url.toString());
+}
+
 /**
  * Setup a table element, as well as its container
  * - Adds the table toggles (customize) to the container's collapse
