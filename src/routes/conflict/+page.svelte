@@ -6,7 +6,7 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict } from '$lib';
+import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam } from '$lib';
 
 // Set after page load
 let conflictName = "";
