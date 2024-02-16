@@ -502,13 +502,13 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
             </a>
         </li>
     </ul>
-    <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-1">
-    <li class="p-1">
+    <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-1 p-1">
+    <li>
         Layout Picker:
     </li>
     {#each Object.keys(layouts) as key}
         <li>
-        <button class="btn btn-sm m-1 btn-secondary btn-outline-info opacity-75 fw-bold {_layoutData.columns === layouts[key].columns ? "active" : ""}" on:click={() => {
+        <button class="btn btn-sm ms-1 btn-secondary btn-outline-info opacity-75 fw-bold {_layoutData.columns === layouts[key].columns ? "active" : ""}" on:click={() => {
             // Set the layout variable and recreate the table
             _layoutData.columns = layouts[key].columns;
             _layoutData.sort = layouts[key].sort;

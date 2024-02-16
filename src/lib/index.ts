@@ -253,7 +253,7 @@ export function setupContainer(container: HTMLElement, data: {columns: string[],
  * @param id the id to give the table (i.e. the uuid v4 string)
  */
 function addTable(container: HTMLElement, id: string) {
-    container.appendChild(htmlToElement(`<button class="btn btn-sm m-1 mb-0 btn-secondary btn-outline-info opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
+    container.appendChild(htmlToElement(`<button class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-info opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
     <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
     container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol"></div>`));
     container.appendChild(document.createElement("hr"));
@@ -357,7 +357,7 @@ function setupTable(containerElem: HTMLElement,
             }
             if (i != 0) {
                 let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
-                tf = "<button class='toggle-vis btn btn-sm opacity-75 fw-bold m-1 " + color + "' data-column='" + i + "'>" + title + "</button>";
+                tf = "<button class='toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 " + color + "' data-column='" + i + "'>" + title + "</button>";
             } else {
                 tf = '';
             }
@@ -516,3 +516,37 @@ function setupTable(containerElem: HTMLElement,
     // Show the table (faster to only display after setup)
     tableElem.classList.remove("d-none");
 }
+
+export function rafDelay(delay: number, func: () => void): (timestamp: number) => void {
+    let start: number | undefined;
+    return function raf(timestamp: number): void {
+        if (!start) start = timestamp;
+        const elapsed = timestamp - start;
+        if (elapsed < delay) {
+            requestAnimationFrame(raf);
+        } else {
+            func();
+        }
+    }
+}
+
+
+// function sortColors(colors: string[]): [string[], string[], string[], string[]] {
+//     let reds: string[] = [], greens: string[] = [], blues: string[] = [], neutrals: string[] = [];
+
+//     for (let color of colors) {
+//         let [r, g, b] = color.split(',').map(Number);
+
+//         if (r >= g && r > b) {
+//             reds.push(color);
+//         } else if (g > r && g > b) {
+//             greens.push(color);
+//         } else if (b > r && b >= g) {
+//             blues.push(color);
+//         } else {
+//             neutrals.push(color);
+//         }
+//     }
+
+//     return [reds, greens, blues, neutrals]
+// }

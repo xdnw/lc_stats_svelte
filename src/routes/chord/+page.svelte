@@ -1,15 +1,16 @@
 <script lang="ts">
-  import { decompressBson, type Conflict } from "$lib";
+  import { decompressBson, type Conflict, rafDelay } from "$lib";
   import { onMount } from "svelte";
   import Navbar from "../../components/Navbar.svelte";
   import Sidebar from "../../components/Sidebar.svelte";
+  import Footer from "../../components/Footer.svelte";
 //   import * as d3 from "d3";
 
 let conflictName = "";
 let conflictId = -1;
 
 let _rawData: Conflict | null = null;
-let _allowedAllianceIds: number[] = [];
+let _allowedAllianceIds: Set<number> = new Set();
 let _currentHeaderName: string = "wars";
 
 onMount(() => {
@@ -21,8 +22,36 @@ onMount(() => {
     }
 });
     
-function handleButtonClick(headerName: string) {
+function setLayoutHeader(headerName: string) {
     _currentHeaderName = headerName;
+    setupWebWithCurrentLayout();
+}
+
+function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
+    let coalition = _rawData?.coalitions[coalitionIndex];
+    let hasAll = coalition?.alliance_ids.every(id => _allowedAllianceIds.has(id));
+    // number of alliances in this coalition in _allowedAllianceIds
+    let countCoalition = coalition?.alliance_ids.filter(id => _allowedAllianceIds.has(id)).length;
+    let hasAA = _allowedAllianceIds.has(allianceId);
+    let otherCoalitionId = coalitionIndex === 0 ? 1 : 0;
+    let otherCoalition = _rawData?.coalitions[otherCoalitionId];
+    let otherHasAll = otherCoalition?.alliance_ids.every(id => _allowedAllianceIds.has(id));
+    let otherCountCoalition = otherCoalition?.alliance_ids.filter(id => _allowedAllianceIds.has(id)).length;
+
+    if (hasAA) {
+        if (hasAll && otherHasAll) {
+            // deselect everything in this coalition by this alliance
+            _allowedAllianceIds = new Set([...(otherCoalition?.alliance_ids as number[]), allianceId]);
+        } else if (countCoalition == 1) {
+            // add all in this coalition
+            _allowedAllianceIds = new Set([..._allowedAllianceIds, ...coalition?.alliance_ids as number[]]);
+        } else {
+            // deselect current
+            _allowedAllianceIds = new Set([..._allowedAllianceIds].filter(id => id !== allianceId));
+        }
+    } else {
+        _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
+    }
     setupWebWithCurrentLayout();
 }
 
@@ -31,7 +60,7 @@ function setupWebFromId(conflictId: number) {
     decompressBson(url).then((data) => {
         _rawData = data;
         conflictName = data.name;
-        _allowedAllianceIds = [...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids];
+        _allowedAllianceIds = new Set([...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids]);
         setupWebWithCurrentLayout();
     });
 }
@@ -40,8 +69,7 @@ function setupWebWithCurrentLayout() {
     setupWebWithLayout(_rawData as Conflict, _allowedAllianceIds, _currentHeaderName);
 }
 
-function setupWebWithLayout(data: Conflict, allowedAllianceIds: number[], header: string) {
-    let allowedAllianceIdsSet: Set<number> = new Set(allowedAllianceIds);
+function setupWebWithLayout(data: Conflict, allowedAllianceIdsSet: Set<number>, header: string) {
     // let allowedAllianceIds: number[] = [...data.coalitions[0].alliance_ids, 11657];
 
     let allianceNameById: {[key: number]: string} = {}
@@ -57,16 +85,20 @@ function setupWebWithLayout(data: Conflict, allowedAllianceIds: number[], header
     let allPalette: number[] = [];
     let labels: string[] = [];
     let allAllianceIds = [...data.coalitions[0].alliance_ids, ...data.coalitions[1].alliance_ids];
+    let alliance_ids = allAllianceIds.filter(id => allowedAllianceIdsSet.has(id));
+    let coalition_ids = [];
     for (let aaId of data.coalitions[0].alliance_ids) {
         allPalette.push(Palette.REDS);
         if (allowedAllianceIdsSet.has(aaId)) {
             labels.push(allianceNameById[aaId]);
+            coalition_ids.push(0);
         }
     }
     for (let aaId of data.coalitions[1].alliance_ids) {
         allPalette.push(Palette.BLUES);
         if (allowedAllianceIdsSet.has(aaId)) {
             labels.push(allianceNameById[aaId]);
+            coalition_ids.push(1);
         }
     }
     let allColors = generateColorsFromPalettes(allPalette);
@@ -88,7 +120,7 @@ function setupWebWithLayout(data: Conflict, allowedAllianceIds: number[], header
     }
     matrix = matrix.map(row => row.length === 0 ? new Array(labels.length).fill(0) : row);
     matrix = matrix.map(row => row.map(value => (isNaN(value) || value < 0) ? 0 : value));
-    setupChord(matrix, labels, colors);
+    setupChord(matrix, labels, colors, alliance_ids, coalition_ids);
 
 }
 
@@ -165,11 +197,7 @@ function generateColorsFromPalettes(palettes: Palette[]) {
     return colors;
 }
 
-function setupChord(matrix: number[][], labels: string[], colors: string[]) {
-    console.log("LABELS " + labels + " | " + labels.length);
-    console.log("Color: " + JSON.stringify(colors) + " | " + colors.length);
-    console.log(matrix);
-
+function setupChord(matrix: number[][], alliance_names: string[], colors: string[], alliance_ids: number[], coalition_ids: number[]) {
     // clear my_dataviz
     d3.select("#my_dataviz").selectAll("*").remove();
 
@@ -188,8 +216,8 @@ function setupChord(matrix: number[][], labels: string[], colors: string[]) {
     // give this matrix to d3.chord(): it will calculates all the info we need to draw arc and ribbon
     const res = d3.chordDirected()
         .padAngle(0.01)     // padding between entities (black arc)
-        .sortSubgroups(d3.descending)
-        .sortChords(d3.descending)
+        .sortSubgroups(d3.ascending)
+        .sortChords(d3.ascending)
         (matrix)
 
     // add the groups on the inner part of the circle
@@ -254,43 +282,45 @@ function setupChord(matrix: number[][], labels: string[], colors: string[]) {
     `)
     .attr("text-anchor", d => d.angle > Math.PI ? "end" : null)
     .style("font-size", "9px")  // Adjust the font size here
-    .text((d, i) => labels[i]);
+    .text((d, i) => alliance_names[i]);
 
+    let lastShowIndex: number = -1;
+    let showIndex: number = -1;
 
-    // Add mouseover and mouseout events to the groups
-    groups.on("mouseover", function(event, d) {
-        // Get the index of the current group
-        let currentIndex = d.index;
-
-        // Add the 'd-none' class to the paths not for the current group
-        paths.classed("d-none", p => p.source.index !== currentIndex && p.target.index !== currentIndex);
+    function runShowIndex() {
+        if (showIndex !== lastShowIndex) {
+            if (showIndex == -1) {
+                paths.classed("d-none", false);
+            } else {
+                paths.filter(p => p.source.index !== showIndex && p.target.index !== showIndex)
+                    .classed("d-none", true);
+                paths.filter(p => p.source.index === showIndex || p.target.index === showIndex)
+                    .classed("d-none", false);
+            }
+            lastShowIndex = showIndex;
+        }
+    }
+    groups.on("click", function(event: MouseEvent, d: any) {
+        showIndex = -1;
+        lastShowIndex = -1;
+        console.log(alliance_names[d.index]);
+        setLayoutAlliance(coalition_ids[d.index], alliance_ids[d.index])
+    });
+    groups.on("mouseover", function(event: MouseEvent, d: any) {
+        showIndex = d.index;
+        requestAnimationFrame(rafDelay(100, runShowIndex));
     })
-    .on("mouseout", function(event, d) {
-        // Remove the 'd-none' class from all paths
-        paths.classed("d-none", false);
+    .on("mouseout", function(event: MouseEvent, d: any) {
+        showIndex = -1;
+        requestAnimationFrame(rafDelay(100, runShowIndex));
+    }).on("mouseover touchstart", function(event: MouseEvent, d: any) {
+        showIndex = d.index;
+        requestAnimationFrame(rafDelay(100, runShowIndex));
+    }).on("mouseout touchend", function(event: MouseEvent | TouchEvent, d: any) {
+        showIndex = -1;
+        requestAnimationFrame(rafDelay(100, runShowIndex));
     });
 }
-
-// function sortColors(colors: string[]): [string[], string[], string[], string[]] {
-//     let reds: string[] = [], greens: string[] = [], blues: string[] = [], neutrals: string[] = [];
-
-//     for (let color of colors) {
-//         let [r, g, b] = color.split(',').map(Number);
-
-//         if (r >= g && r > b) {
-//             reds.push(color);
-//         } else if (g > r && g > b) {
-//             greens.push(color);
-//         } else if (b > r && b >= g) {
-//             blues.push(color);
-//         } else {
-//             neutrals.push(color);
-//         }
-//     }
-
-//     return [reds, greens, blues, neutrals]
-// }
-    
 </script>
 <svelte:head>
     <script src="https://d3js.org/d3.v6.js"></script>
@@ -342,17 +372,31 @@ function setupChord(matrix: number[][], labels: string[], colors: string[]) {
             </button>
         </li>
     </ul>
-    <div class="bg-light p-1 mb-1 border-bottom">
+    <div class="bg-light p-1 fw-bold pb-0">
     {#if _rawData}
+        <span class="fw-bold">Layout Picker:</span>
         {#each _rawData.war_web.headers as header (header)}
-        <button class="btn btn-sm m-1 mb-0 btn-secondary btn-outline-info opacity-75 fw-bold" class:active={_currentHeaderName === header} on:click={() => handleButtonClick(header)}>{header}</button>
+        <button class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-info opacity-75 fw-bold" class:active={_currentHeaderName === header} on:click={() => setLayoutHeader(header)}>{header}</button>
         {/each}
+        <hr class="m-1">
+        <div class="bg-danger-subtle p-1 pb-0 mb-1">
+            {_rawData?.coalitions[0].name}:
+            {#each _rawData.coalitions[0].alliance_ids as id, index}
+                <button class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-danger opacity-75 fw-bold" class:active={_allowedAllianceIds.has(id)} on:click={() => setLayoutAlliance(0, id)}>{_rawData.coalitions[0].alliance_names[index]}</button>
+            {/each}
+        </div>
+        <div class="bg-info-subtle p-1 pb-0">
+            {_rawData?.coalitions[1].name}:
+            {#each _rawData.coalitions[1].alliance_ids as id, index}
+                <button class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-info opacity-75 fw-bold" class:active={_allowedAllianceIds.has(id)} on:click={() => setLayoutAlliance(1, id)}>{_rawData.coalitions[1].alliance_names[index]}</button>
+            {/each}
+        </div>
     {/if}
     </div>
     <pre>
-        TODO: Buttons for alliances
+        TODO: 
+        Click SVG alliance triggers show/hide
         generated headers (i.e. net damage/counts)
-        Fix data ranges for some types
         Add tooltip with values
         Save/load from query string
     </pre>
@@ -360,25 +404,9 @@ function setupChord(matrix: number[][], labels: string[], colors: string[]) {
         <div id="my_dataviz"></div>
         <!-- <div id="chartId"></div> -->
     </div>
+    <br>
+    <Footer />
 </div>
 <style>
-.svg-container {
-  display: inline-block;
-  position: relative;
-  width: 100%;
-  padding-bottom: 100%; /* aspect ratio */
-  vertical-align: top;
-  overflow: hidden;
-}
-.svg-content-responsive {
-  display: inline-block;
-  position: absolute;
-  top: 10px;
-  left: 0;
-}
-svg .rect {
-  fill: gold;
-  stroke: steelblue;
-  stroke-width: 5px;
-}
+
 </style>
