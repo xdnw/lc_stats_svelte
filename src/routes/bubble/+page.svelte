@@ -1,8 +1,12 @@
-<script>
+<script lang='ts'>
   import * as d3 from 'd3';
   import { onMount } from 'svelte';
 
-  onMount(() => {
+let graphDiv: HTMLDivElement;
+onMount(async () => {
+    createGraph();
+});
+function createGraph(){
     d3.csv("https://raw.githubusercontent.com/plotly/datasets/master/gapminderDataFiveYear.csv")
     .then(function(data) {
         // Create a lookup table to sort and regroup the columns of data,
@@ -159,37 +163,22 @@
             }]
         };
 
-        myDiv.innerHTML = "";
-        myDiv.innerHTML = "";
-        if (myDiv.innerHTML != "") {
-            console.log("ALREADY EXISTS???");
-        } else {
-            myDiv.innerHTML = "";
-            // Create the plot:
-            Plotly.newPlot('myDiv', {
-                data: traces,
-                layout: layout,
-                frames: frames,
-            });
-            console.log("CREATE");
-        }
+        Plotly.react(graphDiv, {
+            data: traces,
+            layout: layout,
+            frames: frames
+        });
     })
     .catch(function(err) {
       // Handle errors here
       console.error(err);
     });
-});
+};
 </script>
-<svelte:head>
-<!-- Plotly.js -->
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-</svelte:head>
-<div class="container">
-<div id="myDiv"></div>
+<div></div>
+<div>
+<div bind:this={graphDiv}></div>
 </div>
+<div></div>
 <style>
-      #myDiv {
-    width: 100%;
-    height: 500px;
-  }
 </style>
