@@ -393,9 +393,9 @@ function sliderValueToDate(value: number) {
             </button>
         </li>
         <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Bubble/Time
-            </button>
+            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="bubble/?id={conflictId}">
+                <i class="bi bi-bar-chart-steps"></i>&nbsp;Bubble/Time
+            </a>
         </li>
         <li class="nav-item me-1">
             <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
