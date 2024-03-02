@@ -221,7 +221,7 @@ function setupGraphData(data: GraphData) {
     let start = Date.now();
     let metric_x: BubbleMetric = {name: "dealt:loss_value", cumulative: true, normalize: false};
     let metric_y: BubbleMetric = {name: "loss:loss_value", cumulative: true, normalize: false};
-    let metric_size: BubbleMetric = {name: "off:wars_won", cumulative: true, normalize: false};
+    let metric_size: BubbleMetric = {name: "off:wars", cumulative: true, normalize: false};
     let min_cities = 1;
     // max of coalition[0/1] cities
     let col1Cities = data.coalitions[0].cities;
@@ -240,7 +240,45 @@ function setupGraphData(data: GraphData) {
 }
 
 function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {start: number, end: number}, ranges: {x: number[], y: number[], z: number[]}, coalition_names: string[], metrics: [BubbleMetric,BubbleMetric,BubbleMetric]) {
-    let start = Date.now();
+        let start = Date.now();
+
+        // Get the group names:
+        var years: number[] = Object.keys(lookup).map(Number);
+        // In this case, every year includes every continent, so we
+        // can just infer the continents from the *first* year:
+        var firstYear = lookup[time.start];
+        var coalitions: number[] = Object.keys(firstYear).map(Number);
+
+        let maxBubbleSize = Math.max(1, ranges.z[1]);
+        let maxZbyTime: number[] = [];
+        for (let i = time.start; i <= time.end; i++) {
+            let lookupByTime = lookup[i];
+            if (!lookupByTime) {
+                maxZbyTime.push(1);
+                continue;
+            }
+            let maxZ = 1;
+            for (let j = 0; j < coalitions.length; j++) {
+                let data = lookupByTime[coalitions[j]];
+                if (!data) continue;
+                maxZ = Math.max(maxZ, Math.max(...data.marker.size));
+            }
+            maxZbyTime.push(maxZ);
+        }
+        // scale trace size by maxZbyTime
+        for (let i = time.start; i <= time.end; i++) {
+            let lookupByTime = lookup[i];
+            if (!lookupByTime) continue;
+            for (let j = 0; j < coalitions.length; j++) {
+                let data = lookupByTime[coalitions[j]];
+                if (!data) continue;
+                data.marker.size = data.marker.size.map((size, index) => {
+                    let newSize = size / maxZbyTime[index];
+                    return newSize;
+                });
+            }
+        }
+
         // Create a lookup table to sort and regroup the columns of data,
         // first by year, then by continent:
         function getData(time: number, coalition: number) {
@@ -261,44 +299,41 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             return trace;
         }
 
-        // Get the group names:
-        var years: number[] = Object.keys(lookup).map(Number);
-        // In this case, every year includes every continent, so we
-        // can just infer the continents from the *first* year:
-        var firstYear = lookup[time.start];
-        var coalitions: number[] = Object.keys(firstYear).map(Number);
-
-        let maxBubbleSize = Math.max(1, ranges.y[1]);
+        
 
         // Create the main traces, one for each continent:
         var traces = [];
         for (let i = 0; i < coalitions.length; i++) {
             var data = firstYear[coalitions[i]];
-            var textSize = data.marker.size.map(function(size) {
-                return Math.min(20,Math.max(10,Math.sqrt(size) / 2000)); // Adjust the scaling factor as needed
+            var scaledSize = data.marker.size.map((size, index) => {
+                return size / maxZbyTime[index];
             });
+            // var textSize = data.marker.size.map(function(size) {
+            //     return Math.min(20,Math.max(10,Math.sqrt(size) / 2000)); // Adjust the scaling factor as needed
+            // });
             // One small note. We're creating a single trace here, to which
             // the frames will pass data for the different years. It's
             // subtle, but to avoid data reference problems, we'll slice
             // the arrays to ensure we never write any new data into our
             // lookup table:
             traces.push({
-            name: coalition_names[i],
-            x: data.x.slice(),
-            y: data.y.slice(),
-            id: data.id.slice(),
-            text: data.text.slice(),
-            mode: 'markers+text',
-            textposition: 'middle center', // Add this line
-            textfont: {
-                size: textSize, // Use the calculated text sizes
-                color: 'black' // Specify text color if needed
-            },
-            marker: {
-                size: data.marker.size.slice(),
-                sizemode: 'area',
-                sizeref: maxBubbleSize
-            }
+                name: coalition_names[i],
+                x: data.x.slice(),
+                y: data.y.slice(),
+                id: data.id.slice(),
+                text: data.text.slice(),
+                mode: 'markers+text',
+                textposition: 'middle center',
+                textfont: {
+                    size: 10,
+                    color: 'black'
+                },
+                marker: {
+                    size: data.marker.size,
+                    sizemode: 'area',
+                    sizeref: 0.001,
+                    sizemin: 1
+                }
             });
         }
 
@@ -323,23 +358,22 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
         var sliderSteps = [];
         for (let i = 0; i < years.length; i++) {
             sliderSteps.push({
-            method: 'animate',
-            label: years[i],
-            args: [[years[i]], {
-                mode: 'immediate',
-                transition: {duration: 2000},
-                frame: {duration: 2000, redraw: false},
-            }]
+                method: 'animate',
+                label: years[i],
+                args: [[years[i]], {
+                    mode: 'immediate',
+                    transition: {duration: 200},
+                    frame: {duration: 200, redraw: true},
+                }]
             });
         }
 
         var layout = {
             xaxis: {
-            title: getFullName(metrics[0]),
-            
+                title: getFullName(metrics[0]),
             },
             yaxis: {
-            title: getFullName(metrics[1]),
+                title: getFullName(metrics[1]),
             },
             hovermode: 'closest',
             // We'll use updatemenus (whose functionality includes menus as
@@ -363,8 +397,8 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                 args: [null, {
                 mode: 'immediate',
                 fromcurrent: true,
-                transition: {duration: 1000},
-                frame: {duration: 1000, redraw: false}
+                transition: {duration: 200},
+                frame: {duration: 200, redraw: true}
                 }],
                 label: 'Play'
             }, {
@@ -372,7 +406,7 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                 args: [[null], {
                 mode: 'immediate',
                 transition: {duration: 0},
-                frame: {duration: 0, redraw: false}
+                frame: {duration: 0, redraw: true}
                 }],
                 label: 'Pause'
             }]
@@ -398,27 +432,10 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             layout: layout,
             frames: frames
         });
-
-        console.log(`Setup reactive plot in ${Date.now() - start}ms`);start = Date.now();
-
-        graphDiv.on('plotly_sliderchange', function() {
-            let maxX = 0;
-            let maxY = 0;
-            console.log("plotly_sliderchange");
-            let data = graphDiv.data;
-            for (let i = 0; i < data.length; i++) {
-                let trace = data[i];
-                maxX = Math.max(maxX, Math.max(...trace.x));
-                maxY = Math.max(maxY, Math.max(...trace.y));
-            }
-            if (maxX != 0 && maxY != 0) {
-                Plotly.relayout(graphDiv, {
-                    'xaxis.range': [0, maxX],
-                    'yaxis.range': [0, maxY]
-                });
-            }
-            console.log(data);
+        graphDiv.on('plotly_animated', function() {
+            Plotly.relayout(graphDiv, { 'xaxis.autorange': true, 'yaxis.autorange': true });
         });
+        console.log(`Setup reactive plot in ${Date.now() - start}ms`);start = Date.now();
 };
 </script>
 <Navbar />
