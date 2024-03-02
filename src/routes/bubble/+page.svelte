@@ -490,6 +490,15 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             </a>
         </li>
     </ul>
+    <pre>
+        TODO:
+        - Add buttons for the various metrics
+        - Add buttons to toggle alliances
+        - Switch from year to date for slider
+        - Add color to legend
+        - Move legend
+        - Fix tiering graph
+    </pre>
     <div>
         <div bind:this={graphDiv}></div>
     </div>
