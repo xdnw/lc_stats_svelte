@@ -455,13 +455,13 @@
       if (relative) offset = this.offset;
 
       var ret = this.readVarint32(offset),
-          bits = ret.value,
+          bits = ret[0],
           bytes = (bits >> 3),
           bit = 0,
           value = [],
           k;
 
-      offset += ret.length;
+      offset += ret[1];
 
       while(bytes--) {
         k = this.readByte(offset++);
@@ -629,19 +629,12 @@
      * @expose
      */
     ByteBufferPrototype.readUint8 = function(offset) {
-        var relative = typeof offset === 'undefined';
-        if (relative) offset = this.offset;
-        if (!this.noAssert) {
-            if (typeof offset !== 'number' || offset % 1 !== 0)
-                throw TypeError("Illegal offset: "+offset+" (not an integer)");
-            offset >>>= 0;
-            if (offset < 0 || offset + 1 > this.buffer.byteLength)
-                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
-        }
-        var value = this.view[offset];
-        if (relative) this.offset += 1;
-        return value;
+        return this.view[offset];
     };
+
+    ByteBufferPrototype.readUint8Relative = function() {
+        return this.view[this.offset++];
+    }
 
     /**
      * Reads an 8bit unsigned integer. This is an alias of {@link ByteBuffer#readUint8}.
@@ -1649,32 +1642,28 @@
      * @expose
      */
     ByteBufferPrototype.readVarint32 = function(offset) {
-        var relative = typeof offset === 'undefined';
-        if (relative) offset = this.offset;
-        if (!this.noAssert) {
-            if (typeof offset !== 'number' || offset % 1 !== 0)
-                throw TypeError("Illegal offset: "+offset+" (not an integer)");
-            offset >>>= 0;
-            if (offset < 0 || offset + 1 > this.buffer.byteLength)
-                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
+        var relative,offset;
+        if (offset === void 0) {
+            relative = true;
+            offset = this.offset;
+        } else {
+            relative = false;
         }
         var c = 0,
-            value = 0 >>> 0,
+            value = 0,
+            c7 = 0,
+            p2 = 1,
             b;
         do {
-            if (!this.noAssert && offset > this.limit) {
-                var err = Error("Truncated");
-                err['truncated'] = true;
-                throw err;
-            }
             b = this.view[offset++];
             if (c < 4) {
-                value |= (b & 0x7f) << (7*c);
+                value |= (b & 0x7f) << (c7);
             } else if (c < 10) {
-                let valCopy = Number(value);
-                value += (b & 0x7f) * Math.pow(2, 7*c);
+                value += (b & 0x7f) * p2;
             }
-            ++c;
+            c7 += 7;
+            p2 *= 128;
+            c++;
         } while ((b & 0x80) !== 0);
         if (value <= 2147483647) {
             value |= 0;
@@ -1685,11 +1674,33 @@
             this.offset = offset;
             return value;
         }
-        return {
-            "value": value,
-            "length": c
-        };
+        return [value,c];
     };
+
+    ByteBufferPrototype.readVarint32Relative = function() {
+        var c = 0,
+            value = 0,
+            c7 = 0,
+            p2 = 1,
+            b;
+        do {
+            b = this.view[this.offset++];
+            if (c < 4) {
+                value |= (b & 0x7f) << (c7);
+            } else if (c < 10) {
+                value += (b & 0x7f) * p2;
+            }
+            c7 += 7;
+            p2 *= 128;
+            c++;
+        } while ((b & 0x80) !== 0);
+        if (value <= 2147483647) {
+            value |= 0;
+        } else {
+            value = Math.floor(value);
+        }
+        return value;
+    }
 
     /**
      * Reads a zig-zag encoded (signed) 32bit base 128 variable-length integer.
@@ -1702,12 +1713,16 @@
      */
     ByteBufferPrototype.readVarint32ZigZag = function(offset) {
         var val = this.readVarint32(offset);
-        if (typeof val === 'object')
-            val["value"] = ByteBuffer.zigZagDecode32(val["value"]);
+        if (Array.isArray(val))
+            val[0] = ByteBuffer.zigZagDecode32(val[0]);
         else
             val = ByteBuffer.zigZagDecode32(val);
         return val;
     };
+
+    ByteBufferPrototype.readVarint32ZigZagRelative = function(offset) {
+        return ByteBuffer.zigZagDecode32(this.readVarint32Relative());
+    }
 
     // types/varints/varint64
 
@@ -2350,7 +2365,7 @@
         }
         var start = offset;
         var len = this.readVarint32(offset);
-        var str = this.readUTF8String(len['value'], ByteBuffer.METRICS_BYTES, offset += len['length']);
+        var str = this.readUTF8String(len[0], ByteBuffer.METRICS_BYTES, offset += len[1]);
         offset += str['length'];
         if (relative) {
             this.offset = offset;

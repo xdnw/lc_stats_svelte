@@ -322,12 +322,18 @@
              * @returns {?} JSON
              */
             Decoder.prototype.decode = function(buf) {
+                let start = Date.now();
                 if (!(buf instanceof ByteBuffer)) {
                     buf = ByteBuffer.wrap(buf);
                 }
+                console.log('PSON.decode.wrap', Date.now() - start); start = Date.now();
                 var le = buf.littleEndian;
                 try {
                     var val = this._decodeValue(buf.LE());
+                    // f6 2342.199999809265 T.OBJECT     = 0xF6; // {...}
+                    // f7 2341.0999994277954 T.ARRAY      = 0xF7; // [...]
+                    // f9 788.1999797821045 T.LONG       = 0xF9; // Long   (zig-zag encoded varint64)
+                    console.log('PSON.decode._decodeValue', Date.now() - start); start = Date.now();
                     buf.littleEndian = le;
                     return val;
                 } catch (e) {
@@ -343,7 +349,7 @@
              * @private
              */
             Decoder.prototype._decodeValue = function(buf) {
-                var t = buf.readUint8();
+                var t = buf.readUint8Relative();
                 if (t <= T.MAX) {
                     return ByteBuffer.zigZagDecode32(t);
                 } else {
@@ -355,25 +361,25 @@
                         case T.EARRAY: return [];
                         case T.ESTRING: return "";
                         case T.OBJECT:
-                            t = buf.readVarint32(); // #keys
+                            t = buf.readVarint32Relative(); // #keys
                             var obj = {};
                             while (--t>=0) {
                                 obj[this._decodeValue(buf)] = this._decodeValue(buf);
                             }
                             return obj;
                         case T.ARRAY:
-                            t = buf.readVarint32(); // #items
-                            var arr = [];
-                            while (--t>=0) {
-                                arr.push(this._decodeValue(buf));
+                            t = buf.readVarint32Relative(); // #items
+                            var arr = new Array(t);
+                            for (var i = 0; i < t; i++) {
+                                arr[i] = this._decodeValue(buf);
                             }
                             return arr;
-                        case T.INTEGER: return buf.readVarint32ZigZag();
+                        case T.INTEGER: return buf.readVarint32ZigZagRelative();
                         case T.LONG: // must not crash
-                            if (Long) {
-                                return buf.readVarint64ZigZag();
-                            }
-                            return buf.readVarint32ZigZag();
+                            // if (Long) {
+                            //     return buf.readVarint64ZigZag();
+                            // }
+                            return buf.readVarint32ZigZagRelative();
                         case T.FLOAT: return buf.readFloat32();
                         case T.DOUBLE: return buf.readFloat64();
                         case T.STRING: return buf.readVString();
@@ -382,9 +388,9 @@
                             this.dict.push(str);
                             return str;
                         case T.STRING_GET:
-                            return this.dict[buf.readVarint32()];
+                            return this.dict[buf.readVarint32Relative()];
                         case T.BINARY:
-                            t = buf.readVarint32();
+                            t = buf.readVarint32Relative();
                             var ret = buf.slice(buf.offset, buf.offset+t);
                             buf.offset += t;
                             return ret;

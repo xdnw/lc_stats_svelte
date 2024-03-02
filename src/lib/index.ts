@@ -35,14 +35,42 @@ export interface Conflict {
         // i.e. self damage for a nation at nation_ids[i] -> damage[0][j] - where j = i + alliance_ids.length + coalition_ids.length
         damage: [number[], number[]] 
     }[], // The array of coalitions (typically 2)
-    counts_header: string[], // The column names for the counts data
     damage_header: string[], // The column names for the damage data
+    header_type: number[], // The column names for the counts data
     war_web: {
         headers: string[],
         // 3d array of the war web data [header index][alliance id index][alliance id index]
         // Get the alliance ids by combining the coalition alliance ids
         data: [][][] 
     }
+}
+
+export const UNITS_PER_CITY: {[key: string]: number} = {
+    "soldier": 15_000,
+    "tank": 1250,
+    "aircraft": 75,
+    "ship": 15,
+    "infra": 1 // 1 means it'll just divide by # of cities
+}
+
+export interface GraphCoalitionData {
+    name: string, // The name of the coalition
+    alliance_ids: number[], // The ids of the alliances in the coalition
+    alliance_names: string[], // The names of the alliances in the coalition
+    cities: number[], // The city ids of the cities in the coalition
+    day_data: number[][][][], // 4d array of the day -> metric -> alliance -> value
+    turn_data: number[][][][] // 4d array of the day -> metric -> alliance -> value
+}
+export interface GraphData {
+    name: string, // The name of the conflict
+    start: number, // The start date of the conflict (milliseconds)
+    end: number, // The end date of the conflict (milliseconds)
+    turn_start: number, // start turn number (2h)
+    turn_end: number, // end turn number (2h)
+    metric_names: string[], // the metric names
+    metrics_day: number[], // The metric indexes that are by day
+    metrics_turn: number[], // The metric indexes that are by turn
+    coalitions: [GraphCoalitionData,GraphCoalitionData]
 }
 
 /**
@@ -100,17 +128,24 @@ export function addFormatters() {
  * @param readableStream the compressed data stream
  * @returns 
  */
-async function streamToUint8Array(readableStream: any): Promise<Uint8Array> {
+async function streamToUint8Array(readableStream: ReadableStream): Promise<Uint8Array> {
     const reader = readableStream.getReader();
-    const chunks = [];
+    const chunks: Uint8Array[] = [];
     let result;
     while (!result?.done) {
         result = await reader.read();
         if (!result.done) {
-            chunks.push(result.value);
+            chunks.push(new Uint8Array(result.value));
         }
     }
-    return new Uint8Array(chunks.reduce((acc, val) => acc.concat(Array.from(val)), []));
+    let totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
+    let resultArray = new Uint8Array(totalLength);
+    let offset = 0;
+    for(let chunk of chunks) {
+        resultArray.set(chunk, offset);
+        offset += chunk.length;
+    }
+    return resultArray;
 }
 
 /**
@@ -120,11 +155,15 @@ async function streamToUint8Array(readableStream: any): Promise<Uint8Array> {
  * @returns decompressed binary stream
  */
 const decompress = async (url: string) => {
+    let start = Date.now();
     const ds = new DecompressionStream('gzip');
     const response = await fetch(url);
+    console.log("Fetch time: " + (Date.now() - start) + "ms"); start = Date.now();
     const blob_in = await response.blob();
+    console.log("Blob time: " + (Date.now() - start) + "ms"); start = Date.now();
     const stream_in = blob_in.stream().pipeThrough(ds);
     const blob_out = await new Response(stream_in).blob();
+    console.log("Decompress blob time: " + (Date.now() - start) + "ms");
     return blob_out;
 };
   
@@ -134,12 +173,17 @@ const decompress = async (url: string) => {
  * @returns json object
  */
 export const decompressBson = async (url: string) => {
+    let start = Date.now();
     let result = await decompress(url);
+    console.log("Decompression time: " + (Date.now() - start) + "ms"); start = Date.now();
     let stream: ReadableStream<Uint8Array> = result.stream();
     let uint8Array = await streamToUint8Array(stream);
+    console.log("Stream to uint8Array time: " + (Date.now() - start) + "ms"); start = Date.now();
     var PSON = dcodeIO.PSON;
     var pson = new PSON.StaticPair([]);
-    return pson.decode(uint8Array);
+    let decoded = pson.decode(uint8Array);
+    console.log("PSON decode time: " + (Date.now() - start) + "ms");
+    return decoded;
 };
 
 /**

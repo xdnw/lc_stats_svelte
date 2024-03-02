@@ -41,10 +41,12 @@ function trimHeader(header: string) {
  * @param sortDir The direction to sort by (asc, desc)
  */
 function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: string, sortDir: string) {
+    console.log(_rawData);
+
     conflictName = _rawData.name;
     let coalitions = _rawData.coalitions;
-    let counts_header = _rawData.counts_header;
     let damage_header = _rawData.damage_header;
+    let header_types = _rawData.header_type;
 
     let rows: any[][] = [];
     let columns: string[] = [];
@@ -95,21 +97,20 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
     // Split the header names into columns (e.g. net damage can be calculated from dealt and received)
     { // columns
         columns.push("name");
-        for (let i = 0; i < counts_header.length; i++) {
-            let header = trimHeader(counts_header[i]);
-            columns.push("off:" + header);
-            columns.push("def:" + header);
-            columns.push("both:" + header);
-        }
         for (let i = 0; i < damage_header.length; i++) {
             let header = trimHeader(damage_header[i]);
-            columns.push("loss:" + header);
-            columns.push("dealt:" + header.replace("_loss", "").replace("loss_", ""));
-            columns.push("net:" + header.replace("_loss", "").replace("loss_", ""));
+            let type = header_types[i];
+            if (type == 0) {
+                columns.push("loss:" + header);
+                columns.push("dealt:" + header.replace("_loss", "").replace("loss_", ""));
+                columns.push("net:" + header.replace("_loss", "").replace("loss_", ""));
+            } else if (type == 1) {
+                columns.push("off:" + header);
+                columns.push("def:" + header);
+                columns.push("both:" + header);
+            }
         }
-
         searchable.push(0);
-        cell_format["coalitionNames"] = [0];
     }
     let sort: [number, string] = [columns.indexOf(sortBy), sortDir];
     // Set cell formatting and visible columns
@@ -129,24 +130,22 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
     }
 
     // Helper function for adding the data for the columns into the rows
-    let addStats2Row = (row: any[], offStats: any, defStats: any, damageTaken: any, damageDealt: any) => {
-        for (let i = 0; i < offStats.length; i++) {
-            let offStat = offStats[i];
-            let defStat = defStats[i];
-            let totalStat = offStat + defStat;
-            // The three count stats for each column
-            row.push(offStat);
-            row.push(defStat);
-            row.push(totalStat);
-        }
+    let addStats2Row = (row: any[], damageTaken: any, damageDealt: any) => {
         for (let i = 0; i < damageTaken.length; i++) {
             let damageTakenStat = damageTaken[i];
             let damageDealtStat = damageDealt[i];
-            let damageNetStat = damageDealtStat - damageTakenStat;
+
+            let type = header_types[i];
+            let total;
+            if (type == 0) {
+                total = damageTakenStat + damageDealtStat;
+            } else {
+                total = damageDealtStat - damageTakenStat;
+            }
             // the three stats for each damage column
             row.push(damageTakenStat);
             row.push(damageDealtStat);
-            row.push(damageNetStat);
+            row.push(total);
         }
     };
 
@@ -158,7 +157,6 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
         let nation_ids = colEntry.nation_ids;
         let nation_names = colEntry.nation_names;
         let nation_aas = colEntry.nation_aa;
-        let stats = colEntry.counts;
         let damage = colEntry.damage;
         // Handle the different layout types
         switch (type) {
@@ -166,7 +164,7 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
                 // Use formatCol (coalition) for the name (index = 0)
                 cell_format["formatCol"] = [0];
                 let row = [index];
-                addStats2Row(row, stats[0], stats[1], damage[0], damage[1]);
+                addStats2Row(row, damage[0], damage[1]);
                 rows.push(row);
                 break;
             case Layout.ALLIANCE: {
@@ -178,7 +176,7 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
                     let alliance_id = alliance_ids[i];
                     let alliance_name = alliance_names[i];
                     row.push([alliance_name,alliance_id]);
-                    addStats2Row(row, stats[i*2+o], stats[i*2+o+1], damage[i*2+o], damage[i*2+o+1]);
+                    addStats2Row(row, damage[i*2+o], damage[i*2+o+1]);
                     rows.push(row);
                 }
                 break;
@@ -193,7 +191,7 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
                     let nation_name = nation_names[i];
                     let nation_aa = nation_aas[i];
                     row.push([nation_name,nation_id,nation_aa]);
-                    addStats2Row(row, stats[i*2+o], stats[i*2+o+1], damage[i*2+o], damage[i*2+o+1]);
+                    addStats2Row(row, damage[i*2+o], damage[i*2+o+1]);
                     rows.push(row);
                 }
                 break;
