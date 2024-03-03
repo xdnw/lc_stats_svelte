@@ -219,8 +219,8 @@ function generateTraces(data: GraphData, x_axis: BubbleMetric, y_axis: BubbleMet
 
 function setupGraphData(data: GraphData) {
     let start = Date.now();
-    let metric_x: BubbleMetric = {name: "dealt:loss_value", cumulative: true, normalize: false};
-    let metric_y: BubbleMetric = {name: "loss:loss_value", cumulative: true, normalize: false};
+    let metric_x: BubbleMetric = {name: "loss:loss_value", cumulative: true, normalize: false};
+    let metric_y: BubbleMetric = {name: "dealt:loss_value", cumulative: true, normalize: false};
     let metric_size: BubbleMetric = {name: "off:wars", cumulative: true, normalize: false};
     let min_cities = 1;
     // max of coalition[0/1] cities
@@ -249,33 +249,24 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
         var firstYear = lookup[time.start];
         var coalitions: number[] = Object.keys(firstYear).map(Number);
 
-        let maxBubbleSize = Math.max(1, ranges.z[1]);
-        let maxZbyTime: number[] = [];
         for (let i = time.start; i <= time.end; i++) {
             let lookupByTime = lookup[i];
             if (!lookupByTime) {
-                maxZbyTime.push(1);
                 continue;
             }
-            let maxZ = 1;
-            for (let j = 0; j < coalitions.length; j++) {
-                let data = lookupByTime[coalitions[j]];
+            let maxZ = 0;
+            for (let j = 0; j < coalition_names.length; j++) {
+                let data = lookupByTime[j];
                 if (!data) continue;
                 maxZ = Math.max(maxZ, Math.max(...data.marker.size));
             }
-            maxZbyTime.push(maxZ);
-        }
-        // scale trace size by maxZbyTime
-        for (let i = time.start; i <= time.end; i++) {
-            let lookupByTime = lookup[i];
-            if (!lookupByTime) continue;
-            for (let j = 0; j < coalitions.length; j++) {
-                let data = lookupByTime[coalitions[j]];
+            for (let j = 0; j < coalition_names.length; j++) {
+                let data = lookupByTime[j];
                 if (!data) continue;
-                data.marker.size = data.marker.size.map((size, index) => {
-                    let newSize = size / maxZbyTime[index];
-                    return newSize;
+                data.marker.size = data.marker.size.map((size) => {
+                    return size / maxZ;
                 });
+            
             }
         }
 
@@ -299,15 +290,12 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             return trace;
         }
 
-        
+        var colors = ['red', 'green', 'blue', 'yellow', 'purple'];
 
         // Create the main traces, one for each continent:
         var traces = [];
         for (let i = 0; i < coalitions.length; i++) {
             var data = firstYear[coalitions[i]];
-            var scaledSize = data.marker.size.map((size, index) => {
-                return size / maxZbyTime[index];
-            });
             // var textSize = data.marker.size.map(function(size) {
             //     return Math.min(20,Math.max(10,Math.sqrt(size) / 2000)); // Adjust the scaling factor as needed
             // });
@@ -332,8 +320,10 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                     size: data.marker.size,
                     sizemode: 'area',
                     sizeref: 0.001,
-                    sizemin: 1
-                }
+                    sizemin: 1,
+                    color: colors[i % colors.length]
+                },
+                
             });
         }
 
@@ -369,6 +359,7 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
         }
 
         var layout = {
+            height: window.innerHeight * 0.8,
             xaxis: {
                 title: getFullName(metrics[0]),
             },
@@ -376,6 +367,13 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                 title: getFullName(metrics[1]),
             },
             hovermode: 'closest',
+            legend: {
+                x: 0.5,
+                y: 1.1,
+                itemsizing: 'constant',
+                xanchor: 'center',
+                yanchor: 'top'
+            },
             // We'll use updatemenus (whose functionality includes menus as
             // well as buttons) to create a play button and a pause button.
             // The play button works by passing `null`, which indicates that
@@ -422,7 +420,7 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                 font: {size: 20, color: '#666'}
             },
             steps: sliderSteps
-            }]
+            }],
         };
 
         console.log(`Generated graph data in ${Date.now() - start}ms`);start = Date.now();

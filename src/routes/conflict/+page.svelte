@@ -138,9 +138,9 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
             let type = header_types[i];
             let total;
             if (type == 0) {
-                total = damageTakenStat + damageDealtStat;
-            } else {
                 total = damageDealtStat - damageTakenStat;
+            } else {
+                total = damageDealtStat + damageTakenStat;
             }
             // the three stats for each damage column
             row.push(damageTakenStat);
