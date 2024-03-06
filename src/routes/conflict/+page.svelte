@@ -6,28 +6,11 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam } from '$lib';
+import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader } from '$lib';
 
 // Set after page load
 let conflictName = "";
 let conflictId = -1;
-
-// Rename function so the table columns are more compact
-function trimHeader(header: string) {
-    if (header.includes("_value")) {
-        header = "~$" + header.replace("_value", "");
-    }
-    if (header.includes("_loss")) {
-        header = header.replace("_loss", "");
-    }
-    if (header.includes("loss_")) {
-        header = header.replace("loss_", "");
-    }
-    if (header === "~$loss") {
-        header = "damage";
-    }
-    return header.replaceAll("_", " ");
-}
 
 /**
  * Big function for loading the conflict table for a provided layout
@@ -41,8 +24,6 @@ function trimHeader(header: string) {
  * @param sortDir The direction to sort by (asc, desc)
  */
 function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: string, sortDir: string) {
-    console.log(_rawData);
-
     conflictName = _rawData.name;
     let coalitions = _rawData.coalitions;
     let damage_header = _rawData.damage_header;
@@ -498,7 +479,7 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
             </a>
         </li>
     </ul>
-    <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-1 p-1">
+    <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-3 p-1">
     <li>
         Layout Picker:
     </li>

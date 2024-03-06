@@ -8,7 +8,7 @@ import Footer from '../../components/Footer.svelte'
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 import { onMount } from 'svelte'; 
-import { decompressBson, htmlToElement } from '$lib';
+import { decompressBson, formatTurnsToDate, htmlToElement } from '$lib';
 
 // Set after page load
 let conflictName = "";
@@ -30,7 +30,7 @@ onMount(() => {
     // No change if there's no data for that turn
     (window as any).updateChart = (slider: HTMLInputElement, turnStr: string) => {
         let turn = parseInt(turnStr);
-        ((((slider.parentElement) as HTMLElement).querySelector("label")) as HTMLLabelElement).innerText = "Date: " + sliderValueToDate(turn);
+        ((((slider.parentElement) as HTMLElement).querySelector("label")) as HTMLLabelElement).innerText = "Date: " + formatTurnsToDate(turn);
         let canvas = slider.nextElementSibling as HTMLCanvasElement;
         let element_id = canvas.id;
         let layout = _chartLayouts[element_id];
@@ -350,13 +350,7 @@ function getDataSets(turn: number, metrics: string[], normalizePerCity: boolean 
     }
     return dataSets;
 }
-// Convert the slider (turns) to a time string
-function sliderValueToDate(value: number) {
-    let timeMillis = (value / 12) * 60 * 60 * 24 * 1000;
-    let date = new Date();
-    date.setTime(timeMillis);
-    return date.toISOString().slice(0, 16).replace("T", " ");
-}
+
 </script>
 <svelte:head>
 	<title>Graphs</title>
