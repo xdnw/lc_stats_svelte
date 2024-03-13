@@ -5,11 +5,11 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	optimizeDeps: {
 		esbuildOptions: {
-		  target: 'es2018'
+		  target: 'es2020'
 		}
 	  },
 	  build: {
-		target: 'es2018'
+		target: 'es2020'
 	  }
 });
 
