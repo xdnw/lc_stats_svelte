@@ -6,7 +6,8 @@ import Sidebar from '../../components/Sidebar.svelte';
 import Footer from '../../components/Footer.svelte';
 import noUiSlider from 'nouislider';
 import * as d3 from 'd3';
-import { decompressBson, type Conflict, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, colorPalettes, Palette, generateColors, setQueryParam, arrayEquals } from '$lib';
+import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, Palette, generateColors, setQueryParam, arrayEquals, type TierMetric } from '$lib';
+  import { config } from '../+layout';
 
 let _rawData: GraphData;
 let conflictId: number;
@@ -34,7 +35,7 @@ function handleMetricsChange() {
     setupGraphData(_rawData);
 }
 
-  async function handleCheckbox(): Promise<boolean> {
+async function handleCheckbox(): Promise<boolean> {
     await tick();
     let normalizeBits = (normalize_x ? 1 : 0) + (normalize_y ? 2 : 0) + (normalize_z ? 4 : 0);
     if (previous_normalize == normalizeBits) return false;
@@ -72,7 +73,6 @@ function loadQueryParams(params: URLSearchParams) {
         previous_normalize = bits;
     }
 }
-
 let graphDiv: HTMLDivElement;
 onMount(async () => {
     let queryParams = new URLSearchParams(window.location.search);
@@ -115,7 +115,7 @@ onMount(async () => {
 
 function fetchConflictGraphData(conflictId: number) {
     let start = Date.now();
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip`;
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
     decompressBson(url).then((data) => {
         console.log(`Loaded ${url} in ${Date.now() - start}ms`);start = Date.now();
         conflictName = data.name;
@@ -123,12 +123,6 @@ function fetchConflictGraphData(conflictId: number) {
         setupGraphData(_rawData);
 
     });
-}
-
-interface BubbleMetric {
-    name: string,
-    cumulative: boolean,
-    normalize: boolean,
 }
 
 interface Trace {
@@ -150,7 +144,7 @@ interface Timeframe {
     is_turn: boolean
 }
 
-function getFullName(metric: BubbleMetric): string {
+function getFullName(metric: TierMetric): string {
     let fullName = metric.name;
     if (metric.cumulative) {
         fullName += ' (sum)';
@@ -161,7 +155,7 @@ function getFullName(metric: BubbleMetric): string {
     return fullName;
 }
 
-function generateTraces(data: GraphData, x_axis: BubbleMetric, y_axis: BubbleMetric, size: BubbleMetric, min_city: number, max_city: number): {
+function generateTraces(data: GraphData, x_axis: TierMetric, y_axis: TierMetric, size: TierMetric, min_city: number, max_city: number): {
         traces: {[key: number]: {[key: number]: Trace}},
         times: Timeframe, 
         ranges: Range} {
@@ -321,17 +315,17 @@ function setupGraphData(data: GraphData) {
     let metrics_copy = selected_metrics.map((metric) => metric.value);
     if (metrics_copy.length != 3) return;
     let start = Date.now();
-    let metric_x: BubbleMetric = {name: metrics_copy[0], cumulative: metrics_copy[0].includes(":"), normalize: normalize_x};
-    let metric_y: BubbleMetric = {name: metrics_copy[1], cumulative: metrics_copy[1].includes(":"), normalize: normalize_y};
-    let metric_size: BubbleMetric = {name: metrics_copy[2], cumulative: metrics_copy[2].includes(":"), normalize: normalize_z};
+    let metric_x: TierMetric = {name: metrics_copy[0], cumulative: metrics_copy[0].includes(":"), normalize: normalize_x};
+    let metric_y: TierMetric = {name: metrics_copy[1], cumulative: metrics_copy[1].includes(":"), normalize: normalize_y};
+    let metric_size: TierMetric = {name: metrics_copy[2], cumulative: metrics_copy[2].includes(":"), normalize: normalize_z};
     let tracesTime = generateTraces(data, metric_x, metric_y, metric_size, cityValues[0], cityValues[1]);
     let coalition_names = data.coalitions.map((coalition) => coalition.name);
-    let metrics: [BubbleMetric,BubbleMetric,BubbleMetric] = [metric_x, metric_y, metric_size];
+    let metrics: [TierMetric,TierMetric,TierMetric] = [metric_x, metric_y, metric_size];
     console.log(`Generated traces in ${Date.now() - start}ms`);
     createGraph(tracesTime.traces, tracesTime.times, tracesTime.ranges, coalition_names, metrics);
 }
 
-function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {start: number, end: number, is_turn: boolean}, ranges: {x: number[], y: number[], z: number[]}, coalition_names: string[], metrics: [BubbleMetric,BubbleMetric,BubbleMetric]) {
+function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {start: number, end: number, is_turn: boolean}, ranges: {x: number[], y: number[], z: number[]}, coalition_names: string[], metrics: [TierMetric,TierMetric,TierMetric]) {
         let start = Date.now();
 
         // Get the group names:

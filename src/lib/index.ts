@@ -1,7 +1,11 @@
 /*
 Shared typescript for all pages
 */
-
+export interface TierMetric {
+    name: string,
+    cumulative: boolean,
+    normalize: boolean,
+}
 export interface Conflict {
     // name of conflict
     name: string,
@@ -134,11 +138,11 @@ export interface GraphCoalitionData {
     cities: number[], // The city ids of the cities in the coalition
     turn: {
         range: [number, number],
-        data: number[][][][] // 4d array of the day -> metric -> alliance -> value
+        data: number[][][][] // 4d array of the metric -> alliance -> day -> value
     },
     day: {
         range: [number, number],
-        data: number[][][][], // 4d array of the day -> metric -> alliance -> value
+        data: number[][][][], // 4d array of the metric -> alliance -> day -> value
     }
 }
 export interface GraphData {

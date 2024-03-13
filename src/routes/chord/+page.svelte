@@ -5,6 +5,7 @@
   import Sidebar from "../../components/Sidebar.svelte";
   import Footer from "../../components/Footer.svelte";
   import * as d3 from 'd3';
+  import { config } from "../+layout";
 
 let conflictName = "";
 let conflictId = -1;
@@ -23,7 +24,7 @@ onMount(() => {
 });
 
 function setupWebFromId(conflictId: number, queryParams: URLSearchParams) {
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
     decompressBson(url).then((data) => {
         _rawData = data;
         console.log(data);

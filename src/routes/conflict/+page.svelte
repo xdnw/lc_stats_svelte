@@ -7,6 +7,7 @@ import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
 import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader } from '$lib';
+  import { config } from '../+layout';
 
 // Set after page load
 let conflictName = "";
@@ -278,7 +279,7 @@ function loadCurrentLayout() {
 // Load the current layout (which will create the table)
 // If there are posts, load the posts into the timeline
 function setupConflictTables(conflictId: number) {
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
     decompressBson(url).then((data) => {
         _rawData = data;
         setColNames(_rawData.coalitions[0].alliance_ids, _rawData.coalitions[0].alliance_names);

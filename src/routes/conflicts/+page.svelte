@@ -1,4 +1,5 @@
 <script lang=ts>
+	import { config } from './../+layout.ts';
 /**
  * This page is for viewing the table of all conflicts
 */
@@ -66,7 +67,7 @@ try {
     }
 
     // Url of s3 bucket
-    let url = "https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip";
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
     
     decompressBson(url).then((result) => {
         /*
