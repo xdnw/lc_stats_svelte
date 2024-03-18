@@ -9,8 +9,8 @@ export const config = {
     repository_url: "https://github.com/xdnw/locutus",
     wiki_url: "https://github.com/xdnw/locutus/wiki",
     version: {
-        conflicts: 1.0,
-        conflict_data: 1.0,
-        graph_data: 1.0,
+        conflicts: 1.1,
+        conflict_data: 1.1,
+        graph_data: 1.1,
     }
 }
