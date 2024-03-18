@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { decompressBson, type Conflict, rafDelay, setQueryParam, generateColorsFromPalettes, Palette } from "$lib";
+  import { decompressBson, type Conflict, rafDelay, setQueryParam, generateColorsFromPalettes, Palette, darkenColor } from "$lib";
   import { onMount } from "svelte";
   import Navbar from "../../components/Navbar.svelte";
   import Sidebar from "../../components/Sidebar.svelte";
@@ -35,7 +35,7 @@ function setupWebFromId(conflictId: number, queryParams: URLSearchParams) {
         if (header && _rawData?.war_web.headers.includes(header)) {
             _currentHeaderName = header;
         }
-        let idStr = queryParams.get('id[]');
+        let idStr = queryParams.get('ids');
         if (idStr) {
             let ids = idStr.split(".").map(id => +id);
             _allowedAllianceIds = new Set(ids);
@@ -76,7 +76,7 @@ function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
     } else {
         _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
     }
-    setQueryParam('id[]', Array.from(_allowedAllianceIds).join('.'));
+    setQueryParam('ids', Array.from(_allowedAllianceIds).join('.'));
     setupWebWithCurrentLayout();
 }
 
@@ -139,21 +139,6 @@ function setupWebWithLayout(data: Conflict, allowedAllianceIdsSet: Set<number>, 
 
 }
 
-
-function darkenColor(color: string, percentage: number): string {
-    let rgbValues = color.match(/\d+/g);
-    if (!rgbValues) {
-        throw new Error('Invalid color format');
-    }
-
-    let [r, g, b] = rgbValues.map(Number);
-
-    r = Math.floor(r * (1 - percentage / 100));
-    g = Math.floor(g * (1 - percentage / 100));
-    b = Math.floor(b * (1 - percentage / 100));
-
-    return `rgb(${r}, ${g}, ${b})`;
-}
 
 function setupChord(matrix: number[][], alliance_names: string[], colors: string[], alliance_ids: number[], coalition_ids: number[]) {
     // clear my_dataviz
@@ -313,6 +298,7 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         requestAnimationFrame(rafDelay(100, runShowIndex));
     });
     }
+
 </script>
 <svelte:head>
     <!-- <script src="https://d3js.org/d3.v6.js"></script> -->

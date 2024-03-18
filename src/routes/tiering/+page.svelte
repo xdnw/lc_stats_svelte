@@ -9,10 +9,10 @@ import type { API,Options } from 'nouislider';
 import { Chart, registerables, type ChartConfiguration } from 'chart.js';
 Chart.register(...registerables);
 import { onMount, tick } from 'svelte'; 
-import { decompressBson, formatTurnsToDate, htmlToElement, type GraphData, type TierMetric, arrayEquals, setQueryParam, UNITS_PER_CITY, formatDate, formatDaysToDate } from '$lib';
+import { decompressBson, formatTurnsToDate, htmlToElement, type GraphData, type TierMetric, arrayEquals, setQueryParam, UNITS_PER_CITY, formatDate, formatDaysToDate, Palette, palettePrimary, generateColors, darkenColor } from '$lib';
 import { config } from '../+layout';
 import Select from 'svelte-select';
-import { stratify } from 'd3';
+import * as d3 from 'd3';
 import noUiSlider from 'nouislider';
 
 // Set after page load
@@ -32,29 +32,34 @@ let dataSets: DataSet[];
  * The raw data for the conflict, uninitialized until setupChartData is called
  */
  let _rawData: GraphData;
-// Time ranges (min and max) - uninitialized until setupCharts is called
-let sliderRange: [number, number];
-let sliderIsTurn: boolean;
 
-let selected_metrics: { value: string, label: string }[] = ["infra"].map((name) => {return {value: name, label: name}});
+let selected_metrics: { value: string, label: string }[] = ["soldier","tank","aircraft","ship"].map((name) => {return {value: name, label: name}});
 $: maxItems = selected_metrics?.length === 4;
 $: items = maxItems || !_rawData ? [] : [..._rawData.metric_names.map((name) => {return {value: name, label: name}})];
-
+$: {
+    if (selected_metrics) {
+        handleMetricsChange();
+    }
+}
 let previous_selected: { value: string, label: string }[] = [];
 function handleMetricsChange() {
-    if (selected_metrics.length != 3 || arrayEquals(previous_selected,selected_metrics)) return;
-    maxItems = selected_metrics?.length === 3;
+    if (arrayEquals(previous_selected,selected_metrics)) return;
+    maxItems = selected_metrics?.length === 4;
     previous_selected = selected_metrics.slice();
-    setQueryParam('selected', selected_metrics.map((metric) => metric.value).join('.'));
-    setupCharts(_rawData);
+    if (_rawData && selected_metrics.length > 0) {
+        setQueryParam('selected', selected_metrics.map((metric) => metric.value).join('.'));
+        setupCharts(_rawData);
+    }
 }
 
 async function handleCheckbox(): Promise<boolean> {
     await tick();
     if (previous_normalize == normalize) return false;
     previous_normalize = normalize;
-    setQueryParam('normalize', normalize ? 1 : null);
-    setupCharts(_rawData);
+    if (_rawData) {
+        setQueryParam('normalize', normalize ? 1 : null);
+        setupCharts(_rawData);
+    }
     return true;
 }
 
@@ -81,15 +86,33 @@ function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
     } else {
         _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
     }
-    setQueryParam('id[]', Array.from(_allowedAllianceIds).join('.'));
-    setupCharts(_rawData);
+    if (_rawData) {
+        setQueryParam('ids', Array.from(_allowedAllianceIds).join('.'));
+        setupCharts(_rawData);
+    }
+}
+
+function loadQueryParams(params: URLSearchParams) {
+    let selected = params.get('selected');
+    if (selected) {
+        selected_metrics = selected.split('.').map((name) => {return {value: name, label: name}});
+    }
+    previous_selected = selected_metrics.slice();
+    maxItems = selected_metrics?.length === 4;
+    let normalizeStr = params.get('normalize');
+    if (normalizeStr && !isNaN(+normalizeStr)) {
+        normalize = (+normalizeStr) == 1;
+    }
 }
 
 // onMount runs when this component (i.e. the page) is loaded
 // This gets the conflict id from the url query string, fetches the data from s3 and creates the charts
 onMount(() => {
     // Get the conflict id from the url query string
-    const id = new URLSearchParams(window.location.search).get('id');
+    let queryParams = new URLSearchParams(window.location.search);
+    loadQueryParams(queryParams);
+
+    const id = queryParams.get('id');
     if (id && !isNaN(+id) && Number.isInteger(+id)) {
         conflictId = +id;
         setupChartData(conflictId);
@@ -105,8 +128,9 @@ onMount(() => {
 function setupChartData(conflictId: number) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
     decompressBson(url).then((data) => {
-        conflictName = data.name;
-        setupCharts(data);
+        _rawData = data;
+        conflictName = _rawData.name;
+        setupCharts(_rawData);
     });
 }
 
@@ -118,42 +142,38 @@ function setupChartData(conflictId: number) {
 let _chartLayouts: {[key: string]: {
     metrics: string[],
     normalize: boolean
-    chart: Chart | null
 }} = {
     "tiering": {
         metrics: ["NATION"],
         normalize: false,
-        chart: null
     },
-    "avg_mil": {
-        metrics: ["SOLDIER","TANK","AIRCRAFT","SHIP"],
+    "mmr": {
+        metrics: ["soldier","tank","aircraft","ship"],
         normalize: true,
-        chart: null
     },
-    "total_mil": {
-        metrics: ["SOLDIER","TANK","AIRCRAFT","SHIP"],
-        normalize: false,
-        chart: null
-    },
-    "avg_infra": {
-        metrics: ["INFRA"],
+    "air %": {
+        metrics: ["aircraft"],
         normalize: true,
-        chart: null
     },
-    "infra": {
-        metrics: ["INFRA"],
-        normalize: false,
-        chart: null
-    },
-    "avg_beige": {
-        metrics: ["BEIGE"],
+    "avg infra": {
+        metrics: ["infra"],
         normalize: true,
-        chart: null
     },
-    "beige": {
-        metrics: ["BEIGE"],
+    "beige %": {
+        metrics: ["beige"],
+        normalize: true,
+    },
+    "damage": {
+        metrics: ["loss:loss_value", "dealt:loss_value"],
+        normalize: true,
+    },
+    "wars won": {
+        metrics: ["off:wars_won","def:wars_won"],
         normalize: false,
-        chart: null
+    },
+    "off wars": {
+        metrics: ["off:wars"],
+        normalize: false,
     },
     // Not enabled as I dont have spy data for past conflicts yet
     // "avg_spies": {
@@ -167,67 +187,6 @@ let _chartLayouts: {[key: string]: {
     //     chart: null
     // }
 }
-
-/**
- * Creates a chart for a layout (from the _chartLayouts object)
- * @param element_id the id of the element (will be cleared and replaced with the chart)
- */
-// function createChart(element_id: string) {
-//     // Get container to add the chart to
-//     let charts = document.getElementById("charts") as HTMLElement;
-//     // Get layout data
-//     let layout = _chartLayouts[element_id];
-
-//     // Set the html for the chart
-//     let html = `<div class="col-lg-4 col-md-6 col-sm-12">
-//         <label for="turn" class="form-label">${element_id}</label>
-//         <input type="range" min=${minTurn} max=${maxTurn} step=2 class="slider w-100" onChange="updateChart(this,this.value)">
-//         <canvas id="${element_id}" width="400" height="400"></canvas>
-//     </div>`;
-//     let elem = htmlToElement(html) as HTMLElement;
-//     charts.appendChild(elem as HTMLElement);
-//     (elem.querySelector("input") as HTMLInputElement).value = maxTurn.toString();
-//     (elem.querySelector("label") as HTMLLabelElement).innerText = "Date: " + sliderValueToDate(maxTurn);
-
-//     // Fetch the data for the specific layout (i.e. an array) for Chart.js 
-//     let dataSets = getDataSets(maxTurn, layout.metrics, layout.normalize);
-//     // Object with the dataset and chart labels
-//     const chartData = {
-//         labels: Array.from({length: maxCity - minCity + 1}, (_, i) => i + minCity),
-//         datasets: dataSets
-//     };
-//     // Chart title
-//     let title = (layout.normalize ? "Average" : "Total") + " " + layout.metrics.join("/") + " by City";
-//     // Chart settings (stacked bar chart)
-//     const config = {
-//         type: 'bar',
-//         data: chartData,
-//         options: {
-//             plugins: {
-//                 title: {
-//                     display: true,
-//                     text: title,
-//                 },
-//             },
-//             responsive: true,
-//             interaction: {
-//             intersect: false,
-//             },
-//             scales: {
-//             x: {
-//                 stacked: true,
-//             },
-//             y: {
-//                 stacked: true
-//             }
-//             }
-//         }
-//     };
-//     // Get the chart element
-//     const ctx = document.getElementById(element_id);
-//     // Setup chart.js
-//     layout.chart = new Chart(ctx as HTMLCanvasElement, config as any);
-// }
 
 function getGraphDataAtTime(data: DataSet[], slider: number[]): {
     label: string,
@@ -258,17 +217,8 @@ function getGraphDataAtTime(data: DataSet[], slider: number[]): {
     }
 }
 
-function drawGraph(data: DataSet[], slider: number[]) {
-    // slider is either length 1 or 2
-    // 2 => DataSet must be reformatted to a cumulative value unless slider[0] is first value
-
-    if (slider.length == 0) {
-
-    }
-}
-
 function setupCharts(data: GraphData) {
-    _rawData = data;
+    if (!data) return;
     // if selected_metrics is empty, set to default
     if (selected_metrics.length == 0) {
         selected_metrics = ["dealt:loss_value"].map((name) => {return {value: name, label: name}});
@@ -296,12 +246,14 @@ function setupCharts(data: GraphData) {
     turnValues = isAnyCumulative ? response.time : [response.time[0]];
     dataSets = response.data;
 
+    console.log("Day " + response.time[0]);
+
     let trace: {
         label: string,
         data: number[],
         backgroundColor: string,
         stack: string,
-    }[] = getGraphDataAtTime(dataSets, [1]);
+    }[] = getGraphDataAtTime(dataSets, [0]);
     
 
 
@@ -320,6 +272,10 @@ function setupCharts(data: GraphData) {
         type: 'bar',
         data: chartData,
         options: {
+            maintainAspectRatio: false,
+            animation: {
+                duration: 0
+            },
             plugins: {
                 title: {
                     display: true,
@@ -351,6 +307,7 @@ function setupCharts(data: GraphData) {
     console.log("Created chart");
 
     let format = response.is_turn ? formatTurnsToDate : formatDaysToDate;
+    let density = response.is_turn ? 60 : 5;
     let config: Options = {
         start: turnValues,
         connect: true,
@@ -365,36 +322,34 @@ function setupCharts(data: GraphData) {
         },
         pips: {
             mode: 'steps',
-            density: 5,
+            density: density,
             format: {
                 to: value => format(value)
             },
             filter: (value, type) => {
-                return value % 5 ? 0 : 2;
+                return value % density ? 0 : 2;
             }
         }
     };
     let sliderOrNull: API = sliderElement.noUiSlider;
     if (sliderOrNull) {
-        console.log("update slider");
-        sliderOrNull.updateOptions(config, false);
-    } else {
-        console.log("create slider");
-        noUiSlider.create(sliderElement, config);
-
-        sliderElement.noUiSlider.on('set', (values: string[]) => {
-            let myChart = Chart.getChart(chartElem);
-            if (!myChart) return;
-            let stepSize = sliderElement.noUiSlider.options.step || 1;
-            let minValue = Number(sliderElement.noUiSlider.options.range.min);
-            let indices = values.map(value => Math.round((Number(value) - minValue) / stepSize));
-            let trace = getGraphDataAtTime(dataSets, indices);
-            myChart.data.datasets.forEach((dataset, i) => {
-                dataset.data = trace[i].data;
-            });
-            myChart.update();
-        });
+        sliderOrNull.destroy();
     }
+    console.log("create slider");
+    noUiSlider.create(sliderElement, config);
+
+    sliderElement.noUiSlider.on('set', (values: string[]) => {
+        let myChart = Chart.getChart(chartElem);
+        if (!myChart) return;
+        let stepSize = sliderElement.noUiSlider.options.step || 1;
+        let minValue = Number(sliderElement.noUiSlider.options.range.min);
+        let indices = values.map(value => Math.round((Number(value) - minValue) / stepSize));
+        let trace = getGraphDataAtTime(dataSets, indices);
+        myChart.data.datasets.forEach((dataset, i) => {
+            dataset.data = trace[i].data;
+        });
+        myChart.update();
+    });
 }
 
 interface DataSet {
@@ -422,6 +377,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
     }
 
     let normalizeAny = metrics.reduce((a, b) => a || b.normalize, false);
+    let stackByAlliance = !normalizeAny && metrics.length == 1;
     let metric_ids: number[] = [];
     let metric_indexes: number[] = [];
     let metric_is_turn: boolean[] = [];
@@ -450,7 +406,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
     }
 
     let isAnyTurn = metric_is_turn.reduce((a, b) => a || b);
-    let len = metrics.length == 1 ? alliance_ids.length : /* sum of each coalitions length */ alliance_ids.reduce((a, b) => a + b.length, 0);
+    let len = metrics.length == 1 ? alliance_ids.length : data.coalitions.length * metrics.length;
     let allianceSets: Set<number>[] = alliance_ids.map(id => new Set(id));
 
     let dataBeforeNormalize: [
@@ -474,11 +430,14 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
         let day_start = coalition.day.range[0];
         let col_time_min = isAnyTurn ? turn_start : day_start;
         let col_time_max = isAnyTurn ? coalition.turn.range[1] : coalition.day.range[1];
-
+        let numAlliances = coalition.alliance_ids.reduce((count, id) => allowed_alliances.has(id) ? count + 1 : count, 0);
+        let palette: Palette = Object.keys(Palette).map(Number).indexOf(i);
+        let colorLen = stackByAlliance ? numAlliances : metrics.length;
+        let colors = colorLen > 1 ? generateColors(d3, colorLen, palette) : ['rgb(' + palettePrimary[i] + ')'];
+        let colorIndex = 0;
         for (let j = 0; j < coalition.alliance_ids.length; j++) {
             let alliance_id = coalition.alliance_ids[j];
             if (!allowed_alliances.has(alliance_id)) continue;
-            console.log("alliance_id " + i + ": " + alliance_id);
             let name = coalition.alliance_names[j];
             
             // metric -> city
@@ -489,11 +448,10 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                 let dataI = turnOrDay2 - time_min;
                 let dataColI = turnOrDay2 - col_time_min;
                 let turnI = isAnyTurn ? (dataColI) : (dataColI) * 12;
-                let dayI = isAnyTurn ? (dataColI) / 12 : (dataColI);
+                let dayI = isAnyTurn ? Math.floor((dataColI) / 12) : (dataColI);
 
                 for (let k = 0; k < metrics.length; k++) {
                     let dataSetIndex = jUsed * metrics.length + k;
-                    console.log("INDEX " + dataSetIndex);
                     let is_turn = metric_is_turn[k];
                     if (!is_turn && last_day == dayI) continue;
                     let metricI = is_turn ? turnI : dayI;
@@ -508,8 +466,8 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                     if (!dataSet) {
                         dataSet = dataBeforeNormalize[dataSetIndex] = [
                             i,
-                            name, 
-                            `rgb(${i == 0 ? 255 : 0}, ${i == 1 ? 255 : 0}, ${i == 2 ? 255 : 0})`, 
+                            (stackByAlliance ? name : coalition.name) + (metrics.length > 1 ? "(" + metrics[k].name + ")" : ""),
+                            colors[colorIndex + k], 
                             new Array(dataSetTimeLen),
                             normalizeAny ? new Array(dataSetTimeLen) : null
                         ];
@@ -525,53 +483,55 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                             counts = dataSet[4][dataI] = new Array(maxCity - minCity + 1).fill(0);
                         }
                     }
+                    let normalize = metric_normalize[k];
+                    if (normalize != -1) {
+                        let nation_counts_by_day = coalition.day.data[0][j];
+                        if (!nation_counts_by_day) {
+                            continue;
+                        }
+                        let nation_counts = nation_counts_by_day[dayI];
+                        if (!nation_counts || nation_counts.length == 0) {
+                            continue;
+                        }
+                        if (normalize == 0) {
+                            for (let l = 0; l < counts.length; l++) {
+                                // let city = coalition.cities[l];
+                                let value = nation_counts[l];
+                                counts[l] += value;
+                            }
+                        } else {
+                            for (let l = 0; l < counts.length; l++) {
+                                let city = coalition.cities[l];
+                                let value = nation_counts[l];
+                                counts[l] += value * city * normalize;
+                            }
+                        }
+                    }
 
                     let metric_id = metric_ids[k];
                     let metric_index = metric_indexes[k];
                     let value_by_time = (is_turn ? coalition.turn.data[metric_index][j] : coalition.day.data[metric_index][j]);
-                    if (!value_by_time) {
-                        continue;
-                    }
-                    let value_by_city = value_by_time[metricI];
-                    if (!value_by_city || value_by_city.length == 0) {
-                        continue;
-                    }
-                    if (isCumulative) {
-                        for (let l = 0; l < value_by_city.length; l++) {
-                            let city = coalition.cities[l];
-                            let value = value_by_city[l];
-                            aaBuffer[city - minCity] += value;
-                        }
-                    } else {
-                        for (let l = minCity; l < coalition.cities[0]; l++) {
-                            aaBuffer[l - minCity] = 0;
-                        }
-                        for (let l = coalition.cities[coalition.cities.length - 1] + 1; l <= maxCity; l++) {
-                            aaBuffer[l - minCity] = 0;
-                        }
-                        for (let l = 0; l < value_by_city.length; l++) {
-                            let city = coalition.cities[l];
-                            let value = value_by_city[l];
-                            aaBuffer[city - minCity] = value;
-                        }
-                    }
-                    let normalize = metric_normalize[k];
-                    if (normalize != -1) {
-                        let nation_counts_by_day = coalition.day.data[0][j];
-                        if (!nation_counts_by_day) continue;
-                        let nation_counts = nation_counts_by_day[dayI];
-                        if (!nation_counts || nation_counts.length == 0) continue;
-                        if (normalize == 0) {
-                            for (let l = 0; l < nation_counts.length; l++) {
-                                let city = coalition.cities[l];
-                                let value = value_by_city[l];
-                                counts[city - minCity] += value;
-                            }
-                        } else {
-                            for (let l = 0; l < nation_counts.length; l++) {
-                                let city = coalition.cities[l];
-                                let value = value_by_city[l];
-                                counts[city - minCity] += value * city * normalize;
+                    if (value_by_time && value_by_time.length != 0) {
+                        let value_by_city = value_by_time[metricI];
+                        if (value_by_city && value_by_city.length != 0) {
+                            if (isCumulative) {
+                                for (let l = 0; l < value_by_city.length; l++) {
+                                    let city = coalition.cities[l];
+                                    let value = value_by_city[l];
+                                    aaBuffer[l] += value;
+                                }
+                            } else {
+                                for (let l = minCity; l < coalition.cities[0]; l++) {
+                                    aaBuffer[l - minCity] = 0;
+                                }
+                                for (let l = coalition.cities[coalition.cities.length - 1] + 1; l <= maxCity; l++) {
+                                    aaBuffer[l - minCity] = 0;
+                                }
+                                for (let l = 0; l < value_by_city.length; l++) {
+                                    let city = coalition.cities[l];
+                                    let value = value_by_city[l];
+                                    aaBuffer[city - minCity] = value;
+                                }
                             }
                         }
                     }
@@ -581,16 +541,15 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                 }
                 last_day = dayI;
             }
+            colorIndex++;
+            if (stackByAlliance) {
+                jUsed++;
+            }
+        }
+        if (!stackByAlliance) {
             jUsed++;
         }
     }
-
-    console.log("ORIGINAL")
-    console.log(_rawData.coalitions[0].alliance_ids[1]);
-    console.log(_rawData.coalitions[0].day.data);
-    console.log("dataBeforeNormalize");
-    console.log(dataBeforeNormalize[1][1]);
-    console.log(dataBeforeNormalize[1][3]);
 
     let response: DataSet[] = new Array(len);
     for (let i = 0; i < dataBeforeNormalize.length; i++) {
@@ -603,7 +562,8 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                 if (k > 0) {
                     dataK = data[k - 1];
                 }
-            } else if (counts) {
+            }
+            if (dataK && dataK.length > 0 && counts) {
                 let countsK = counts[k];
                 for (let j = 0; j < dataK.length; j++) {
                     dataK[j] = dataK[j] / countsK[j];
@@ -721,17 +681,20 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                 <div class="mt-3 mb-5" style="position: relative; z-index: 1;" bind:this={sliderElement}></div>
             </div>
             <div class="select-compact mb-2" style="position: relative; z-index: 3;">
-                <Select multiple items={items} on:change={handleMetricsChange} bind:value={selected_metrics} showChevron={true}>
+                <Select multiple items={items} bind:value={selected_metrics} showChevron={true}>
                     <div class="empty" slot="empty">{maxItems ? 'Max 4 items' : 'No options'}</div>
                 </Select>
             </div>
             <span class="fw-bold">Per Unit or Nation:</span>
-            <input class="form-check-input" type="checkbox" id="inlineCheckbox1" value="option1" bind:checked={normalize} on:change={handleCheckbox}>
+            <input class="form-check-input" style="position: relative; z-index: 2;" type="checkbox" id="inlineCheckbox1" value="option1" bind:checked={normalize} on:change={handleCheckbox}>
             
         </div>
     </div>
-    <div class="container">
-        <canvas id="myChart" width="400" height="200"></canvas>
+    <div class="container-fluid m0 p0">
+        <div class="chart-container" style="position: relative; height:80vh; width:100%;">
+            <canvas id="myChart"></canvas>
+        </div>
+        <!-- <canvas id="myChart" width="400" height="400"></canvas> -->
     </div>
 </div>
 <Footer />
