@@ -615,59 +615,37 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
 <Sidebar />
 <div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
     <div class="row m-0 p-0">
-        <div class="col-12">
+        <div class="col-12 m-0 p-0">
     <h1>
         <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
         {#if _rawData?.wiki}
             <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
-            <hr class="mt-1">
         {/if}
     </h1>
-    <ul class="nav nav-tabs nav-fill m-0 p-0">
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=coalition" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-cookie"></i>&nbsp;Coalition
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=alliance" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=nation" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold bg-light">
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;Bubble/Time
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
-            </button>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
-                <i class="bi bi-share-fill"></i>&nbsp;Web
-            </a>
-        </li>
-    </ul>
+    <hr class="mt-1">
+    <div class="row p-0 m-0">
+        <a href="conflict?id={conflictId}&layout=coalition" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            ◑&nbsp;Coalition
+        </a>
+        <a href="conflict?id={conflictId}&layout=alliance" class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            𖣯&nbsp;Alliance
+        </a>
+        <a href="conflict?id={conflictId}&layout=nation" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            ♟&nbsp;Nation
+        </a>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering/?id={conflictId}">
+            📊&nbsp;Tier/Time
+        </a>
+        <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
+            📈&nbsp;Bubble/Time
+        </button>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord/?id={conflictId}">
+            🌐&nbsp;Web
+        </a>
     </div>
     </div>
-    <div class="row m-0 p-0 bg-light border-bottom border-3" style="min-height: 116px">
+    </div>
+    <div class="row m-0 p-0 bg-light-subtle border-bottom border-3" style="min-height: 116px">
         <div class="col-12">
     <div style="width: calc(100% - 30px);margin-left:15px;" >
         <div class="mt-3 mb-5" style="position: relative; z-index: 1;" bind:this={sliderElement}></div>

@@ -603,58 +603,37 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
 </svelte:head>
 <Navbar />
 <Sidebar />
-<div class="container-fluid" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
     <div class="row m-0 p-0">
-        <div class="col-12">
+        <div class="col-12 m-0 p-0">
             <h1><a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict Tiering: {conflictName}</h1>
+            <hr class="mt-1">
             <!-- The tabs -->
-            <ul class="nav nav-tabs nav-fill m-0 p-0">
-                <li class="nav-item me-1">
-                    <a href="conflict?id={conflictId}&layout=coalition" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                        <i class="bi bi-cookie"></i>&nbsp;Coalition
-                    </a>
-                </li>
-                <li class="nav-item me-1">
-                    <a href="conflict?id={conflictId}&layout=alliance" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                        <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
-                    </a>
-                </li>
-                <li class="nav-item me-1">
-                    <a href="conflict?id={conflictId}&layout=nation" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                        <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
-                    </a>
-                </li>
-                <li class="nav-item me-1">
-                    <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold bg-light">
-                        <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
-                    </button>
-                </li>
-                <li class="nav-item me-1">
-                    <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                        <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
-                    </button>
-                </li>
-                <li class="nav-item me-1">
-                    <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="bubble/?id={conflictId}">
-                        <i class="bi bi-bar-chart-steps"></i>&nbsp;Bubble/Time
-                    </a>
-                </li>
-                <li class="nav-item me-1">
-                    <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                        <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
-                    </button>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
-                        <i class="bi bi-share-fill"></i>&nbsp;Web
-                    </a>
-                </li>
-            </ul>
+            <div class="row p-0 m-0">
+                <a href="conflict?id={conflictId}&layout=coalition" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+                    ◑&nbsp;Coalition
+                </a>
+                <a href="conflict?id={conflictId}&layout=alliance" class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+                    𖣯&nbsp;Alliance
+                </a>
+                <a href="conflict?id={conflictId}&layout=nation" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+                    ♟&nbsp;Nation
+                </a>
+                <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
+                    📊&nbsp;Tier/Time
+                </button>
+                <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble/?id={conflictId}">
+                    📈&nbsp;Bubble/Time
+                </a>
+                <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord/?id={conflictId}">
+                    🌐&nbsp;Web
+                </a>
+            </div>
         </div>
     </div>
-    <div class="row m-0 p-0 bg-light border-bottom border-3" style="min-height: 116px">
+    <div class="row m-0 p-0 bg-light-subtle border-bottom border-3" style="min-height: 116px">
         <div class="col-12">
-            <div class="bg-light p-1 fw-bold border-bottom border-3 pb-0" style="min-height: 71px;">
+            <div class="bg-light-subtle p-1 fw-bold border-bottom border-3 pb-0" style="min-height: 71px;">
                 {#if _rawData}
                     <div class="bg-danger-subtle p-1 pb-0 mb-1">
                         {_rawData?.coalitions[0].name}:

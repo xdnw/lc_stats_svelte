@@ -137,9 +137,11 @@ try {
                 // Highlight rows based on the end date (ongoing = warning, ended <5d ago = light, ended = no color)
                 let end = data.end;
                 if (end == -1) {
-                    row.classList.add('bg-warning');
+                    row.classList.add('bg-danger-subtle');
                 } else if (end < Date.now() - 432000000) { // 432000000 = 5 days in milliseconds
-                    row.classList.add('bg-light');
+                    row.classList.add('bg-light-subtle');
+                } else {
+                    row.classList.add('bg-warning-subtle');
                 }
             },
             sort: sort
