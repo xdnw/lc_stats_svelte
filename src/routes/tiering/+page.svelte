@@ -33,7 +33,7 @@ let dataSets: DataSet[];
  */
  let _rawData: GraphData;
 
-let selected_metrics: { value: string, label: string }[] = ["soldier","tank","aircraft","ship"].map((name) => {return {value: name, label: name}});
+let selected_metrics: { value: string, label: string }[] = ["nation"].map((name) => {return {value: name, label: name}});
 $: maxItems = selected_metrics?.length === 4;
 $: items = maxItems || !_rawData ? [] : [..._rawData.metric_names.map((name) => {return {value: name, label: name}})];
 $: {
