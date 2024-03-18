@@ -144,7 +144,7 @@ let _chartLayouts: {[key: string]: {
     normalize: boolean
 }} = {
     "tiering": {
-        metrics: ["NATION"],
+        metrics: ["nation"],
         normalize: false,
     },
     "mmr": {
@@ -159,10 +159,6 @@ let _chartLayouts: {[key: string]: {
         metrics: ["infra"],
         normalize: true,
     },
-    "beige %": {
-        metrics: ["beige"],
-        normalize: true,
-    },
     "damage": {
         metrics: ["loss:loss_value", "dealt:loss_value"],
         normalize: true,
@@ -171,21 +167,18 @@ let _chartLayouts: {[key: string]: {
         metrics: ["off:wars_won","def:wars_won"],
         normalize: false,
     },
-    "off wars": {
-        metrics: ["off:wars"],
-        normalize: false,
-    },
-    // Not enabled as I dont have spy data for past conflicts yet
-    // "avg_spies": {
-    //     metrics: ["BEIGE"],
-    //     normalize: true,
-    //     chart: null
-    // },
-    // "spies": {
-    //     metrics: ["BEIGE"],
-    //     normalize: false,
-    //     chart: null
-    // }
+}
+
+function setLayout(name: string) {
+    let layout = _chartLayouts[name];
+    if (layout && _rawData) {
+        selected_metrics = layout.metrics.map((name) => {return {value: name, label: name}});
+        normalize = layout.normalize;
+        previous_normalize = normalize;
+        setQueryParam('selected', selected_metrics.map((metric) => metric.value).join('.'));
+        setQueryParam('normalize', normalize ? 1 : null);
+        setupCharts(_rawData);
+    }
 }
 
 function getGraphDataAtTime(data: DataSet[], slider: number[]): {
@@ -677,17 +670,30 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                     </div>
                 {/if}
             </div>
-            <div style="width: calc(100% - 30px);margin-left:15px;" >
-                <div class="mt-3 mb-5" style="position: relative; z-index: 1;" bind:this={sliderElement}></div>
+            <div style="width: calc(100% - 30px);margin-left:15px;position: relative; z-index: 1;">
+                <div class="mt-3 mb-5" bind:this={sliderElement}></div>
             </div>
-            <div class="select-compact mb-2" style="position: relative; z-index: 3;">
+            <div class="select-compact mb-1" style="position: relative; z-index: 3;">
                 <Select multiple items={items} bind:value={selected_metrics} showChevron={true}>
                     <div class="empty" slot="empty">{maxItems ? 'Max 4 items' : 'No options'}</div>
                 </Select>
             </div>
-            <span class="fw-bold">Per Unit or Nation:</span>
-            <input class="form-check-input" style="position: relative; z-index: 2;" type="checkbox" id="inlineCheckbox1" value="option1" bind:checked={normalize} on:change={handleCheckbox}>
-            
+            <label for="inlineCheckbox1" style="position: relative; z-index: 2;">
+                <div class:bg-info-subtle={normalize} class:bg-light-subtle={!normalize} class="p-1 rounded d-inline-block">
+                    <span class="fw-bold">Use Percent:</span>
+                    <input class="form-check-input m-1" style="position: relative; z-index: 2;" type="checkbox" id="inlineCheckbox1" value="option1" bind:checked={normalize} on:change={handleCheckbox}>
+                </div>
+            </label>
+            {#if _rawData}
+                <div class="bg-light-subtle rounded p-1 d-inline-block" style="position: relative; z-index:2;">
+                    <span class="fw-bold">Quick Layouts:</span>
+                    {#each Object.entries(_chartLayouts) as [name, layout]}
+                        <button on:click={() => setLayout(name)} class="btn btn-sm btn-secondary btn-outline-info opacity-75 fw-bold" style="margin:-1px 1px -1px 1px;">
+                            {name}
+                        </button>
+                    {/each}
+                </div>
+            {/if}
         </div>
     </div>
     <div class="container-fluid m0 p0">
