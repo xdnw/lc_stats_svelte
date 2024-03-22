@@ -199,7 +199,7 @@ function getGraphDataAtTime(data: DataSet[], slider: number[]): {
         }));
     } else {
         return data.map((dataSet, i) => {
-            let data = dataSet.data[slider[1]].map((value, j) => value - dataSet.data[slider[0]][j]);
+            let data = dataSet.data[slider[1]].map((value, j) => value - (dataSet.data[slider[0]][j] | 0));
             return {
                 label: dataSet.label,
                 data: data,
@@ -246,7 +246,7 @@ function setupCharts(data: GraphData) {
         data: number[],
         backgroundColor: string,
         stack: string,
-    }[] = getGraphDataAtTime(dataSets, [0]);
+    }[] = getGraphDataAtTime(dataSets, isAnyCumulative ? [0, response.time[1] - response.time[0]] : [0]);
     
 
 
