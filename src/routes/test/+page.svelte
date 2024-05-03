@@ -1,6 +1,7 @@
 <svelte:head>
     <!-- Modify head -->
 	<title>Test</title>
+    <!-- set meta tab name -->
 </svelte:head>
 <script lang=ts>
 import { onMount } from "svelte";
