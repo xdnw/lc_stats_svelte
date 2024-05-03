@@ -72,6 +72,7 @@ async function handleColorCheck(): Promise<boolean> {
     if (previous_useSingleColor == useSingleColor) return false;
     previous_useSingleColor = useSingleColor;
     if (_rawData) {
+        setQueryParam('unicolor', useSingleColor ? 1 : null);
         setupCharts(_rawData);
     }
     return true;
@@ -116,6 +117,10 @@ function loadQueryParams(params: URLSearchParams) {
     let normalizeStr = params.get('normalize');
     if (normalizeStr && !isNaN(+normalizeStr)) {
         normalize = (+normalizeStr) == 1;
+    }
+    let unicolorStr = params.get('unicolor');
+    if (unicolorStr && !isNaN(+unicolorStr)) {
+        useSingleColor = (+unicolorStr) == 1;
     }
 }
 
@@ -439,7 +444,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
         let col_time_max = isAnyTurn ? coalition.turn.range[1] : coalition.day.range[1];
         let numAlliances = coalition.alliance_ids.reduce((count, id) => allowed_alliances.has(id) ? count + 1 : count, 0);
         let palette: Palette = Object.keys(Palette).map(Number).indexOf(i);
-        let colorLen = stackByAlliance && !useSingleColor ? numAlliances : metrics.length;
+        let colorLen = useSingleColor ? 1 : stackByAlliance ? numAlliances : metrics.length;
         let colors = colorLen > 1 ? generateColors(d3, colorLen, palette) : ['rgb(' + palettePrimary[i] + ')'];
         let colorIndex = 0;
         for (let j = 0; j < coalition.alliance_ids.length; j++) {
@@ -474,7 +479,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                         dataSet = dataBeforeNormalize[dataSetIndex] = [
                             i,
                             (stackByAlliance ? name : coalition.name) + (metrics.length > 1 ? "(" + metrics[k].name + ")" : ""),
-                            colors[colorIndex + k], 
+                            colors[useSingleColor ? 0 : colorIndex + k], 
                             new Array(dataSetTimeLen),
                             normalizeAny ? new Array(dataSetTimeLen) : null
                         ];
@@ -548,7 +553,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                 }
                 last_day = dayI;
             }
-            if (!useSingleColor) colorIndex++;
+            colorIndex++;
             if (stackByAlliance) {
                 jUsed++;
             }

@@ -705,11 +705,10 @@ function setupTable(containerElem: HTMLElement,
 			(e.target as any).oldParent.append(e.target);
 		}
         // get names of column names visible
-        let visibleColumns = table.columns().indexes().filter( function ( idx ) {
-            return table.column( idx ).visible();
-        }).map(function ( idx ) {
-            return dataColumns[idx];
-        }).toArray();
+        let visibleColumns = table.columns().indexes()
+            .filter((idx: number) => table.column(idx).visible())
+            .map((idx: number) => dataColumns[idx])
+            .toArray();
         setQueryParam("columns", visibleColumns.join("."));
     });
 
