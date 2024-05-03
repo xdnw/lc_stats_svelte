@@ -9,7 +9,7 @@ import type { API,Options } from 'nouislider';
 import { Chart, registerables, type ChartConfiguration } from 'chart.js';
 Chart.register(...registerables);
 import { onMount, tick } from 'svelte'; 
-import { decompressBson, formatTurnsToDate, htmlToElement, type GraphData, type TierMetric, arrayEquals, setQueryParam, UNITS_PER_CITY, formatDate, formatDaysToDate, Palette, palettePrimary, generateColors, darkenColor } from '$lib';
+import { decompressBson, formatTurnsToDate, htmlToElement, type GraphData, type TierMetric, arrayEquals, setQueryParam, UNITS_PER_CITY, formatDate, formatDaysToDate, Palette, palettePrimary, generateColors, darkenColor, colorPalettes } from '$lib';
 import { config } from '../+layout';
 import Select from 'svelte-select';
 import * as d3 from 'd3';
@@ -21,6 +21,10 @@ let conflictId = -1;
 
 let normalize: boolean = false;
 let previous_normalize: boolean = false;
+
+let useSingleColor: boolean = false;
+let previous_useSingleColor: boolean = false;
+
 let sliderElement: HTMLDivElement;
 let turnValues: number[];
 
@@ -52,12 +56,22 @@ function handleMetricsChange() {
     }
 }
 
-async function handleCheckbox(): Promise<boolean> {
+async function handlePercentCheck(): Promise<boolean> {
     await tick();
     if (previous_normalize == normalize) return false;
     previous_normalize = normalize;
     if (_rawData) {
         setQueryParam('normalize', normalize ? 1 : null);
+        setupCharts(_rawData);
+    }
+    return true;
+}
+
+async function handleColorCheck(): Promise<boolean> {
+    await tick();
+    if (previous_useSingleColor == useSingleColor) return false;
+    previous_useSingleColor = useSingleColor;
+    if (_rawData) {
         setupCharts(_rawData);
     }
     return true;
@@ -425,7 +439,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
         let col_time_max = isAnyTurn ? coalition.turn.range[1] : coalition.day.range[1];
         let numAlliances = coalition.alliance_ids.reduce((count, id) => allowed_alliances.has(id) ? count + 1 : count, 0);
         let palette: Palette = Object.keys(Palette).map(Number).indexOf(i);
-        let colorLen = stackByAlliance ? numAlliances : metrics.length;
+        let colorLen = stackByAlliance && !useSingleColor ? numAlliances : metrics.length;
         let colors = colorLen > 1 ? generateColors(d3, colorLen, palette) : ['rgb(' + palettePrimary[i] + ')'];
         let colorIndex = 0;
         for (let j = 0; j < coalition.alliance_ids.length; j++) {
@@ -534,7 +548,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                 }
                 last_day = dayI;
             }
-            colorIndex++;
+            if (!useSingleColor) colorIndex++;
             if (stackByAlliance) {
                 jUsed++;
             }
@@ -660,7 +674,13 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
             <label for="inlineCheckbox1" style="position: relative; z-index: 2;">
                 <div class:bg-info-subtle={normalize} class:bg-light-subtle={!normalize} class="p-1 rounded d-inline-block">
                     <span class="fw-bold">Use Percent:</span>
-                    <input class="form-check-input m-1" style="position: relative; z-index: 2;" type="checkbox" id="inlineCheckbox1" value="option1" bind:checked={normalize} on:change={handleCheckbox}>
+                    <input class="form-check-input m-1" style="position: relative; z-index: 2;" type="checkbox" id="inlineCheckbox1" value="option1" bind:checked={normalize} on:change={handlePercentCheck}>
+                </div>
+            </label>
+            <label for="inlineCheckbox2" style="position: relative; z-index: 2;">
+                <div class:bg-info-subtle={useSingleColor} class:bg-light-subtle={!useSingleColor} class="p-1 rounded d-inline-block">
+                    <span class="fw-bold">Single Color:</span>
+                    <input class="form-check-input m-1" style="position: relative; z-index: 2;" type="checkbox" id="inlineCheckbox2" value="option1" bind:checked={useSingleColor} on:change={handleColorCheck}>
                 </div>
             </label>
             {#if _rawData}

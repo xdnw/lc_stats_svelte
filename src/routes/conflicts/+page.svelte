@@ -8,7 +8,7 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { decompressBson, modalWithCloseButton, setupContainer, addFormatters, downloadTableData } from '$lib';
+import { decompressBson, modalWithCloseButton, setupContainer, addFormatters, downloadTableData, type TableData } from '$lib';
 
 let _currentRowData: TableData;
 

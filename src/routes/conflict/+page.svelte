@@ -6,7 +6,7 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells } from '$lib';
+import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells, downloadTableData } from '$lib';
 import { config } from '../+layout';
 // Layout tabs
 enum Layout {
@@ -268,6 +268,11 @@ function loadLayoutFromQuery(query: URLSearchParams) {
     if (order) {
         _layoutData.order = order;
     }
+    let columns = query.get('columns');
+    if (columns) {
+        // split by .
+        _layoutData.columns = columns.split(".");
+    }
 }
 
 // Create (or recreate) the table based on the current layout (_layoutData)
@@ -356,14 +361,7 @@ onMount(() => {
     }
 
     (window as any).download = function download(useClipboard: boolean = false) {
-        if (!_currentRowData) {
-            modalStrWithCloseButton("Error", "No data to download");
-            return;
-        }
-        let visibleColumns = _currentRowData.visible.map(index => _currentRowData.columns[index]);
-        let data: any[][] = _currentRowData.data.map(row => _currentRowData.visible.map(index => row[index]));
-        data.unshift(visibleColumns);
-        downloadCells(data, useClipboard);
+        downloadTableData(_currentRowData, useClipboard);
     }
 
     // Read the query string to get the conflict id as well as the table layout (if present)
@@ -381,6 +379,8 @@ onMount(() => {
 function handleClick(event: MouseEvent): void {
     _layoutData.layout = parseInt((event.target as HTMLButtonElement).getAttribute("data-bs-layout") as string);
     setQueryParam('layout', _layoutData.layout);
+    setQueryParam('sort', null);
+    setQueryParam('columns', null);
     loadCurrentLayout();
 }
 // Load the forum post metadata (from the s3 json) into the timeline (vis.js)
@@ -481,6 +481,7 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
             _layoutData.columns = layouts[key].columns;
             _layoutData.sort = layouts[key].sort;
             setQueryParam('sort', _layoutData.sort);
+            setQueryParam('columns', _layoutData.columns.join("."));
             loadCurrentLayout();
         }}>{key}</button>
         </li>
