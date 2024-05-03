@@ -8,7 +8,7 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { decompressBson, modalWithCloseButton, setupContainer, addFormatters, downloadTableData, type TableData } from '$lib';
+import { decompressBson, modalWithCloseButton, setupContainer, addFormatters, downloadTableData, type TableData, type ExportType, ExportTypes } from '$lib';
 
 let _currentRowData: TableData;
 
@@ -68,8 +68,8 @@ try {
         return result;
     }
 
-    (window as any).download = function download(useClipboard: boolean, delimeter: string) {
-        downloadTableData(_currentRowData, useClipboard, delimeter);
+    (window as any).download = function download(useClipboard: boolean, type: string) {
+        downloadTableData(_currentRowData, useClipboard, ExportTypes[type as keyof typeof ExportTypes]);
     }
 
     // Url of s3 bucket

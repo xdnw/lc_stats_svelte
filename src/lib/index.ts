@@ -59,7 +59,27 @@ export interface TableData {
     sort: [number, string]
 }
 
-export function downloadTableData(_currentRowData: TableData, useClipboard: boolean, delimeter: string) {
+// delimiter, file extension and Internet media type for csv and tsv
+export interface ExportType {
+    delimiter: string,
+    ext: string,
+    mime: string
+}
+
+export const ExportTypes = {
+    CSV: {
+        delimiter: ',',
+        ext: 'csv',
+        mime: 'text/csv'
+    },
+    TSV: {
+        delimiter: '\t',
+        ext: 'csv',
+        mime: 'text/tab-separated-values'
+    }
+}
+
+export function downloadTableData(_currentRowData: TableData, useClipboard: boolean, type: ExportType) {
     if (!_currentRowData) {
         modalStrWithCloseButton("Error", "No data to download");
         return;
@@ -67,11 +87,11 @@ export function downloadTableData(_currentRowData: TableData, useClipboard: bool
     let visibleColumns = _currentRowData.visible.map(index => _currentRowData.columns[index]);
     let data: any[][] = _currentRowData.data.map(row => _currentRowData.visible.map(index => row[index]));
     data.unshift(visibleColumns);
-    downloadCells(data, useClipboard, delimeter);
+    downloadCells(data, useClipboard, type);
 }
 
-export function downloadCells(data: any[][], useClipboard: boolean, delimeter: string) {
-    let csvContent = data.map(e => e.join(delimeter)).join("\n");
+export function downloadCells(data: any[][], useClipboard: boolean, type: ExportType) {
+    let csvContent = (useClipboard ? '' : 'sep=' + type.delimiter + '\n') + data.map(e => e.join(type.delimiter)).join("\n");
 
     if (useClipboard) {
         navigator.clipboard.writeText(csvContent).then(() => {
@@ -82,7 +102,7 @@ export function downloadCells(data: any[][], useClipboard: boolean, delimeter: s
         modalStrWithCloseButton("Copied to clipboard", "The data for the currently selected columns has been copied to your clipboard.");
     } else {
         // Create a blob from the CSV content
-        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        let blob = new Blob([csvContent], { type: type.mime + ';charset=utf-8;' });
 
         // Create a link element
         let link = document.createElement("a");
@@ -91,7 +111,7 @@ export function downloadCells(data: any[][], useClipboard: boolean, delimeter: s
             // Browsers that support HTML5 download attribute
             let url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            link.setAttribute("download", "data.csv");
+            link.setAttribute("download", "data." + type.ext);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
             link.click();
@@ -480,10 +500,10 @@ function addTable(container: HTMLElement, id: string) {
     Export
     </button>
     <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, ',')"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, ',')"><kbd><i class="bi bi-copy"></i> ,</kbd> Copy CSV</button></li>
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, '\t')"><kbd><i class="bi bi-download"></i><i class="bi bi-indent"></i></kbd> Download TSV</button></li>
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, '\t')"><kbd><i class="bi bi-copy"></i><i class="bi bi-indent"></i></kbd> Copy TSV</button></li>
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, 'CSV')"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, 'CSV')"><kbd><i class="bi bi-copy"></i> ,</kbd> Copy CSV</button></li>
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, 'TSV')"><kbd><i class="bi bi-download"></i><i class="bi bi-indent"></i></kbd> Download TSV</button></li>
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, 'TSV')"><kbd><i class="bi bi-copy"></i><i class="bi bi-indent"></i></kbd> Copy TSV</button></li>
     </ul>
     </div>`));
     container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol"></div>`));

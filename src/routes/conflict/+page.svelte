@@ -6,7 +6,7 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells, downloadTableData } from '$lib';
+import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells, downloadTableData, type ExportType, ExportTypes } from '$lib';
 import { config } from '../+layout';
 // Layout tabs
 enum Layout {
@@ -360,9 +360,8 @@ onMount(() => {
         return button.outerHTML;
     }
 
-    (window as any).download = function download(useClipboard: boolean, delimeter: string) {
-        console.log("Delimeter " + delimeter);
-        downloadTableData(_currentRowData, useClipboard, delimeter);
+    (window as any).download = function download(useClipboard: boolean, type: string) {
+        downloadTableData(_currentRowData, useClipboard, ExportTypes[type as keyof typeof ExportTypes]);
     }
 
     // Read the query string to get the conflict id as well as the table layout (if present)
