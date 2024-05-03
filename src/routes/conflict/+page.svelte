@@ -360,8 +360,9 @@ onMount(() => {
         return button.outerHTML;
     }
 
-    (window as any).download = function download(useClipboard: boolean = false) {
-        downloadTableData(_currentRowData, useClipboard);
+    (window as any).download = function download(useClipboard: boolean, delimeter: string) {
+        console.log("Delimeter " + delimeter);
+        downloadTableData(_currentRowData, useClipboard, delimeter);
     }
 
     // Read the query string to get the conflict id as well as the table layout (if present)

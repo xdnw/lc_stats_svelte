@@ -59,7 +59,7 @@ export interface TableData {
     sort: [number, string]
 }
 
-export function downloadTableData(_currentRowData: TableData, useClipboard: boolean) {
+export function downloadTableData(_currentRowData: TableData, useClipboard: boolean, delimeter: string) {
     if (!_currentRowData) {
         modalStrWithCloseButton("Error", "No data to download");
         return;
@@ -67,11 +67,11 @@ export function downloadTableData(_currentRowData: TableData, useClipboard: bool
     let visibleColumns = _currentRowData.visible.map(index => _currentRowData.columns[index]);
     let data: any[][] = _currentRowData.data.map(row => _currentRowData.visible.map(index => row[index]));
     data.unshift(visibleColumns);
-    downloadCells(data, useClipboard);
+    downloadCells(data, useClipboard, delimeter);
 }
 
-export function downloadCells(data: any[][], useClipboard: boolean) {
-    let csvContent = data.map(e => e.join(",")).join("\n");
+export function downloadCells(data: any[][], useClipboard: boolean, delimeter: string) {
+    let csvContent = data.map(e => e.join(delimeter)).join("\n");
 
     if (useClipboard) {
         navigator.clipboard.writeText(csvContent).then(() => {
@@ -79,7 +79,7 @@ export function downloadCells(data: any[][], useClipboard: boolean) {
         }).catch((err) => {
             console.error("Failed to copy to clipboard", err);
         });
-        modalStrWithCloseButton("Copied to clipboard", "The data has been copied to your clipboard");
+        modalStrWithCloseButton("Copied to clipboard", "The data for the currently selected columns has been copied to your clipboard.");
     } else {
         // Create a blob from the CSV content
         let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -97,7 +97,7 @@ export function downloadCells(data: any[][], useClipboard: boolean) {
             link.click();
             document.body.removeChild(link);
         }
-        modalStrWithCloseButton("Download starting", "If the download does not start, please check your browser settings, or try the clipboard button instead");
+        modalStrWithCloseButton("Download starting", "The data for the currently selected columns should begind downloading. If the download does not start, please check your browser settings, or try the clipboard button instead");
     }
 }
 
@@ -475,10 +475,17 @@ export function setupContainer(container: HTMLElement, data: TableData) {
 function addTable(container: HTMLElement, id: string) {
     container.appendChild(htmlToElement(`<button class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-info opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
     <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
-    container.appendChild(htmlToElement(`<button onclick="download(false)" class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-success fw-bold" type="button">
-    <i class="bi bi-filetype-csv"></i>&nbsp;Download</button>`));
-    container.appendChild(htmlToElement(`<button onclick="download(true)" class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-success fw-bold" type="button">
-    <i class="bi bi-copy"></i>&nbsp;Copy</button>`));
+    container.appendChild(htmlToElement(`<div class="dropdown d-inline">
+    <button class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-success fw-bold dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+    Export
+    </button>
+    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, ',')"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, ',')"><kbd><i class="bi bi-copy"></i> ,</kbd> Copy CSV</button></li>
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, '\t')"><kbd><i class="bi bi-download"></i><i class="bi bi-indent"></i></kbd> Download TSV</button></li>
+    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, '\t')"><kbd><i class="bi bi-copy"></i><i class="bi bi-indent"></i></kbd> Copy TSV</button></li>
+    </ul>
+    </div>`));
     container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol"></div>`));
     container.appendChild(document.createElement("hr"));
     container.appendChild(htmlToElement(`<table id="${id}" class="table compact table-bordered d-none" style="width:100%">

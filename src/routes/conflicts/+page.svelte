@@ -68,8 +68,8 @@ try {
         return result;
     }
 
-    (window as any).download = function download(useClipboard: boolean = false) {
-        downloadTableData(_currentRowData, useClipboard);
+    (window as any).download = function download(useClipboard: boolean, delimeter: string) {
+        downloadTableData(_currentRowData, useClipboard, delimeter);
     }
 
     // Url of s3 bucket
