@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { decompressBson, type Conflict, rafDelay, setQueryParam, generateColorsFromPalettes, Palette } from "$lib";
+  import { decompressBson, type Conflict, rafDelay, setQueryParam, generateColorsFromPalettes, Palette, darkenColor } from "$lib";
   import { onMount } from "svelte";
   import Navbar from "../../components/Navbar.svelte";
   import Sidebar from "../../components/Sidebar.svelte";
   import Footer from "../../components/Footer.svelte";
   import * as d3 from 'd3';
+  import { config } from "../+layout";
 
 let conflictName = "";
 let conflictId = -1;
@@ -23,7 +24,7 @@ onMount(() => {
 });
 
 function setupWebFromId(conflictId: number, queryParams: URLSearchParams) {
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
     decompressBson(url).then((data) => {
         _rawData = data;
         console.log(data);
@@ -34,7 +35,7 @@ function setupWebFromId(conflictId: number, queryParams: URLSearchParams) {
         if (header && _rawData?.war_web.headers.includes(header)) {
             _currentHeaderName = header;
         }
-        let idStr = queryParams.get('id[]');
+        let idStr = queryParams.get('ids');
         if (idStr) {
             let ids = idStr.split(".").map(id => +id);
             _allowedAllianceIds = new Set(ids);
@@ -75,7 +76,7 @@ function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
     } else {
         _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
     }
-    setQueryParam('id[]', Array.from(_allowedAllianceIds).join('.'));
+    setQueryParam('ids', Array.from(_allowedAllianceIds).join('.'));
     setupWebWithCurrentLayout();
 }
 
@@ -138,21 +139,6 @@ function setupWebWithLayout(data: Conflict, allowedAllianceIdsSet: Set<number>, 
 
 }
 
-
-function darkenColor(color: string, percentage: number): string {
-    let rgbValues = color.match(/\d+/g);
-    if (!rgbValues) {
-        throw new Error('Invalid color format');
-    }
-
-    let [r, g, b] = rgbValues.map(Number);
-
-    r = Math.floor(r * (1 - percentage / 100));
-    g = Math.floor(g * (1 - percentage / 100));
-    b = Math.floor(b * (1 - percentage / 100));
-
-    return `rgb(${r}, ${g}, ${b})`;
-}
 
 function setupChord(matrix: number[][], alliance_names: string[], colors: string[], alliance_ids: number[], coalition_ids: number[]) {
     // clear my_dataviz
@@ -312,6 +298,7 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         requestAnimationFrame(rafDelay(100, runShowIndex));
     });
     }
+
 </script>
 <svelte:head>
     <!-- <script src="https://d3js.org/d3.v6.js"></script> -->
@@ -323,52 +310,30 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
         {#if _rawData?.wiki}
             <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
-            <hr class="mt-1">
         {/if}
     </h1>
-    <ul class="nav nav-tabs nav-fill m-0 p-0">
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=coalition" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-cookie"></i>&nbsp;Coalition
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=alliance" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=nation" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="bubble/?id={conflictId}">
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;Bubble/Time
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
-            </button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold bg-light">
-                <i class="bi bi-share-fill"></i>&nbsp;Web
-            </button>
-        </li>
-    </ul>
-    <div class="bg-light p-1 fw-bold border-bottom border-3 pb-0" style="min-height: 119px;">
+    <hr class="mt-1">
+    <div class="row p-0 m-0">
+        <a href="conflict?id={conflictId}&layout=coalition" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            ◑&nbsp;Coalition
+        </a>
+        <a href="conflict?id={conflictId}&layout=alliance" class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            𖣯&nbsp;Alliance
+        </a>
+        <a href="conflict?id={conflictId}&layout=nation" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            ♟&nbsp;Nation
+        </a>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering/?id={conflictId}">
+            📊&nbsp;Tier/Time
+        </a>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble/?id={conflictId}">
+            📈&nbsp;Bubble/Time
+        </a>
+        <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
+            🌐&nbsp;Web
+        </button>
+    </div>
+    <div class="bg-light-subtle p-1 fw-bold border-bottom border-3 pb-0" style="min-height: 119px;">
     {#if _rawData}
         <span class="fw-bold">Layout Picker:</span>
         {#each _rawData.war_web.headers as header (header)}
@@ -389,13 +354,10 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         </div>
     {/if}
     </div>
-    <div class="container bg-light border">
+    <div class="container bg-light-subtle border">
         <div id="my_dataviz"></div>
         <div class="mt-1" id="myTooltip" style="min-height:15em"></div>
     </div>
     <br>
 </div>
 <Footer />
-<style>
-
-</style>

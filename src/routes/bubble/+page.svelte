@@ -6,7 +6,8 @@ import Sidebar from '../../components/Sidebar.svelte';
 import Footer from '../../components/Footer.svelte';
 import noUiSlider from 'nouislider';
 import * as d3 from 'd3';
-import { decompressBson, type Conflict, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, colorPalettes, Palette, generateColors, setQueryParam, arrayEquals } from '$lib';
+import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, Palette, generateColors, setQueryParam, arrayEquals, type TierMetric } from '$lib';
+  import { config } from '../+layout';
 
 let _rawData: GraphData;
 let conflictId: number;
@@ -34,7 +35,7 @@ function handleMetricsChange() {
     setupGraphData(_rawData);
 }
 
-  async function handleCheckbox(): Promise<boolean> {
+async function handleCheckbox(): Promise<boolean> {
     await tick();
     let normalizeBits = (normalize_x ? 1 : 0) + (normalize_y ? 2 : 0) + (normalize_z ? 4 : 0);
     if (previous_normalize == normalizeBits) return false;
@@ -72,7 +73,6 @@ function loadQueryParams(params: URLSearchParams) {
         previous_normalize = bits;
     }
 }
-
 let graphDiv: HTMLDivElement;
 onMount(async () => {
     let queryParams = new URLSearchParams(window.location.search);
@@ -115,7 +115,7 @@ onMount(async () => {
 
 function fetchConflictGraphData(conflictId: number) {
     let start = Date.now();
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip`;
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
     decompressBson(url).then((data) => {
         console.log(`Loaded ${url} in ${Date.now() - start}ms`);start = Date.now();
         conflictName = data.name;
@@ -123,12 +123,6 @@ function fetchConflictGraphData(conflictId: number) {
         setupGraphData(_rawData);
 
     });
-}
-
-interface BubbleMetric {
-    name: string,
-    cumulative: boolean,
-    normalize: boolean,
 }
 
 interface Trace {
@@ -150,7 +144,7 @@ interface Timeframe {
     is_turn: boolean
 }
 
-function getFullName(metric: BubbleMetric): string {
+function getFullName(metric: TierMetric): string {
     let fullName = metric.name;
     if (metric.cumulative) {
         fullName += ' (sum)';
@@ -161,7 +155,7 @@ function getFullName(metric: BubbleMetric): string {
     return fullName;
 }
 
-function generateTraces(data: GraphData, x_axis: BubbleMetric, y_axis: BubbleMetric, size: BubbleMetric, min_city: number, max_city: number): {
+function generateTraces(data: GraphData, x_axis: TierMetric, y_axis: TierMetric, size: TierMetric, min_city: number, max_city: number): {
         traces: {[key: number]: {[key: number]: Trace}},
         times: Timeframe, 
         ranges: Range} {
@@ -321,17 +315,17 @@ function setupGraphData(data: GraphData) {
     let metrics_copy = selected_metrics.map((metric) => metric.value);
     if (metrics_copy.length != 3) return;
     let start = Date.now();
-    let metric_x: BubbleMetric = {name: metrics_copy[0], cumulative: metrics_copy[0].includes(":"), normalize: normalize_x};
-    let metric_y: BubbleMetric = {name: metrics_copy[1], cumulative: metrics_copy[1].includes(":"), normalize: normalize_y};
-    let metric_size: BubbleMetric = {name: metrics_copy[2], cumulative: metrics_copy[2].includes(":"), normalize: normalize_z};
+    let metric_x: TierMetric = {name: metrics_copy[0], cumulative: metrics_copy[0].includes(":"), normalize: normalize_x};
+    let metric_y: TierMetric = {name: metrics_copy[1], cumulative: metrics_copy[1].includes(":"), normalize: normalize_y};
+    let metric_size: TierMetric = {name: metrics_copy[2], cumulative: metrics_copy[2].includes(":"), normalize: normalize_z};
     let tracesTime = generateTraces(data, metric_x, metric_y, metric_size, cityValues[0], cityValues[1]);
     let coalition_names = data.coalitions.map((coalition) => coalition.name);
-    let metrics: [BubbleMetric,BubbleMetric,BubbleMetric] = [metric_x, metric_y, metric_size];
+    let metrics: [TierMetric,TierMetric,TierMetric] = [metric_x, metric_y, metric_size];
     console.log(`Generated traces in ${Date.now() - start}ms`);
     createGraph(tracesTime.traces, tracesTime.times, tracesTime.ranges, coalition_names, metrics);
 }
 
-function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {start: number, end: number, is_turn: boolean}, ranges: {x: number[], y: number[], z: number[]}, coalition_names: string[], metrics: [BubbleMetric,BubbleMetric,BubbleMetric]) {
+function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {start: number, end: number, is_turn: boolean}, ranges: {x: number[], y: number[], z: number[]}, coalition_names: string[], metrics: [TierMetric,TierMetric,TierMetric]) {
         let start = Date.now();
 
         // Get the group names:
@@ -621,59 +615,37 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
 <Sidebar />
 <div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
     <div class="row m-0 p-0">
-        <div class="col-12">
+        <div class="col-12 m-0 p-0">
     <h1>
         <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
         {#if _rawData?.wiki}
             <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
-            <hr class="mt-1">
         {/if}
     </h1>
-    <ul class="nav nav-tabs nav-fill m-0 p-0">
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=coalition" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-cookie"></i>&nbsp;Coalition
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=alliance" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a href="conflict?id={conflictId}&layout=nation" class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold">
-                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold bg-light">
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;Bubble/Time
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
-            </button>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
-                <i class="bi bi-share-fill"></i>&nbsp;Web
-            </a>
-        </li>
-    </ul>
+    <hr class="mt-1">
+    <div class="row p-0 m-0">
+        <a href="conflict?id={conflictId}&layout=coalition" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            ◑&nbsp;Coalition
+        </a>
+        <a href="conflict?id={conflictId}&layout=alliance" class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            𖣯&nbsp;Alliance
+        </a>
+        <a href="conflict?id={conflictId}&layout=nation" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
+            ♟&nbsp;Nation
+        </a>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering/?id={conflictId}">
+            📊&nbsp;Tier/Time
+        </a>
+        <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
+            📈&nbsp;Bubble/Time
+        </button>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord/?id={conflictId}">
+            🌐&nbsp;Web
+        </a>
     </div>
     </div>
-    <div class="row m-0 p-0 bg-light border-bottom border-3" style="min-height: 116px">
+    </div>
+    <div class="row m-0 p-0 bg-light-subtle border-bottom border-3" style="min-height: 116px">
         <div class="col-12">
     <div style="width: calc(100% - 30px);margin-left:15px;" >
         <div class="mt-3 mb-5" style="position: relative; z-index: 1;" bind:this={sliderElement}></div>

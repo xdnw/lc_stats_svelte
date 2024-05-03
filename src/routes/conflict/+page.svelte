@@ -7,6 +7,7 @@ import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
 import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader } from '$lib';
+  import { config } from '../+layout';
 
 // Set after page load
 let conflictName = "";
@@ -278,7 +279,7 @@ function loadCurrentLayout() {
 // Load the current layout (which will create the table)
 // If there are posts, load the posts into the timeline
 function setupConflictTables(conflictId: number) {
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip`;
+    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
     decompressBson(url).then((data) => {
         _rawData = data;
         setColNames(_rawData.coalitions[0].alliance_ids, _rawData.coalitions[0].alliance_names);
@@ -434,52 +435,30 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
         <!-- Link the wiki (if it exists) -->
         {#if _rawData?.wiki}
             <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
-            <hr class="mt-1">
         {/if}
     </h1>
-    <ul class="nav nav-tabs nav-fill m-0 p-0">
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.COALITION ? "bg-light" : ""}" id="profile-pill" data-bs-layout={Layout.COALITION} on:click={handleClick}>
-                <i class="bi bi-cookie"></i>&nbsp;Coalition
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.ALLIANCE ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.ALLIANCE} on:click={handleClick}>
-                <i class="bi bi-diagram-3-fill"></i>&nbsp;Alliance
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold {_layoutData.layout == Layout.NATION ? "bg-light" : ""}" id="billing-pill" data-bs-layout={Layout.NATION} on:click={handleClick}>
-                <i class="bi bi-person-vcard-fill"></i>&nbsp;Nation
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="tiering/?id={conflictId}">
-                <i class="bi bi-bar-chart-line-fill"></i>&nbsp;Tier/Time
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Damage/Tier
-            </button>
-        </li>
-        <li class="nav-item me-1">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="bubble/?id={conflictId}">
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;Bubble/Time
-            </a>
-        </li>
-        <li class="nav-item me-1">
-            <button class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 disabled fw-bold" on:click={() => alert("Coming soon")}>
-                <i class="bi bi-bar-chart-steps"></i>&nbsp;TODO: Rank/Time
-            </button>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link ps-0 pe-0 btn btn-outline-light rounded-bottom-0 fw-bold" href="chord/?id={conflictId}">
-                <i class="bi bi-share-fill"></i>&nbsp;Web
-            </a>
-        </li>
-    </ul>
-    <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light border-bottom border-3 p-1">
+    <hr class="mt-1">
+    <div class="row p-0 m-0">
+        <button class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout == Layout.COALITION ? "bg-light-subtle border border-bottom-0" : "border-0 border-bottom"}" id="profile-pill" data-bs-layout={Layout.COALITION} on:click={handleClick}>
+            ◑&nbsp;Coalition
+        </button>
+        <button class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout == Layout.ALLIANCE ? "bg-light-subtle border border-bottom-0" : "border-0 border-bottom"}" id="billing-pill" data-bs-layout={Layout.ALLIANCE} on:click={handleClick}>
+            𖣯&nbsp;Alliance
+        </button>
+        <button class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout == Layout.NATION ? "bg-light-subtle border border-bottom-0" : "border-0 border-bottom"}" id="billing-pill" data-bs-layout={Layout.NATION} on:click={handleClick}>
+            ♟&nbsp;Nation
+        </button>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering/?id={conflictId}">
+            📊&nbsp;Tier/Time
+        </a>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble/?id={conflictId}">
+            📈&nbsp;Bubble/Time
+        </a>
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord/?id={conflictId}">
+            🌐&nbsp;Web
+        </a>
+    </div>
+    <ul class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light-subtle border-bottom border-3 p-1">
     <li>
         Layout Picker:
     </li>

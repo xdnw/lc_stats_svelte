@@ -1,9 +1,7 @@
 <script lang=ts>
-  import { config } from "../routes/+layout";
-
-
+import { config } from "../routes/+layout";
 </script>
-<footer class="bd-footer border-top border-1 mt-0 pt-3 bg-light">
+<footer class="bd-footer border-top border-1 mt-0 pt-3 bg-light-subtle">
     <div class="container-md">
         <div class="row g-4">
             <div class="col-4">
