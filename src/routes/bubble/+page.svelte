@@ -572,6 +572,35 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             }],
         };
 
+        // is either dark, light, or empty (light)
+        let theme = document.documentElement.getAttribute("data-bs-theme");
+        if (theme === "dark") {
+            console.log("Dark theme");
+            let bodyBg = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-bg');
+            let bodyColor = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-color');
+            layout.plot_bgcolor = bodyBg;
+            layout.paper_bgcolor = bodyBg;
+            layout.font = { color: bodyColor };
+            layout.xaxis = {
+                ...layout.xaxis,
+                gridcolor: bodyColor,
+                zerolinecolor: bodyColor,
+                tickfont: { color: bodyColor },
+                titlefont: { color: bodyColor }
+            };
+            layout.yaxis = {
+                ...layout.yaxis,
+                gridcolor: bodyColor,
+                zerolinecolor: bodyColor,
+                tickfont: { color: bodyColor },
+                titlefont: { color: bodyColor }
+            };
+            layout.legend = {
+                ...layout.legend,
+                font: { color: bodyColor }
+            };
+        }
+
         console.log(`Generated graph data in ${Date.now() - start}ms`);start = Date.now();
         Plotly.purge(graphDiv);
         Plotly.react(graphDiv, {
