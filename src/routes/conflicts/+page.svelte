@@ -8,7 +8,9 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { decompressBson, modalWithCloseButton, setupContainer, addFormatters } from '$lib';
+import { decompressBson, modalWithCloseButton, setupContainer, addFormatters, downloadTableData } from '$lib';
+
+let _currentRowData: TableData;
 
 // onMount runs when this component (i.e. the page) is loaded
 // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
@@ -64,6 +66,10 @@ try {
         }
         result += `&nbsp;<a href="conflict?id=${id}">${data}</a></span>`
         return result;
+    }
+
+    (window as any).download = function download(useClipboard: boolean = false) {
+        downloadTableData(_currentRowData, useClipboard);
     }
 
     // Url of s3 bucket
@@ -127,7 +133,7 @@ try {
         cell_format["formatDate"] = [4,5];
 
         let container = document.getElementById('conflictTable');
-        let data = {
+        _currentRowData = {
             columns: columns,
             data: rows,
             visible: visible,
@@ -148,7 +154,7 @@ try {
         }
 
         // Setup the conflicts table
-        setupContainer(container as HTMLElement, data);
+        setupContainer(container as HTMLElement, _currentRowData);
 
     });
 } catch (error) {

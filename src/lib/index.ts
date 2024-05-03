@@ -49,6 +49,58 @@ export interface Conflict {
     }
 }
 
+export interface TableData {
+    columns: string[], 
+    data: any[][], 
+    searchable: number[], 
+    visible: number[], 
+    cell_format: {[key: string]: number[];}, 
+    row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, 
+    sort: [number, string]
+}
+
+export function downloadTableData(_currentRowData: TableData, useClipboard: boolean) {
+    if (!_currentRowData) {
+        modalStrWithCloseButton("Error", "No data to download");
+        return;
+    }
+    let visibleColumns = _currentRowData.visible.map(index => _currentRowData.columns[index]);
+    let data: any[][] = _currentRowData.data.map(row => _currentRowData.visible.map(index => row[index]));
+    data.unshift(visibleColumns);
+    downloadCells(data, useClipboard);
+}
+
+export function downloadCells(data: any[][], useClipboard: boolean) {
+    let csvContent = data.map(e => e.join(",")).join("\n");
+
+    if (useClipboard) {
+        navigator.clipboard.writeText(csvContent).then(() => {
+            console.log("Copied to clipboard");
+        }).catch((err) => {
+            console.error("Failed to copy to clipboard", err);
+        });
+        modalStrWithCloseButton("Copied to clipboard", "The data has been copied to your clipboard");
+    } else {
+        // Create a blob from the CSV content
+        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+        // Create a link element
+        let link = document.createElement("a");
+
+        if (link.download !== undefined) { // feature detection
+            // Browsers that support HTML5 download attribute
+            let url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "data.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        modalStrWithCloseButton("Download starting", "If the download does not start, please check your browser settings, or try the clipboard button instead");
+    }
+}
+
 export const UNITS_PER_CITY: {[key: string]: number} = {
     "soldier": 15_000,
     "tank": 1250,
@@ -405,7 +457,7 @@ export function modal(title: string, body: HTMLElement, footer: string) {
  * @param container 
  * @param data 
  */
-export function setupContainer(container: HTMLElement, data: {columns: string[], data: any[][], searchable: number[], visible: number[], cell_format: {[key: string]: number[];}, row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, sort: [number, string]}) {
+export function setupContainer(container: HTMLElement, data: TableData) {
     container.innerHTML = "";
     addTable(container, uuidv4());
     let table = container.getElementsByTagName("table")[0];
@@ -423,6 +475,10 @@ export function setupContainer(container: HTMLElement, data: {columns: string[],
 function addTable(container: HTMLElement, id: string) {
     container.appendChild(htmlToElement(`<button class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-info opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
     <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
+    container.appendChild(htmlToElement(`<button onclick="download(false)" class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-success fw-bold" type="button">
+    <i class="bi bi-filetype-csv"></i>&nbsp;Download</button>`));
+    container.appendChild(htmlToElement(`<button onclick="download(true)" class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-success fw-bold" type="button">
+    <i class="bi bi-copy"></i>&nbsp;Copy</button>`));
     container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol"></div>`));
     container.appendChild(document.createElement("hr"));
     container.appendChild(htmlToElement(`<table id="${id}" class="table compact table-bordered d-none" style="width:100%">

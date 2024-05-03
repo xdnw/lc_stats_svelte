@@ -6,12 +6,61 @@ import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader } from '$lib';
-  import { config } from '../+layout';
+import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells } from '$lib';
+import { config } from '../+layout';
+// Layout tabs
+enum Layout {
+    COALITION,
+    ALLIANCE,
+    NATION,
+}
 
 // Set after page load
 let conflictName = "";
 let conflictId = -1;
+
+// see loadLayout for the type
+let _rawData: any = null;
+// The columns for the `attacks` layout button
+let breakdownCols = ["GROUND_TANKS_MUNITIONS_USED_UNNECESSARY","DOUBLE_FORTIFY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR","AIRSTRIKE_SOLDIERS_NONE","AIRSTRIKE_SOLDIERS_SHOULD_USE_GROUND","AIRSTRIKE_TANKS_NONE","AIRSTRIKE_SHIP_NONE","AIRSTRIKE_INACTIVE_NO_GROUND","AIRSTRIKE_INACTIVE_NO_SHIP","AIRSTRIKE_FAILED_NOT_DOGFIGHT","AIRSTRIKE_AIRCRAFT_NONE","AIRSTRIKE_AIRCRAFT_NONE_INACTIVE","AIRSTRIKE_AIRCRAFT_LOW","AIRSTRIKE_INFRA","AIRSTRIKE_MONEY","NAVAL_MAX_VS_NONE"].map(col => `off:${col.toLowerCase().replaceAll("_", " ")} attacks`);
+// The layouts buttons for the conflict table
+let layouts:{[key: string]: {sort: string, columns: string[]}} = {
+    Summary: {
+        sort: "off:wars", 
+        columns: ["name","net:damage","off:wars","def:wars","dealt:damage","loss:damage"]
+    },
+    Dealt: {
+        sort: "dealt:damage", 
+        columns:["name", "dealt:infra", "dealt:~$soldier", "dealt:~$tank", "dealt:~$aircraft", "dealt:~$ship", "dealt:~$unit", "dealt:~$consume", "dealt:~$loot", "dealt:damage"]
+    },
+    Received: {
+        sort: "loss:damage", 
+        columns:["name", "loss:infra", "loss:~$soldier", "loss:~$tank", "loss:~$aircraft", "loss:~$ship", "loss:~$unit", "loss:~$consume", "loss:~$loot", "loss:damage"]
+    },
+    Units: {
+        sort: "dealt:~$unit",
+        columns: ["name", "dealt:soldier", "dealt:tank", "dealt:aircraft", "dealt:ship", "dealt:~$unit", "loss:soldier", "loss:tank", "loss:aircraft", "loss:ship", "loss:~$unit"]
+    },
+    Consumption: {
+        sort: "name",
+        columns: ["name", "loss:~$building", "loss:gasoline", "loss:munitions", "loss:steel", "loss:aluminum", "loss:consume gas", "loss:consume mun"]
+    },
+    Attacks: {
+        sort: "off:attacks",
+        columns: ["name", "off:attacks", ...breakdownCols]
+    }
+}
+
+// Variable for the current layout
+// Set by the layout buttons as well as on page load (loadLayoutFromQuery)
+let _layoutData = {
+    layout: Layout.COALITION,
+    columns: layouts.Summary.columns,
+    sort: layouts.Summary.sort,
+    order: "desc"
+};
+
+let _currentRowData: TableData;
 
 /**
  * Big function for loading the conflict table for a provided layout
@@ -186,7 +235,7 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
         addRow(colEntry, i);
     }
     // Setup the table
-    let data = {
+    _currentRowData = {
         columns: columns,
         data: rows,
         visible: visible,
@@ -196,56 +245,8 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
         sort: sort
     }
     let container = document.getElementById("conflict-table-1");
-    setupContainer(container as HTMLElement, data);
+    setupContainer(container as HTMLElement, _currentRowData);
 }
-
-// see loadLayout for the type
-let _rawData: any = null;
-// The columns for the `attacks` layout button
-let breakdownCols = ["GROUND_TANKS_MUNITIONS_USED_UNNECESSARY","DOUBLE_FORTIFY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR","AIRSTRIKE_SOLDIERS_NONE","AIRSTRIKE_SOLDIERS_SHOULD_USE_GROUND","AIRSTRIKE_TANKS_NONE","AIRSTRIKE_SHIP_NONE","AIRSTRIKE_INACTIVE_NO_GROUND","AIRSTRIKE_INACTIVE_NO_SHIP","AIRSTRIKE_FAILED_NOT_DOGFIGHT","AIRSTRIKE_AIRCRAFT_NONE","AIRSTRIKE_AIRCRAFT_NONE_INACTIVE","AIRSTRIKE_AIRCRAFT_LOW","AIRSTRIKE_INFRA","AIRSTRIKE_MONEY","NAVAL_MAX_VS_NONE"].map(col => `off:${col.toLowerCase().replaceAll("_", " ")} attacks`);
-// The layouts buttons for the conflict table
-let layouts:{[key: string]: {sort: string, columns: string[]}} = {
-    Summary: {
-        sort: "off:wars", 
-        columns: ["name","net:damage","off:wars","def:wars","dealt:damage","loss:damage"]
-    },
-    Dealt: {
-        sort: "dealt:damage", 
-        columns:["name", "dealt:infra", "dealt:~$soldier", "dealt:~$tank", "dealt:~$aircraft", "dealt:~$ship", "dealt:~$unit", "dealt:~$consume", "dealt:~$loot", "dealt:damage"]
-    },
-    Received: {
-        sort: "loss:damage", 
-        columns:["name", "loss:infra", "loss:~$soldier", "loss:~$tank", "loss:~$aircraft", "loss:~$ship", "loss:~$unit", "loss:~$consume", "loss:~$loot", "loss:damage"]
-    },
-    Units: {
-        sort: "dealt:~$unit",
-        columns: ["name", "dealt:soldier", "dealt:tank", "dealt:aircraft", "dealt:ship", "dealt:~$unit", "loss:soldier", "loss:tank", "loss:aircraft", "loss:ship", "loss:~$unit"]
-    },
-    Consumption: {
-        sort: "name",
-        columns: ["name", "loss:~$building", "loss:gasoline", "loss:munitions", "loss:steel", "loss:aluminum", "loss:consume gas", "loss:consume mun"]
-    },
-    Attacks: {
-        sort: "off:attacks",
-        columns: ["name", "off:attacks", ...breakdownCols]
-    }
-}
-
-// Layout tabs
-enum Layout {
-    COALITION,
-    ALLIANCE,
-    NATION,
-}
-
-// Variable for the current layout
-// Set by the layout buttons as well as on page load (loadLayoutFromQuery)
-let _layoutData = {
-    layout: Layout.COALITION,
-    columns: layouts.Summary.columns,
-    sort: layouts.Summary.sort,
-    order: "desc"
-};
 
 // Set the current layout (called on page load)
 function loadLayoutFromQuery(query: URLSearchParams) {
@@ -352,6 +353,17 @@ onMount(() => {
         button.setAttribute("onclick", `showNames('${_rawData.coalitions[index].name}',${index})`);
         button.textContent = _rawData.coalitions[index].name;
         return button.outerHTML;
+    }
+
+    (window as any).download = function download(useClipboard: boolean = false) {
+        if (!_currentRowData) {
+            modalStrWithCloseButton("Error", "No data to download");
+            return;
+        }
+        let visibleColumns = _currentRowData.visible.map(index => _currentRowData.columns[index]);
+        let data: any[][] = _currentRowData.data.map(row => _currentRowData.visible.map(index => row[index]));
+        data.unshift(visibleColumns);
+        downloadCells(data, useClipboard);
     }
 
     // Read the query string to get the conflict id as well as the table layout (if present)
