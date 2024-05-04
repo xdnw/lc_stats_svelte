@@ -496,8 +496,8 @@ function addTable(container: HTMLElement, id: string) {
     container.appendChild(htmlToElement(`<button class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-info opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
     <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
     container.appendChild(htmlToElement(`<div class="dropdown d-inline">
-    <button class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-success fw-bold dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-    Export
+    <button class="btn btn-sm ms-1 mt-1 btn-secondary btn-outline-info fw-bold opacity-75" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+    Export&nbsp;<i class="bi bi-chevron-down"></i>
     </button>
     <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
     <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, 'CSV')"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
@@ -506,13 +506,30 @@ function addTable(container: HTMLElement, id: string) {
     <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, 'TSV')"><kbd><i class="bi bi-copy"></i><i class="bi bi-indent"></i></kbd> Copy TSV</button></li>
     </ul>
     </div>`));
-    container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol"></div>`));
+    container.appendChild(htmlToElement(`<div class="collapse table-toggles pt-1" id="tblCol">
+    <input id="table-search" class="form-control-sm w-100 mb-1" type="search" placeholder="Search" aria-label="Search">
+    </div>`));
     container.appendChild(document.createElement("hr"));
     container.appendChild(htmlToElement(`<table id="${id}" class="table compact table-bordered d-none" style="width:100%">
         <thead class="table-info"><tr></tr></thead>
         <tbody></tbody>
         <tfoot><tr></tr></tfoot>
     </table>`));
+
+    let input = container.getElementsByTagName("input")[0];
+    input.addEventListener('input', function() {
+        let tableToggles = document.getElementsByClassName('table-toggles');
+        for(let i = 0; i < tableToggles.length; i++) {
+            let buttons = tableToggles[i].getElementsByTagName('button');
+            for(let j = 0; j < buttons.length; j++) {
+                if(buttons[j].textContent?.includes(this.value)) {
+                    buttons[j].classList.remove('d-none');
+                } else {
+                    buttons[j].classList.add('d-none');
+                }
+            }
+        }
+    });
 }
 
 // Set the query param
@@ -727,7 +744,13 @@ function setupTable(containerElem: HTMLElement,
 		// move elem
 		if (e.target.parentElement && e.target.parentElement.tagName == "TH") {
 			(e.target as any).oldParent = e.target.parentElement;
-			jqContainer.find(".table-toggles").append(e.target);
+            let toggles = jqContainer.find(".table-toggles");
+			toggles.append(e.target);
+            // find the input elem of toggles
+            let inputElem = toggles.find('input');
+            if(inputElem.val() && !e.target.textContent.includes(inputElem.val())) {
+                $(e.target).addClass('d-none');
+            }
 		} else {
 			(e.target as any).oldParent.append(e.target);
 		}
