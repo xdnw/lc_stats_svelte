@@ -17,7 +17,7 @@ enum Layout {
 
 // Set after page load
 let conflictName = "";
-let conflictId = -1;
+let conflictId: string | null = null;
 
 // see loadLayout for the type
 let _rawData: any = null;
@@ -284,7 +284,7 @@ function loadCurrentLayout() {
 // setColNames sets the `namesByAllianceId` global var - which is used for formatting the alliance names in the coalition modal (A popup when you click the coalition button in the table)
 // Load the current layout (which will create the table)
 // If there are posts, load the posts into the timeline
-function setupConflictTables(conflictId: number) {
+function setupConflictTables(conflictId: string) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
     decompressBson(url).then((data) => {
         _rawData = data;
@@ -368,8 +368,8 @@ onMount(() => {
     let queryParams = new URLSearchParams(window.location.search);
     loadLayoutFromQuery(queryParams)
     const id = queryParams.get('id');
-    if (id && !isNaN(+id) && Number.isInteger(+id)) {
-        conflictId = +id;
+    if (id) {
+        conflictId = id;
         // Create the table for the conflict id
         setupConflictTables(conflictId);
     }

@@ -10,7 +10,7 @@ import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, form
   import { config } from '../+layout';
 
 let _rawData: GraphData;
-let conflictId: number;
+let conflictId: string | null = null;
 let conflictName: string;
 
 let normalize_x: boolean = false;
@@ -79,8 +79,8 @@ onMount(async () => {
     loadQueryParams(queryParams);
 
     const id = queryParams.get('id');
-    if (id && !isNaN(+id) && Number.isInteger(+id)) {
-        conflictId = +id;
+    if (id) {
+        conflictId = id;
         fetchConflictGraphData(conflictId);
     }
     noUiSlider.create(sliderElement, {
@@ -113,7 +113,7 @@ onMount(async () => {
     
 });
 
-function fetchConflictGraphData(conflictId: number) {
+function fetchConflictGraphData(conflictId: string) {
     let start = Date.now();
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
     decompressBson(url).then((data) => {

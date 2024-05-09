@@ -17,7 +17,7 @@ import noUiSlider from 'nouislider';
 
 // Set after page load
 let conflictName = "";
-let conflictId = -1;
+let conflictId: string | null = null;
 
 let normalize: boolean = false;
 let previous_normalize: boolean = false;
@@ -132,8 +132,8 @@ onMount(() => {
     loadQueryParams(queryParams);
 
     const id = queryParams.get('id');
-    if (id && !isNaN(+id) && Number.isInteger(+id)) {
-        conflictId = +id;
+    if (id) {
+        conflictId = id;
         setupChartData(conflictId);
     }
 });
@@ -144,7 +144,7 @@ onMount(() => {
  * Add the charts to the container div and set their data/settings
  * @param conflictId The id of the conflict
  */
-function setupChartData(conflictId: number) {
+function setupChartData(conflictId: string) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
     decompressBson(url).then((data) => {
         _rawData = data;

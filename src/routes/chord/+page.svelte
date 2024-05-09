@@ -8,7 +8,7 @@
   import { config } from "../+layout";
 
 let conflictName = "";
-let conflictId = -1;
+let conflictId: string | null = null;
 
 let _rawData: Conflict | null = null;
 let _allowedAllianceIds: Set<number> = new Set();
@@ -17,13 +17,13 @@ let _currentHeaderName: string = "wars";
 onMount(() => {
     let queryParams = new URLSearchParams(window.location.search);
     const id = queryParams.get('id');
-    if (id && !isNaN(+id) && Number.isInteger(+id)) {
-        conflictId = +id;
+    if (id) {
+        conflictId = id;
         setupWebFromId(conflictId, queryParams);
     }
 });
 
-function setupWebFromId(conflictId: number, queryParams: URLSearchParams) {
+function setupWebFromId(conflictId: string, queryParams: URLSearchParams) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
     decompressBson(url).then((data) => {
         _rawData = data;
