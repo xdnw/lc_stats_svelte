@@ -3,10 +3,44 @@ import Navbar from '../components/Navbar.svelte'
 import Sidebar from '../components/Sidebar.svelte'
 import Footer from '../components/Footer.svelte'
 import { onMount } from 'svelte';
-  import { config } from './+layout';
+import { config } from './+layout';
+
+let _adTemplates: {[key: string]:{img: string, desc: string, subtitle: string, invite: string, bg: string}} = {
+  // RON
+  "446601982564892672": {
+    img: "https://static.wikia.nocookie.net/politicsandwar/images/b/be/Royal_Orbis_News.png",
+    desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Royal Orbis News discord server.",
+    subtitle: "Updates & Discussions",
+    invite: "https://discord.gg/royal-orbis-news",
+    bg: "#235D90"
+  },
+  // enquirer
+  "1210692407889362985": {
+    img: "enquirer.png",
+    desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Enquirer discord server.",
+    subtitle: "Updates & Discussions",
+    invite: "https://discord.gg/NWzSGRDcCC",
+    bg: "#12B2B4"
+  },
+  // loading image
+  "0": {
+    img: "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif",
+    desc: "Loading...",
+    subtitle: "Loading...",
+    invite: "#",
+    bg: "#EEE"
+  }
+}
+let adTemplate = _adTemplates["0"];
 
 // The matrix background animation
 onMount(() => {
+  let queryParams = new URLSearchParams(window.location.search);
+  let setGuild = queryParams.get('guild');
+  if (setGuild && _adTemplates[setGuild as string]) {
+    adTemplate = _adTemplates[setGuild];
+  }
+
   let c: HTMLCanvasElement, ctx: CanvasRenderingContext2D, matrix: string[], font_size: number, columns: number, drops: number[];
   c = document.getElementById("c") as HTMLCanvasElement;
   ctx = c.getContext("2d") as CanvasRenderingContext2D;
@@ -67,6 +101,10 @@ onMount(() => {
       requestAnimationFrame(draw);
   }
   draw();
+  if (adTemplate.invite == "#") {
+    // set to enquirer by default
+    adTemplate = _adTemplates["1210692407889362985"];
+  }
   }
 );
 
@@ -107,14 +145,13 @@ onMount(() => {
       </div>
       <div class="col-sm-6 d-flex align-items-center">
         <div class="card mx-auto" style="width: 18rem;">
-          <!-- <img src="enquirer.png" style="background:#12B2B4" class="card-img-top" alt="..."> -->
-          <img src="https://static.wikia.nocookie.net/politicsandwar/images/b/be/Royal_Orbis_News.png" style="background:#235D90" class="card-img-top" alt="...">
+          <img src="{adTemplate.img}" style="background:{adTemplate.bg}" class="card-img-top" alt="...">
           <div class="card-body" style="height: 9rem;">
-            <h5 class="card-title"><span class="badge text-bg-light fs-6 me-1">Ad</span>Updates & Discussions</h5>
-            <p class="card-text">Get breaking news about ongoing conflicts and share in their discussions. Available on the Royal Orbis News discord server.</p>
+            <h5 class="card-title"><span class="badge text-bg-light fs-6 me-1">Ad</span>{adTemplate.subtitle}</h5>
+            <p class="card-text">{adTemplate.desc}</p>
           </div>
           <div class="card-footer">
-            <a href="https://discord.gg/NWzSGRDcCC" class="btn btn-lg btn-secondary btn-outline-info border-3" target="_blank">Join Now!</a>
+            <a href="{adTemplate.invite}" class="btn btn-lg btn-secondary btn-outline-info border-3" target="_blank">Join Now!</a>
           </div>
         </div>
       </div>
