@@ -138,8 +138,8 @@ function loadLayout(_rawData: Conflict, type: Layout, layout: string[], sortBy: 
                 columns.push("dealt:" + header.replace("_loss", "").replace("loss_", ""));
                 columns.push("net:" + header.replace("_loss", "").replace("loss_", ""));
             } else if (type == 1) {
-                columns.push("off:" + header);
                 columns.push("def:" + header);
+                columns.push("off:" + header);
                 columns.push("both:" + header);
             }
         }
