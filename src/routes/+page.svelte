@@ -31,14 +31,18 @@ let _adTemplates: {[key: string]:{img: string, desc: string, subtitle: string, i
     bg: "#EEE"
   }
 }
+let _guildId: string = "";
 let adTemplate = _adTemplates["0"];
 
 // The matrix background animation
 onMount(() => {
   let queryParams = new URLSearchParams(window.location.search);
   let setGuild = queryParams.get('guild');
-  if (setGuild && _adTemplates[setGuild as string]) {
-    adTemplate = _adTemplates[setGuild];
+  if (setGuild) {
+    _guildId = setGuild;
+    if (_adTemplates[setGuild as string]) {
+      adTemplate = _adTemplates[setGuild];
+    }
   }
 
   let c: HTMLCanvasElement, ctx: CanvasRenderingContext2D, matrix: string[], font_size: number, columns: number, drops: number[];
@@ -139,7 +143,7 @@ onMount(() => {
             <p class="card-text">Browse a variety of tables and graphs for our featured set of ongoing and historical alliance conflicts. Data is available to download in CSV format.</p>
           </div>
           <div class="card-footer">
-            <a href="conflicts" class="btn btn-lg btn-secondary btn-outline-info border-3">View Conflicts</a>
+            <a href="conflicts{_guildId ? "?guild=" + _guildId : ""}" class="btn btn-lg btn-secondary btn-outline-info border-3">View Conflicts</a>
           </div>
         </div>
       </div>

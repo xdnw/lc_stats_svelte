@@ -113,6 +113,7 @@ try {
 
         let queryParams = new URLSearchParams(window.location.search);
         let setParam = queryParams.get('guild');
+        console.log("SETPARAM " + setParam)
 
         setupConflicts(result, setParam);
         
@@ -136,7 +137,6 @@ function setupConflicts(result: any, setParam: string | null) {
         let source_sets = result.source_sets;
         let source_names = result.source_names;
         let ss = setParam && source_sets ? source_sets[setParam] : null;
-        // remove result.conflicts if not source set
         if (ss) {
             currSource = [source_names[setParam as string], parseFloat(setParam as string)];
             if (!currSource[0]) currSource[0] = setParam  + " (None Featured)";
@@ -150,7 +150,7 @@ function setupConflicts(result: any, setParam: string | null) {
             rows = rows.filter(allowConflict);
             console.log("Filtered rows", rows.length);
         } else {
-            console.log("No source set ", setParam, source_sets, rows.length);
+            console.log("No source set ", setParam, source_sets, rows.length, source_sets);
         }
         // Set the coalition names
         for (let i = 0; i < rows.length; i++) {
@@ -229,6 +229,7 @@ function selectSource(event: Event) {
         </div>
         </div>
     {/if}
+
     </h1>
     {#if !_loaded}
         <Progress />
