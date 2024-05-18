@@ -5,6 +5,7 @@
 import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
+import Progress from '../../components/Progress.svelte';
 import type { API,Options } from 'nouislider';
 import { Chart, registerables, type ChartConfiguration } from 'chart.js';
 Chart.register(...registerables);
@@ -15,7 +16,7 @@ import Select from 'svelte-select';
 import * as d3 from 'd3';
 import noUiSlider from 'nouislider';
 
-// Set after page load
+let _loaded = false;
 let conflictName = "";
 let conflictId: string | null = null;
 
@@ -135,6 +136,7 @@ onMount(() => {
     if (id) {
         conflictId = id;
         setupChartData(conflictId);
+        _loaded = true;
     }
 });
 
@@ -651,6 +653,9 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
         </div>
     </div>
     <div class="row m-0 p-0 bg-light-subtle border-bottom border-3" style="min-height: 116px">
+        {#if !_loaded}
+            <Progress />
+        {/if}
         <div class="col-12">
             <div class="bg-light-subtle p-1 fw-bold border-bottom border-3 pb-0" style="min-height: 71px;">
                 {#if _rawData}

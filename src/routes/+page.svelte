@@ -107,11 +107,11 @@ onMount(() => {
       </div>
       <div class="col-sm-6 d-flex align-items-center">
         <div class="card mx-auto" style="width: 18rem;">
-          <img src="enquirer.png" style="background:#12B2B4" class="card-img-top" alt="...">
-          <!-- <img src="https://static.wikia.nocookie.net/politicsandwar/images/b/be/Royal_Orbis_News.png" style="background:#235D90" class="card-img-top" alt="..."> -->
+          <!-- <img src="enquirer.png" style="background:#12B2B4" class="card-img-top" alt="..."> -->
+          <img src="https://static.wikia.nocookie.net/politicsandwar/images/b/be/Royal_Orbis_News.png" style="background:#235D90" class="card-img-top" alt="...">
           <div class="card-body" style="height: 9rem;">
             <h5 class="card-title"><span class="badge text-bg-light fs-6 me-1">Ad</span>Updates & Discussions</h5>
-            <p class="card-text">Get breaking news about ongoing conflicts and share in their discussions. Available on the Enquirer discord server.</p>
+            <p class="card-text">Get breaking news about ongoing conflicts and share in their discussions. Available on the Royal Orbis News discord server.</p>
           </div>
           <div class="card-footer">
             <a href="https://discord.gg/NWzSGRDcCC" class="btn btn-lg btn-secondary btn-outline-info border-3" target="_blank">Join Now!</a>

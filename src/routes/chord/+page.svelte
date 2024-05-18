@@ -4,6 +4,7 @@
   import Navbar from "../../components/Navbar.svelte";
   import Sidebar from "../../components/Sidebar.svelte";
   import Footer from "../../components/Footer.svelte";
+  import Progress from "../../components/Progress.svelte";
   import * as d3 from 'd3';
   import { config } from "../+layout";
 
@@ -13,6 +14,7 @@ let conflictId: string | null = null;
 let _rawData: Conflict | null = null;
 let _allowedAllianceIds: Set<number> = new Set();
 let _currentHeaderName: string = "wars";
+let _loaded = false;
 
 onMount(() => {
     let queryParams = new URLSearchParams(window.location.search);
@@ -20,6 +22,7 @@ onMount(() => {
     if (id) {
         conflictId = id;
         setupWebFromId(conflictId, queryParams);
+        _loaded = true;
     }
 });
 
@@ -334,6 +337,9 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         </button>
     </div>
     <div class="bg-light-subtle p-1 fw-bold border-bottom border-3 pb-0" style="min-height: 119px;">
+    {#if !_loaded}
+        <Progress />
+    {/if}
     {#if _rawData}
         <span class="fw-bold">Layout Picker:</span>
         {#each _rawData.war_web.headers as header (header)}

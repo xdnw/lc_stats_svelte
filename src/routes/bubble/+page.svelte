@@ -4,6 +4,7 @@ import Select from 'svelte-select';
 import Navbar from '../../components/Navbar.svelte';
 import Sidebar from '../../components/Sidebar.svelte';
 import Footer from '../../components/Footer.svelte';
+import Progress from '../../components/Progress.svelte';
 import noUiSlider from 'nouislider';
 import * as d3 from 'd3';
 import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, Palette, generateColors, setQueryParam, arrayEquals, type TierMetric } from '$lib';
@@ -12,6 +13,7 @@ import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, form
 let _rawData: GraphData;
 let conflictId: string | null = null;
 let conflictName: string;
+let _loaded = false;
 
 let normalize_x: boolean = false;
 let normalize_y: boolean = false;
@@ -121,7 +123,7 @@ function fetchConflictGraphData(conflictId: string) {
         conflictName = data.name;
         _rawData = data;
         setupGraphData(_rawData);
-
+        _loaded = true;
     });
 }
 
@@ -674,6 +676,9 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
     </div>
     </div>
     </div>
+    {#if !_loaded}
+        <Progress />
+    {/if}
     <div class="row m-0 p-0 bg-light-subtle border-bottom border-3" style="min-height: 116px">
         <div class="col-12">
     <div style="width: calc(100% - 30px);margin-left:15px;" >

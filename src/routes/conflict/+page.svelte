@@ -5,6 +5,7 @@
 import Navbar from '../../components/Navbar.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
+import Progress from '../../components/Progress.svelte';
 import { onMount } from 'svelte';
 import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells, downloadTableData, type ExportType, ExportTypes } from '$lib';
 import { config } from '../+layout';
@@ -18,6 +19,7 @@ enum Layout {
 // Set after page load
 let conflictName = "";
 let conflictId: string | null = null;
+let _loaded = false;
 
 // see loadLayout for the type
 let _rawData: any = null;
@@ -294,6 +296,7 @@ function setupConflictTables(conflictId: string) {
         if (_rawData.posts && Object.keys(_rawData.posts).length) {
             loadPosts(_rawData.posts);
         }
+        _loaded = true;
     });
 }
 
@@ -487,6 +490,9 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
         </li>
     {/each}
     </ul>
+    {#if !_loaded}
+        <Progress />
+    {/if}
     <div class="p-1" id="conflict-table-1"></div>
     <!-- If coalition layout, then display the CB and Status -->
     {#if _layoutData.layout == Layout.COALITION}

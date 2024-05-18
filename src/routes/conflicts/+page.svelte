@@ -5,12 +5,19 @@
 */
 import { base } from '$app/paths';
 import Navbar from '../../components/Navbar.svelte'
+import Progress from '../../components/Progress.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
 import { decompressBson, modalWithCloseButton, setupContainer, addFormatters, downloadTableData, type TableData, type ExportType, ExportTypes } from '$lib';
 
 let _currentRowData: TableData;
+let _rawData: any = null;
+let currSource = ["All", 0];
+let _loaded = false;
+let allianceNameById:{[key: number]: string} = {};
+let allianceIdsByCoalition:{[key: string]: number[][]} = {};
+let colNames:{[key:string]: string[]} = {};
 
 // onMount runs when this component (i.e. the page) is loaded
 // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
@@ -22,9 +29,7 @@ try {
     // These store a map of the alliance and coalition names
     // - Used by the row format function for coloring the rows
     // - Used to create the modal for the coalition alliances
-    let allianceNameById:{[key: number]: string} = {};
-    let allianceIdsByCoalition:{[key: string]: number[][]} = {};
-    let colNames:{[key:string]: string[]} = {};
+
 
     // This runs when the coalition button is pressed
     // Displays a modal with the alliance ids and list of alliance name (linking to the game page)
@@ -76,6 +81,7 @@ try {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
     
     decompressBson(url).then((result) => {
+        _rawData = result;
         /*
         Result is an object with the following keys:
         alliance_ids: number[]; - array of alliance ids
@@ -104,6 +110,21 @@ try {
         for (let i = 0; i < alliance_ids.length; i++) {
             allianceNameById[alliance_ids[i]] = alliance_names[i];
         }
+
+        let queryParams = new URLSearchParams(window.location.search);
+        let setParam = queryParams.get('guild');
+
+        setupConflicts(result, setParam);
+        
+        _loaded = true;
+
+    });
+} catch (error) {
+    console.error('Error reading from S3 bucket:', error);
+}
+});
+
+function setupConflicts(result: any, setParam: string | null) {
         let columns: string[] = result.headers as string[];
         let visible: number[] = [1,2,3,4,5,6,7,8,9];
         let searchable: number[] = [1];
@@ -111,6 +132,26 @@ try {
         let sort: [number, string] = [5, 'desc'];
         let rows: any[][] = result.conflicts as any[][];
 
+        let sourceI = columns.indexOf("source");
+        let source_sets = result.source_sets;
+        let source_names = result.source_names;
+        let ss = setParam && source_sets ? source_sets[setParam] : null;
+        // remove result.conflicts if not source set
+        if (ss) {
+            currSource = [source_names[setParam as string], parseFloat(setParam as string)];
+            if (!currSource[0]) currSource[0] = setParam  + " (None Featured)";
+            let allowConflict = function (conflict: any) {
+                if (!ss) return true;
+                let source = sourceI == -1 ? 0 : conflict[sourceI];
+                if (!source || source == 0) return true;
+                if (ss.includes(source) || parseFloat(setParam as string) == source || conflict[0] == parseInt(setParam as string)) return true;
+                return source == 128;
+            }
+            rows = rows.filter(allowConflict);
+            console.log("Filtered rows", rows.length);
+        } else {
+            console.log("No source set ", setParam, source_sets, rows.length);
+        }
         // Set the coalition names
         for (let i = 0; i < rows.length; i++) {
             let conflict = rows[i];
@@ -155,12 +196,14 @@ try {
 
         // Setup the conflicts table
         setupContainer(container as HTMLElement, _currentRowData);
-
-    });
-} catch (error) {
-    console.error('Error reading from S3 bucket:', error);
 }
-});
+function selectSource(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    const id = target.value;
+    const name = _rawData.source_names[id];
+    currSource = [name, id];
+    setupConflicts(_rawData, id);
+}
 </script>    
 <svelte:head>
     <!-- Modify head -->
@@ -171,8 +214,25 @@ try {
 <!-- Add sidebar component to page -->
 <Sidebar />
 <div class="container" style="min-height: calc(100vh - 203px);">
-    <!-- Back button (bootstrap icons) links to `base` (svelte variable for the base path) -->
-    <h1><a href="{base}/"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflicts</h1>
+    <h1 class="h4 m-1"><a href="{base}/"><i class="bi bi-arrow-left"></i></a>
+    <div class="d-inline-block" style="position: relative; bottom: -0.1em;">&nbsp;Conflict</div>
+    {#if _rawData && _rawData.source_names}
+        <div class="d-inline-block">
+        <div class="input-group">
+            <label for="source" class="fw-bold input-group-text border-3">Source:</label>
+            <select class="p-0 btn btn-sm border-border border-3 border-light bg-light-subtle text-info fw-bold" on:change={selectSource}>
+                <option selected={currSource[1] == 0} value=0>All</option>
+                {#each Object.entries(_rawData.source_names) as [id, name]}
+                    <option value={id} selected={id == currSource[1]}>{name}</option>
+                {/each}
+            </select>
+        </div>
+        </div>
+    {/if}
+    </h1>
+    {#if !_loaded}
+        <Progress />
+    {/if}
     <div id="conflictTable"></div>
 </div>
 <!-- Add footer component to page -->
