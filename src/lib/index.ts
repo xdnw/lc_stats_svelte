@@ -267,6 +267,20 @@ export function formatDaysToDate(value: number) {
     return formatTurnsToDate(value * 12);
 }
 
+export function formatDuration(x: number) {
+    let y = ~~(x / 31536000), // seconds in a year
+        w = ~~((x - y * 31536000) / 604800), // seconds in a week
+        d = ~~((x - y * 31536000 - w * 604800) / 86400), // seconds in a day
+        h = ~~((x - y * 31536000 - w * 604800 - d * 86400) / 3600), // seconds in an hour
+        m = ~~((x - y * 31536000 - w * 604800 - d * 86400 - h * 3600) / 60), // seconds in a minute
+        s = x - y * 31536000 - w * 604800 - d * 86400 - h * 3600 - m * 60; // remaining seconds
+
+    let words = ['year', 'week', 'day', 'hour', 'minute', 'second'];
+    return [y, w, d, h, m, s].map((x, i) => !x ? '' :
+      `${x} ${words[i]}${x !== 1 ? 's' : ''}`)
+      .filter(x => x).join(', ').replace(/,([^,]*)$/, ' and$1')
+}
+
 // Convert the slider (turns) to a time string
 export function formatTurnsToDate(value: number) {
     let timeMillis = (value / 12) * 60 * 60 * 24 * 1000;

@@ -113,7 +113,6 @@ try {
 
         let queryParams = new URLSearchParams(window.location.search);
         let setParam = queryParams.get('guild');
-        console.log("SETPARAM " + setParam)
 
         setupConflicts(result, setParam);
         

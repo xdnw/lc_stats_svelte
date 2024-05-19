@@ -7,7 +7,7 @@ import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import Progress from '../../components/Progress.svelte';
 import { onMount } from 'svelte';
-import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells, downloadTableData, type ExportType, ExportTypes } from '$lib';
+import { addFormatters, decompressBson, formatDate, modalWithCloseButton, setupContainer, type Conflict, setQueryParam, trimHeader, type TableData, modalStrWithCloseButton, downloadCells, downloadTableData, type ExportType, ExportTypes, formatDuration } from '$lib';
 import { config } from '../+layout';
 // Layout tabs
 enum Layout {
@@ -526,4 +526,7 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
     <!-- Empty div used for the timeline (vis.js) -->
     <div class="m-0" id="visualization"></div>
 </div>
+{#if _rawData && _rawData.update_ms}
+<p>Last updated {formatDuration(Math.round((Date.now() - _rawData.update_ms)/1000))} ago</p>
+{/if}
 <Footer />
