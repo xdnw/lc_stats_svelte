@@ -664,13 +664,13 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
         <a href="conflict?id={conflictId}&layout=nation" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
             ♟&nbsp;Nation
         </a>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering/?id={conflictId}">
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering?id={conflictId}">
             📊&nbsp;Tier/Time
         </a>
         <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
             📈&nbsp;Bubble/Time
         </button>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord/?id={conflictId}">
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord?id={conflictId}">
             🌐&nbsp;Web
         </a>
     </div>

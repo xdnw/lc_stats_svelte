@@ -463,13 +463,13 @@ function loadPosts(posts: {[key: string]: [number, string, number]}) {
         <button class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout == Layout.NATION ? "bg-light-subtle border border-bottom-0" : "border-0 border-bottom"}" id="billing-pill" data-bs-layout={Layout.NATION} on:click={handleClick}>
             ♟&nbsp;Nation
         </button>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering/?id={conflictId}">
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering?id={conflictId}">
             📊&nbsp;Tier/Time
         </a>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble/?id={conflictId}">
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble?id={conflictId}">
             📈&nbsp;Bubble/Time
         </a>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord/?id={conflictId}">
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord?id={conflictId}">
             🌐&nbsp;Web
         </a>
     </div>

@@ -643,10 +643,10 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                 <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
                     📊&nbsp;Tier/Time
                 </button>
-                <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble/?id={conflictId}">
+                <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble?id={conflictId}">
                     📈&nbsp;Bubble/Time
                 </a>
-                <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord/?id={conflictId}">
+                <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord?id={conflictId}">
                     🌐&nbsp;Web
                 </a>
             </div>

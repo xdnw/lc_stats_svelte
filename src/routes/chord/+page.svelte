@@ -326,10 +326,10 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         <a href="conflict?id={conflictId}&layout=nation" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
             ♟&nbsp;Nation
         </a>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering/?id={conflictId}">
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering?id={conflictId}">
             📊&nbsp;Tier/Time
         </a>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble/?id={conflictId}">
+        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="bubble?id={conflictId}">
             📈&nbsp;Bubble/Time
         </a>
         <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
