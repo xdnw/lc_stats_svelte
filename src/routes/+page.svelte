@@ -142,7 +142,7 @@
 <!-- Ensure minimum page height so footer is at bottom -->
 <div class="container-fluid" style="min-height: calc(100vh - 203px);">
   <section>
-    <header class="welcome-header">
+    <header class="welcome-text">
       <svg class="welcome" style="overflow: visible;">
         <text x="50%" y="50%" dy=".35em" text-anchor="middle">
           {config.application}
