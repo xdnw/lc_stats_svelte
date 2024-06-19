@@ -28,7 +28,7 @@
       desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Media discord server.",
       subtitle: "Updates & Discussions",
       invite: "https://discord.gg/aNg9DnzqWG",
-      bg: "#AA5555",
+      bg: "#111",
     },
     // loading image
     "0": {
