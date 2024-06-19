@@ -23,12 +23,12 @@
       bg: "#235D90",
     },
     // enquirer
-    "1210692407889362985": {
-      img: "enquirer.png",
-      desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Enquirer discord server.",
+    "1244684694956675113": {
+      img: "media.png",
+      desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Media discord server.",
       subtitle: "Updates & Discussions",
-      invite: "https://discord.gg/NWzSGRDcCC",
-      bg: "#12B2B4",
+      invite: "https://discord.gg/aNg9DnzqWG",
+      bg: "#AA5555",
     },
     // loading image
     "0": {
@@ -124,7 +124,7 @@
     draw();
     if (adTemplate.invite == "#") {
       // set to enquirer by default
-      adTemplate = _adTemplates["1210692407889362985"];
+      adTemplate = _adTemplates["1244684694956675113"];
     }
   });
 </script>
