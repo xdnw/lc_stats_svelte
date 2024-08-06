@@ -260,8 +260,6 @@ function setupCharts(data: GraphData) {
     turnValues = isAnyCumulative ? response.time : [response.time[0]];
     dataSets = response.data;
 
-    console.log("Day " + response.time[0]);
-
     let trace: {
         label: string,
         data: number[],
@@ -278,8 +276,6 @@ function setupCharts(data: GraphData) {
         labels: labels,
         datasets: trace
     };
-    console.log(chartData);
-    console.log(dataSets[0].data)
 
     let title = selected_metrics.map(metric => metric.label).join(" / ") + " by City";
     const chartConfig: ChartConfiguration = {
@@ -508,16 +504,16 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                             continue;
                         }
                         if (normalize == 0) {
-                            for (let l = 0; l < counts.length; l++) {
-                                // let city = coalition.cities[l];
+                            for (let l = 0; l < nation_counts.length; l++) {
+                                let city = coalition.cities[l];
                                 let value = nation_counts[l];
-                                counts[l] += value;
+                                counts[city - minCity] += value;
                             }
                         } else {
                             for (let l = 0; l < counts.length; l++) {
                                 let city = coalition.cities[l];
                                 let value = nation_counts[l];
-                                counts[l] += value * city * normalize;
+                                counts[city - minCity] += value * city * normalize;
                             }
                         }
                     }
