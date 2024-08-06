@@ -1572,7 +1572,11 @@
      */
     ByteBuffer.zigZagDecode32 = function(n) {
         if (n > 0x7fffffff) {
-            return Math.round(Math.floor(n / 2) - (n % 2 != 0 ? 1 : 0));
+            if (n % 2 == 0) {
+                return Math.round(Math.floor(n / 2) - (n % 2 != 0 ? 1 : 0));
+            } else {
+                return ((Math.floor(n / 2)) ^ -(n % 2));
+            }
         }
         return ((n >>> 1) ^ -(n & 1)) | 0; // // ref: src/google/protobuf/wire_format_lite.h
     };
