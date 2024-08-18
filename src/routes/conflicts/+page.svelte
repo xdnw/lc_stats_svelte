@@ -49,7 +49,7 @@ try {
             li.appendChild(a);
             ul.appendChild(li);
         }
-        let idsStr = alliance_ids.join(", ");
+        let idsStr = alliance_ids.join(",");
         let modalBody = document.createElement("div");
         modalBody.textContent = idsStr;
         modalBody.appendChild(ul);
