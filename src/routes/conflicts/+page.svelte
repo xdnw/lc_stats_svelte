@@ -240,10 +240,9 @@ A comma separated list of alliances<br/>
 <code>&lt;start&gt;</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#longtimestamp">long[Timestamp]</a>
 A unix timestamp, a DMY date or a time difference that will resolve to a timestamp from the current date<br/>
 <code>[end]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#longtimestamp">Long[Timestamp]</a><br/>
-<code>[-g includeGraphs]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#boolean">boolean</a></p>`
-            )}>
-                Create Conflict
-            </button>
+<code>[-g includeGraphs]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#boolean">boolean</a></p>
+<a class="btn btn-outline-info" href="https://github.com/xdnw/locutus/wiki/conflict_webpage">More info</a>`
+)}>Create Conflict</button>
         </div>
         </div>
     {/if}
