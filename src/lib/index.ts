@@ -464,7 +464,7 @@ export function modal(title: string, body: HTMLElement, footer: string) {
                           <span aria-hidden="true">&times;</span>
                       </button>
                   </div>
-                  <div class="modal-body"></div>
+                  <div class="modal-body text-break"></div>
                   <div class="modal-footer"></div>
               </div>
           </div>
