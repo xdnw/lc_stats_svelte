@@ -326,6 +326,13 @@ export function addFormatters() {
     (window as any).formatDate = (data: number, type: any, row: any, meta: any): string => {
         return formatDate(data);
     }
+    (window as any).copyToClipboard = (data: string) => {
+        navigator.clipboard.writeText(data).then(() => {
+            alert("Copied to clipboard");
+        }).catch((err) => {
+            alert("Failed to copy to clipboard" + err);
+        });
+    }
 }
 
 /**

@@ -333,9 +333,16 @@ onMount(() => {
             li.appendChild(a);
             ul.appendChild(li);
         }
-        let idsStr = alliance_ids.join(",");
+        
         let modalBody = document.createElement("div");
-        modalBody.textContent = idsStr;
+        let areaElem = document.createElement("kbd");
+        let idsStr = alliance_ids.join(",");
+        areaElem.textContent = idsStr;
+        areaElem.setAttribute("readonly", "true");
+        areaElem.setAttribute("class", "form-control m-0");
+        modalBody.appendChild(areaElem);
+        let copyToClipboard = "<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' onclick='copyToClipboard(\"" + idsStr + "\")'><i class='bi bi-clipboard'></i></button>";
+        modalBody.innerHTML += copyToClipboard;
         modalBody.appendChild(ul);
         modalWithCloseButton(modalTitle, modalBody);
     }
