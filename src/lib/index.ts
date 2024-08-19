@@ -326,6 +326,37 @@ export function addFormatters() {
     (window as any).formatDate = (data: number, type: any, row: any, meta: any): string => {
         return formatDate(data);
     }
+
+    // Add the showNames function to the window object (which shows a popup of the alliances in a coalition)
+    (window as any).showNames = (coalitionName: string, index: number) => {
+        let col: {alliance_ids: number[], alliance_names: string[]} = (window as any).getIds(coalitionName, index);
+        let alliance_ids: number[] = col.alliance_ids;
+        var modalTitle = "Coalition " + (index + 1) + ": " + coalitionName;
+        let ul = document.createElement("ul");
+        for (let i = 0; i < alliance_ids.length; i++) {
+            let alliance_id = alliance_ids[i];
+            let alliance_name = col.alliance_names[i];
+            if (alliance_name == undefined) alliance_name = "N/A";
+            let a = document.createElement("a");
+            a.setAttribute("href", "https://politicsandwar.com/alliance/id=" + alliance_id);
+            a.textContent = alliance_name;
+            let li = document.createElement("li");
+            li.appendChild(a);
+            ul.appendChild(li);
+        }
+        let modalBody = document.createElement("div");
+        let areaElem = document.createElement("kbd");
+        let idsStr = alliance_ids.join(",");
+        areaElem.textContent = idsStr;
+        areaElem.setAttribute("readonly", "true");
+        areaElem.setAttribute("class", "form-control m-0");
+        modalBody.appendChild(areaElem);
+        let copyToClipboard = "<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' onclick='copyToClipboard(\"" + idsStr + "\")'><i class='bi bi-clipboard'></i></button>";
+        modalBody.innerHTML += copyToClipboard;
+        modalBody.appendChild(ul);
+        modalWithCloseButton(modalTitle, modalBody);
+    }
+
     (window as any).copyToClipboard = (data: string) => {
         navigator.clipboard.writeText(data).then(() => {
             alert("Copied to clipboard");

@@ -22,7 +22,7 @@ let conflictId: string | null = null;
 let _loaded = false;
 
 // see loadLayout for the type
-let _rawData: any = null;
+let _rawData: Conflict | null = null;
 // The columns for the `attacks` layout button
 let breakdownCols = ["GROUND_TANKS_MUNITIONS_USED_UNNECESSARY","DOUBLE_FORTIFY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY","GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR_INACTIVE","GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR","AIRSTRIKE_SOLDIERS_NONE","AIRSTRIKE_SOLDIERS_SHOULD_USE_GROUND","AIRSTRIKE_TANKS_NONE","AIRSTRIKE_SHIP_NONE","AIRSTRIKE_INACTIVE_NO_GROUND","AIRSTRIKE_INACTIVE_NO_SHIP","AIRSTRIKE_FAILED_NOT_DOGFIGHT","AIRSTRIKE_AIRCRAFT_NONE","AIRSTRIKE_AIRCRAFT_NONE_INACTIVE","AIRSTRIKE_AIRCRAFT_LOW","AIRSTRIKE_INFRA","AIRSTRIKE_MONEY","NAVAL_MAX_VS_NONE"].map(col => `off:${col.toLowerCase().replaceAll("_", " ")} attacks`);
 // The layouts buttons for the conflict table
@@ -315,38 +315,10 @@ function setColNames(ids: number[], names: string[]) {
 onMount(() => {
     // Add the cell format functions to the window object
     addFormatters();
-    
-    // Add the showNames function to the window object (which shows a popup of the alliances in a coalition)
-    (window as any).showNames = (coalitionName: string, index: number) => {
-        let col = _rawData.coalitions[index];
-        let alliance_ids: number[] = col.alliance_ids;
-        var modalTitle = "Coalition " + (index + 1) + ": " + coalitionName;
-        let ul = document.createElement("ul");
-        for (let i = 0; i < alliance_ids.length; i++) {
-            let alliance_id = alliance_ids[i];
-            let alliance_name = col.alliance_names[i];
-            if (alliance_name == undefined) alliance_name = "N/A";
-            let a = document.createElement("a");
-            a.setAttribute("href", "https://politicsandwar.com/alliance/id=" + alliance_id);
-            a.textContent = alliance_name;
-            let li = document.createElement("li");
-            li.appendChild(a);
-            ul.appendChild(li);
-        }
-        
-        let modalBody = document.createElement("div");
-        let areaElem = document.createElement("kbd");
-        let idsStr = alliance_ids.join(",");
-        areaElem.textContent = idsStr;
-        areaElem.setAttribute("readonly", "true");
-        areaElem.setAttribute("class", "form-control m-0");
-        modalBody.appendChild(areaElem);
-        let copyToClipboard = "<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' onclick='copyToClipboard(\"" + idsStr + "\")'><i class='bi bi-clipboard'></i></button>";
-        modalBody.innerHTML += copyToClipboard;
-        modalBody.appendChild(ul);
-        modalWithCloseButton(modalTitle, modalBody);
+    (window as any).getIds = (coalitionName: string, index: number): {alliance_ids: number[], alliance_names: string[]} => {
+        return _rawData?.coalitions[index] as {alliance_ids: number[], alliance_names: string[]};
     }
-
+    
     // Cell format function for a nation
     (window as any).formatNation = (data: any, type: any, row: any, meta: any) => {
         let aaId = data[2] as number;

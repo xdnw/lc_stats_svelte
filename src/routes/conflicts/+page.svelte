@@ -30,33 +30,10 @@ try {
     // - Used by the row format function for coloring the rows
     // - Used to create the modal for the coalition alliances
 
-
-    // This runs when the coalition button is pressed
-    // Displays a modal with the alliance ids and list of alliance name (linking to the game page)
-    (window as any).showNames = (coalitionName: string, index: number) => {
-        let alliance_ids: number[] = allianceIdsByCoalition[coalitionName][index];
-        let name = colNames[coalitionName][index];
-        var modalTitle = `[C${index+1}] ${name}: ${coalitionName}`;
-        let ul = document.createElement("ul");
-        for (let i = 0; i < alliance_ids.length; i++) {
-            let alliance_id = alliance_ids[i];
-            let alliance_name = allianceNameById[alliance_id];
-            if (alliance_name == undefined) alliance_name = "N/A";
-            let a = document.createElement("a");
-            a.setAttribute("href", "https://politicsandwar.com/alliance/id=" + alliance_id);
-            a.textContent = alliance_name;
-            let li = document.createElement("li");
-            li.appendChild(a);
-            ul.appendChild(li);
-        }
-        let idsStr = alliance_ids.join(",");
-        let modalBody = document.createElement("div");
-
-        let copyToClipboard = document.createElement("button");
-
-        modalBody.textContent = idsStr;
-        modalBody.appendChild(ul);
-        modalWithCloseButton(modalTitle, modalBody);
+    (window as any).getIds = (coalitionName: string, index: number): {alliance_ids: number[], alliance_names: string[]} => {
+        const alliance_ids = allianceIdsByCoalition[coalitionName][index];
+        const alliance_names = alliance_ids.map(id => allianceNameById[id] || "AA:" + id);
+        return {alliance_ids, alliance_names};
     }
     // Function to format the url for the conflict name
     // Has a C1 and C2 button for showing coalition alliances modal
