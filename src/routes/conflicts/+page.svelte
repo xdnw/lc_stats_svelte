@@ -9,7 +9,7 @@ import Progress from '../../components/Progress.svelte'
 import Sidebar from '../../components/Sidebar.svelte'
 import Footer from '../../components/Footer.svelte'
 import { onMount } from 'svelte';
-import { decompressBson, modalWithCloseButton, setupContainer, addFormatters, downloadTableData, type TableData, type ExportType, ExportTypes } from '$lib';
+import { decompressBson, modalWithCloseButton, modalStrWithCloseButton, setupContainer, addFormatters, downloadTableData, type TableData, type ExportType, ExportTypes } from '$lib';
 
 let _currentRowData: TableData;
 let _rawData: any = null;
@@ -51,6 +51,9 @@ try {
         }
         let idsStr = alliance_ids.join(",");
         let modalBody = document.createElement("div");
+
+        let copyToClipboard = document.createElement("button");
+
         modalBody.textContent = idsStr;
         modalBody.appendChild(ul);
         modalWithCloseButton(modalTitle, modalBody);
@@ -225,6 +228,22 @@ function selectSource(event: Event) {
                     <option value={id} selected={id == currSource[1]}>{name}</option>
                 {/each}
             </select>
+            <button class="btn btn-outline-light border-3 fw-bold text-info" on:click={() => modalStrWithCloseButton("Create Info", 
+`<p>Use the discord bot to run the following command</p>
+<p><code>/conflict create_temp</code></p>
+<p>Create a temporary conflict between two coalitions
+Conflict is not auto updated</p>
+<p><b>Arguments:</b><br/>
+<code>&lt;col1&gt;</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#setdballiance">Set</a>
+A comma separated list of alliances<br/>
+<code>&lt;col2&gt;</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#setdballiance">Set</a><br/>
+<code>&lt;start&gt;</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#longtimestamp">long[Timestamp]</a>
+A unix timestamp, a DMY date or a time difference that will resolve to a timestamp from the current date<br/>
+<code>[end]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#longtimestamp">Long[Timestamp]</a><br/>
+<code>[-g includeGraphs]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#boolean">boolean</a></p>`
+            )}>
+                Create Conflict
+            </button>
         </div>
         </div>
     {/if}
