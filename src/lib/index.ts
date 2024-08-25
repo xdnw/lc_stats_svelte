@@ -714,7 +714,7 @@ function setupTable(containerElem: HTMLElement,
     let table = (jqTable as any).DataTable( {
         // the array of column info
         columns: [
-            { data: null },
+            { data: null, title: "#", width: "10px", orderable: false, searchable: false, className: 'dt-center p-0' },
             ...columnsInfo
         ],
         // columns: columnsInfo,
