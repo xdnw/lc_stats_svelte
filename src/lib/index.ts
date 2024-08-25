@@ -229,7 +229,7 @@ export interface GraphCoalitionData {
     name: string, // The name of the coalition
     alliance_ids: number[], // The ids of the alliances in the coalition
     alliance_names: string[], // The names of the alliances in the coalition
-    cities: number[], // The city ids of the cities in the coalition
+    cities: number[], // The city count by index of the cities in the coalition
     turn: {
         range: [number, number],
         data: number[][][][] // 4d array of the metric -> alliance -> day -> value
@@ -675,6 +675,10 @@ function setupTable(containerElem: HTMLElement,
     }
 
     // Set column visibility and add the search input to the header
+    const jqTr = jqTable.find("thead tr");
+    jqTr.append("<th>#</th>");
+    const jqTf = jqTable.find("tfoot tr");
+    jqTf.append("<th></th>");
     for(let i = 0; i < columnsInfo.length; i++) {
         let columnInfo = columnsInfo[i];
         let title = columnInfo["data"];
@@ -693,13 +697,13 @@ function setupTable(containerElem: HTMLElement,
             }
             if (i != 0) {
                 let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
-                tf = "<button class='toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 " + color + "' data-column='" + i + "'>" + title + "</button>";
+                tf = "<button class='toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 " + color + "' data-column='" + (i + 1) + "'>" + title + "</button>";
             } else {
                 tf = '';
             }
         }
-        jqTable.find("thead tr").append("<th>" + th + "</th>");
-        let rows = jqTable.find("tfoot tr").append("<th>" + tf + "</th>");
+        jqTr.append("<th>" + th + "</th>");
+        let rows = jqTf.append("<th>" + tf + "</th>");
         if (i != 0 && typeof columnInfo["visible"] === 'boolean' && columnInfo["visible"] === false) {
             let row = rows.children().last();
             let toggle = row.children().first();
@@ -707,10 +711,13 @@ function setupTable(containerElem: HTMLElement,
             toggle = jqContainer.find(".table-toggles").append(toggle);
         }
     }
-    
     let table = (jqTable as any).DataTable( {
         // the array of column info
-        columns: columnsInfo,
+        columns: [
+            { data: null },
+            ...columnsInfo
+        ],
+        // columns: columnsInfo,
         // Allow column reordering (colReorder extension)
         colReorder: true,
         // the array of row objects to display
@@ -726,15 +733,21 @@ function setupTable(containerElem: HTMLElement,
         // Set default column sort
         order: [sort],
         // Set row formatting (i.e. coalition colors)
-        createdRow: row_format,
+        // // createdRow: row_format,
+        rowCallback: function(row, data, displayIndex, displayIndexFull) {
+            $('td:eq(0)', row).html(displayIndex + 1);
+            if (row_format) {
+                row_format(row, data, displayIndex);
+            }
+        },
         // Setup searchable dropdown for columns with unique values
         // Not used currently
         initComplete: function () {
             let that = this.api();
             that.columns().every( function (index: number) {
-                if (!searchSet.has(index)) return;
+                if (index == 0 || !searchSet.has(index - 1)) return;
                 let column = that.column( index );
-                let title = columnsInfo[index].data;
+                let title = columnsInfo[index - 1].data;
                 if (title != null) {
                     let data = column.data();
                     let unique = data.unique();
@@ -808,8 +821,8 @@ function setupTable(containerElem: HTMLElement,
 		}
         // get names of column names visible
         let visibleColumns = table.columns().indexes()
-            .filter((idx: number) => table.column(idx).visible())
-            .map((idx: number) => dataColumns[idx])
+            .filter((idx: number) => idx > 0 && table.column(idx).visible())
+            .map((idx: number) => dataColumns[idx - 1])
             .toArray();
         setQueryParam("columns", visibleColumns.join("."));
     });
@@ -819,6 +832,7 @@ function setupTable(containerElem: HTMLElement,
 	function format (d: any) {
         let rows = "";
         table.columns().every( function (index: any) {
+            if (index == 0) return;
             let numFormat = [];
             if (cell_format.formatNumber != null) {
                 numFormat.push(cell_format.formatNumber);
@@ -826,12 +840,12 @@ function setupTable(containerElem: HTMLElement,
             if (cell_format.formatMoney != null) {
                 numFormat.push(cell_format.formatMoney);
             }
-            let columnInfo = columnsInfo[index];
+            let columnInfo = columnsInfo[index - 1];
             let title = columnInfo["data"];
             if (title != null) {
                 if (!table.column(index).visible()) {
                     let data = d[title];
-                    if (numFormat.includes(index)) {
+                    if (numFormat.includes(index - 1)) {
                         data = data.toLocaleString("en-US");
                     }
                     rows += '<tr>'+

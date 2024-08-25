@@ -212,7 +212,7 @@ function getGraphDataAtTime(data: DataSet[], slider: number[]): {
         slider = [slider[1]];
     }
     if (slider.length == 1) {
-        return data.map((dataSet, i) => ({
+        const result = data.map((dataSet, i) => ({
             label: dataSet.label,
             data: dataSet.data[slider[0]],
             backgroundColor: dataSet.color,
@@ -566,13 +566,15 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
         let [col, label, color, data, counts] = dataBeforeNormalize[i];
         // iterate data, and set each array to previous value if empty
         let normalized: number[][] = new Array(data.length);
+        let dataPrev: number[] | null = null;
         for (let k = 0; k < data.length; k++) {
             let dataK = data[k];
-            if (!dataK || dataK.length == 0) {
-                if (k > 0) {
-                    dataK = data[k - 1];
+            if ((!dataK || dataK.length == 0)) {
+                if (dataPrev) {
+                    dataK = dataPrev;
                 }
             }
+            dataPrev = dataK;
             if (dataK && dataK.length > 0 && counts) {
                 let countsK = counts[k];
                 for (let j = 0; j < dataK.length; j++) {
