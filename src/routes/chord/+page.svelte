@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { decompressBson, type Conflict, rafDelay, setQueryParam, generateColorsFromPalettes, Palette, darkenColor } from "$lib";
+  import { decompressBson, type Conflict, rafDelay, setQueryParam, generateColorsFromPalettes, Palette, darkenColor, commafy } from "$lib";
   import { onMount } from "svelte";
   import Navbar from "../../components/Navbar.svelte";
   import Sidebar from "../../components/Sidebar.svelte";
@@ -255,12 +255,12 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
         data = indices.map(i => data[i]);
         secondArray = indices.map(i => secondArray[i]);
 
-        let table = `<h5>${alliance_names[showIndex]} - ${_currentHeaderName}</h5><table class='table fw-bold w-auto'><tr><th></th><th>To</th><th>From</th><th>Net</th></tr>`;
+        let table = `<h5>${alliance_names[showIndex]} - ${_currentHeaderName}</h5><table class='table fw-bold w-auto'><tr><th></th><th>${alliance_names[showIndex]}</th><th>Other</th><th>Net</th></tr>`;
         labels.forEach((label, index) => {
             table += `<tr><td style='background-color:${darkenColor(colorSlice[index],50)};color:white'>${label}</td>`;
-            table += `<td>${data[index]}</td>`;
-            table += `<td>${secondArray[index]}</td>`;
-            table += `<td>${data[index] - secondArray[index]}</td></tr>`;
+            table += `<td>${commafy(data[index])}</td>`;
+            table += `<td>${commafy(secondArray[index])}</td>`;
+            table += `<td>${commafy(data[index] - secondArray[index])}</td></tr>`;
         });
         table += "</table>";
         toolTip.innerHTML = table;

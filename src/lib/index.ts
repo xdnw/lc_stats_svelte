@@ -296,7 +296,7 @@ export function formatTurnsToDate(value: number) {
  * @param num The
  * @returns string with commas
  */
-function commafy(num: number): string {
+export function commafy(num: number): string {
     var parts = (''+(num<0?-num:num)).split("."), s=parts[0], L, i=L= s.length, o='';
     while(i--){ o = (i===0?'':((L-i)%3?'':',')) 
                     +s.charAt(i) +o }
