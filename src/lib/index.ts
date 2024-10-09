@@ -735,9 +735,9 @@ function setupTable(containerElem: HTMLElement,
         // Set row formatting (i.e. coalition colors)
         // // createdRow: row_format,
         rowCallback: function(row, data, displayIndex, displayIndexFull) {
-            $('td:eq(0)', row).html(displayIndex + 1);
+            $('td:eq(0)', row).html(displayIndexFull + 1);
             if (row_format) {
-                row_format(row, data, displayIndex);
+                row_format(row, data, displayIndexFull);
             }
         },
         // Setup searchable dropdown for columns with unique values
