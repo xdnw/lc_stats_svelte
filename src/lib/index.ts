@@ -1,3 +1,4 @@
+import msgpack from 'msgpack-lite';
 /*
 Shared typescript for all pages
 */
@@ -423,9 +424,10 @@ export const decompressBson = async (url: string) => {
     let stream: ReadableStream<Uint8Array> = result.stream();
     let uint8Array = await streamToUint8Array(stream);
     console.log("Stream to uint8Array time: " + (Date.now() - start) + "ms"); start = Date.now();
-    var PSON = dcodeIO.PSON;
-    var pson = new PSON.StaticPair([]);
-    let decoded = pson.decode(uint8Array);
+    // var PSON = dcodeIO.PSON;
+    // var pson = new PSON.StaticPair([]);
+    // let decoded = pson.decode(uint8Array);
+    let decoded = msgpack.decode(uint8Array);
     console.log("PSON decode time: " + (Date.now() - start) + "ms");
     return decoded;
 };
