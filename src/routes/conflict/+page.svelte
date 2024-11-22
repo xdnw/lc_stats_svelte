@@ -179,11 +179,7 @@
     let visible: number[] = [];
     let cell_format: { [key: string]: number[] } = {};
     let row_format:
-      | ((
-          row: HTMLElement,
-          data: { [key: string]: any },
-          index: number
-        ) => void)
+      | ((row: HTMLElement, data: (number | number[])[], index: number) => void)
       | null = null;
 
     // Alliance ids (set)
@@ -195,10 +191,10 @@
       case Layout.COALITION:
         row_format = (
           row: HTMLElement,
-          data: { [key: string]: any },
+          data: (number | number[])[],
           index: number
         ) => {
-          let name = data["name"];
+          let name = data[0] as number;
           if (name == 0) {
             row.classList.add("bg-danger-subtle");
           } else if (name == 1) {
@@ -209,10 +205,10 @@
       case Layout.ALLIANCE:
         row_format = (
           row: HTMLElement,
-          data: { [key: string]: any },
+          data: (number | number[])[],
           index: number
         ) => {
-          let id = data["name"][1];
+          let id = (data[0] as number[])[1];
           if (col1.has(id)) {
             row.classList.add("bg-danger-subtle");
           } else if (col2.has(id)) {
@@ -223,10 +219,10 @@
       case Layout.NATION:
         row_format = (
           row: HTMLElement,
-          data: { [key: string]: any },
+          data: (number | number[])[],
           index: number
         ) => {
-          let id = data["name"][2];
+          let id = (data[0] as number[])[2] as number;
           if (col1.has(id)) {
             row.classList.add("bg-danger-subtle");
           } else if (col2.has(id)) {
@@ -491,8 +487,9 @@
 
     // Cell format function for a coalition
     (window as any).formatCol = (data: any, type: any, row: any, meta: any) => {
-      let index = row.name;
+      let index = data; //row.name;
       let button = document.createElement("button");
+
       button.setAttribute("type", "button");
       button.setAttribute(
         "class",
@@ -605,12 +602,6 @@
     async
     src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"
   ></script>
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css"
-    media="print"
-    onload="this.media='all'"
-  />
 </svelte:head>
 <Navbar />
 <Sidebar />

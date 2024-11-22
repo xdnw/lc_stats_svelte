@@ -620,7 +620,6 @@ function setupTable(containerElem: HTMLElement,
     ) {
 
     let jqTable = $(tableElem);
-    let jqContainer = $(containerElem);
 
     let visibleColumns = dataSetRoot.visible;
     let dataColumns = dataSetRoot.columns;
@@ -631,16 +630,6 @@ function setupTable(containerElem: HTMLElement,
     let row_format = dataSetRoot.row_format;
     let sort = dataSetRoot.sort;
     if (sort == null) sort = [0, 'asc'];
-
-    // Convert the 2d array of cell data to an object list which maps the header name => cell data
-    let dataObj: {}[] = [];
-    dataList.forEach(function (row, index) {
-        let obj: {[key: string]: any} = {}; // Add index signature
-        for (let i = 0; i < dataColumns.length; i++) {
-            obj[dataColumns[i]] = row[i];
-        }
-        dataObj.push(obj);
-    });
 
     // Convert the cell format function names to their respective js functions
     let cellFormatByCol: { [key: number]: (data: number, type: any, row: any, meta: any) => void } = {};
@@ -658,10 +647,10 @@ function setupTable(containerElem: HTMLElement,
     }
 
     // Convert the column names and format to the column info object (used by DataTables.js)
-    let columnsInfo: { data: string, className?: string, render?: any, visible?: boolean }[] = [];
+    let columnsInfo: { data: number, className?: string, render?: any, visible?: boolean }[] = [];
     if (dataColumns.length > 0) {
         for (let i = 0; i < dataColumns.length; i++) {
-            let columnInfo: { orderDataType?: string, data: string; className: string; render?: any } = {data: dataColumns[i], className: 'details-control'};
+            let columnInfo: { orderDataType?: string, data: number; className: string; render?: any } = {data: i, className: 'details-control'};
             let renderFunc = cellFormatByCol[i];
             if (renderFunc != null) {
                 columnInfo.render = renderFunc;
@@ -672,45 +661,81 @@ function setupTable(containerElem: HTMLElement,
             columnsInfo.push(columnInfo);
         }
     }
+    const tableArr = [null];
 
     // Set column visibility and add the search input to the header
-    const jqTr = jqTable.find("thead tr");
-    jqTr.append("<th>#</th>");
-    const jqTf = jqTable.find("tfoot tr");
-    jqTf.append("<th></th>");
-    for(let i = 0; i < columnsInfo.length; i++) {
-        let columnInfo = columnsInfo[i];
-        let title = columnInfo["data"];
-        if (visibleColumns != null) {
-            columnInfo["visible"] = visibleColumns.includes(i) as boolean;
-        }
-        let th,tf;
-        if (title == null) {
-            th = '';
-            tf = '';
-        } else {
-            if (searchableColumns == null || searchableColumns.includes(i)) {
-                th = '<input type="text" placeholder="'+ title +'" style="width: 100%;" />';
-            } else {
-                th = title;
-            }
-            if (i != 0) {
-                let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
-                tf = "<button class='toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 " + color + "' data-column='" + (i + 1) + "'>" + title + "</button>";
-            } else {
-                tf = '';
-            }
-        }
-        jqTr.append("<th>" + th + "</th>");
-        let rows = jqTf.append("<th>" + tf + "</th>");
-        if (i != 0 && typeof columnInfo["visible"] === 'boolean' && columnInfo["visible"] === false) {
-            let row = rows.children().last();
-            let toggle = row.children().first();
-            (toggle[0] as any).oldParent = row[0];
-            toggle = jqContainer.find(".table-toggles").append(toggle);
+    const thead = document.querySelector("thead tr");
+    const tfoot = document.querySelector("tfoot tr");
+    const tableToggles = document.querySelector(".table-toggles");
+    function handleSearch(input: HTMLInputElement, event: Event) {
+        const column = tableArr[0].column(input.closest('th').cellIndex);
+        if (column.search() !== input.value) {
+            column.search(input.value).draw();
         }
     }
-    let table = (jqTable as any).DataTable( {
+    function stopPropagation(event: Event) {
+        event.stopPropagation();
+    }
+    if (thead && tfoot && tableToggles) {
+        const theadFragment = document.createDocumentFragment();
+        const tfootFragment = document.createDocumentFragment();
+
+        const thNumber = document.createElement('th');
+        thNumber.textContent = "#";
+        theadFragment.appendChild(thNumber);
+
+        const tfNumber = document.createElement('th');
+        tfootFragment.appendChild(tfNumber);
+
+        for (let i = 0; i < columnsInfo.length; i++) {
+            let columnInfo = columnsInfo[i];
+            let title =  dataColumns[i];
+            if (visibleColumns != null) {
+                columnInfo["visible"] = visibleColumns.includes(i);
+            }
+
+            const th = document.createElement('th');
+            const tf = document.createElement('th');
+
+            if (title != null) {
+                if (searchableColumns == null || searchableColumns.includes(i)) {
+                    const input = document.createElement('input');
+                    input.type = "text";
+                    input.placeholder = title;
+                    input.style.width = "100%";
+                    input.addEventListener('keyup', handleSearch.bind(null, input));
+                    input.addEventListener('change', handleSearch.bind(null, input));
+                    input.addEventListener('clear', handleSearch.bind(null, input));
+                    input.addEventListener('click', stopPropagation);
+                    th.appendChild(input);
+                } else {
+                    th.textContent = title;
+                }
+
+                if (i != 0) {
+                    let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
+                    const button = document.createElement('button');
+                    button.className = `toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 ${color}`;
+                    button.dataset.column = (i + 1).toString();
+                    button.textContent = title;
+                    tf.appendChild(button);
+
+                    if (!columnInfo.visible) {
+                        (button as any).oldParent = tf;
+                        tableToggles.appendChild(button);
+                    }
+                }
+            }
+
+            theadFragment.appendChild(th);
+            tfootFragment.appendChild(tf);
+        }
+
+        thead.appendChild(theadFragment);
+        tfoot.appendChild(tfootFragment);
+    }
+
+    let table = tableArr[0] = (jqTable as any).DataTable( {
         // the array of column info
         columns: [
             { data: null, title: "#", orderable: false, searchable: false, className: 'dt-center p-0' },
@@ -720,7 +745,7 @@ function setupTable(containerElem: HTMLElement,
         // Allow column reordering (colReorder extension)
         colReorder: true,
         // the array of row objects to display
-        data: dataObj,
+        data: dataList,
         // Pagination
         paging: true,
         // Pagination settings
@@ -731,7 +756,13 @@ function setupTable(containerElem: HTMLElement,
         orderClasses: false,
         // Set default column sort
         order: [sort],
-        // Set row formatting (i.e. coalition colors)
+        autoWidth: false,
+        searchHighlight: false,
+        info: false,
+        lengthChange: false,
+        processing: false,
+        stateSave: false,
+        scrollX: false,
         // // createdRow: row_format,
         rowCallback: function(row, data, displayIndex, displayIndexFull) {
             $('td:eq(0)', row).html(displayIndexFull + 1);
@@ -741,139 +772,151 @@ function setupTable(containerElem: HTMLElement,
         },
         // Setup searchable dropdown for columns with unique values
         // Not used currently
-        initComplete: function () {
-            let that = this.api();
-            that.columns().every( function (index: number) {
-                if (index == 0 || !searchSet.has(index - 1)) return;
-                let column = that.column( index );
-                let title = columnsInfo[index - 1].data;
-                if (title != null) {
-                    let data = column.data();
-                    let unique = data.unique();
-                    let uniqueCount = unique.count();
-                    if (uniqueCount > 1 && uniqueCount < 24 && uniqueCount < data.count() / 2) {
-                        let select = $('<select><option value=""></option></select>')
-                            .appendTo($(column.header()).empty() )
-                            .on( 'change', function () {
-                                let val = ($.fn as any).dataTable.util.escapeRegex(
-                                    $(this).val()
-                                );
+        // initComplete: function initComplete() {
+        //     let that = this.api();
+        //     that.columns().every( function (index: number) {
+        //         if (index == 0 || !searchSet.has(index - 1)) return;
+        //         let column = that.column( index );
+        //         let title = columnsInfo[index - 1].data;
+        //         if (title != null) {
+        //             let data = column.data();
+        //             let unique = data.unique();
+        //             let uniqueCount = unique.count();
+        //             if (uniqueCount > 1 && uniqueCount < 24 && uniqueCount < data.count() / 2) {
+        //                 let select = $('<select><option value=""></option></select>')
+        //                     .appendTo($(column.header()).empty() )
+        //                     .on( 'change', function () {
+        //                         let val = ($.fn as any).dataTable.util.escapeRegex(
+        //                             $(this).val()
+        //                         );
 
-                                column
-                                    .search( val ? '^'+val+'$' : '', true, false )
-                                    .draw();
-                            });
+        //                         column
+        //                             .search( val ? '^'+val+'$' : '', true, false )
+        //                             .draw();
+        //                     });
 
-                        unique.sort().each( function ( d: any, j: any ) {
-                            select.append('<option value="'+d+'">'+d+'</option>' );
-                        });
+        //                 unique.sort().each( function ( d: any, j: any ) {
+        //                     select.append('<option value="'+d+'">'+d+'</option>' );
+        //                 });
 
-                        select.before(title + ": ");
-                    }
+        //                 select.before(title + ": ");
+        //             }
 
+        //         }
+        //     });
+        // }
+    });
+    
+    // // Apply the search for input fields
+    // function applySearch(table: any) {
+    //     table.columns().every( function (index: number) {
+            
+    //         let myInput = $( 'input', column.header() );
+            
+    //     });
+    // }
+
+// Prevent the search input from triggering the row details toggle
+function preventButtonPropagation() {
+    const buttons = document.querySelectorAll("button");
+    buttons.forEach(button => {        
+        button.addEventListener('click', stopPropagation);
+    });
+}
+
+// Handle clicking the show/hide column buttons
+function handleToggleVis(jqContainer: any, table: any) {
+    const toggles = jqContainer.querySelectorAll('.toggle-vis');
+    toggles.forEach(toggle => {
+        toggle.addEventListener('click', function (e: Event) {
+            e.preventDefault();
+            const target = e.target as HTMLElement;
+            const column = table.column(target.getAttribute('data-column'));
+
+            // Toggle the visibility
+            column.visible(!column.visible());
+
+            // Move element
+            if (target.parentElement && target.parentElement.tagName === "TH") {
+                (target as any).oldParent = target.parentElement;
+                const tableToggles = jqContainer.querySelector(".table-toggles");
+                tableToggles.appendChild(target);
+
+                // Find the input element of toggles
+                const inputElem = tableToggles.querySelector('input');
+                if (inputElem && inputElem.value && !target.textContent.includes(inputElem.value)) {
+                    target.classList.add('d-none');
                 }
-            });
-        }
-    });
-        
-    // Apply the search for input fields
-    table.columns().every( function (index: number) {
-        var column = table.column( index );
-        let myInput = $( 'input', column.header() );
-        myInput.on( 'keyup change clear', function () {
-            if ( column.search() !== (this as any).value ) {
-                column
-                    .search((this as any).value )
-                    .draw();
+            } else {
+                (target as any).oldParent.appendChild(target);
             }
-        } );
-        myInput.click(function(e) {
-            e.stopPropagation();
-         });
-    });
 
-    // Prevent the search input from triggering the row details toggle
-    $("button").click(function(e) {
-        e.stopPropagation();
-     });
-
-    // Handle clicking the show/hide column buttons
-	jqContainer.find('.toggle-vis').on('click', function (e) {
-		e.preventDefault();
-		// Get the column API object
-		let column = table.column( $(this).attr('data-column') );
-
-		// Toggle the visibility
-		column.visible(!column.visible());
-		// move elem
-		if (e.target.parentElement && e.target.parentElement.tagName == "TH") {
-			(e.target as any).oldParent = e.target.parentElement;
-            let toggles = jqContainer.find(".table-toggles");
-			toggles.append(e.target);
-            // find the input elem of toggles
-            let inputElem = toggles.find('input');
-            if(inputElem.val() && !e.target.textContent.includes(inputElem.val())) {
-                $(e.target).addClass('d-none');
-            }
-		} else {
-			(e.target as any).oldParent.append(e.target);
-		}
-        // get names of column names visible
-        let visibleColumns = table.columns().indexes()
-            .filter((idx: number) => idx > 0 && table.column(idx).visible())
-            .map((idx: number) => dataColumns[idx - 1])
-            .toArray();
-        setQueryParam("columns", visibleColumns.join("."));
-    });
-
-    // Formatting function for row details
-    // This displays the hidden columns as a table when a row is clicked
-	function format (d: any) {
-        let rows = "";
-        table.columns().every( function (index: any) {
-            if (index == 0) return;
-            let numFormat = [];
-            if (cell_format.formatNumber != null) {
-                numFormat.push(cell_format.formatNumber);
-            }
-            if (cell_format.formatMoney != null) {
-                numFormat.push(cell_format.formatMoney);
-            }
-            let columnInfo = columnsInfo[index - 1];
-            let title = columnInfo["data"];
-            if (title != null) {
-                if (!table.column(index).visible()) {
-                    let data = d[title];
-                    if (numFormat.includes(index - 1)) {
-                        data = data.toLocaleString("en-US");
-                    }
-                    rows += '<tr>'+
-                        '<td>' + title + '</td>'+
-                        '<td>'+data+'</td>'+
-                        '</tr>';
-                }
-            }
+            // Get names of visible columns
+            const visibleColumns = table.columns().indexes()
+                .filter((idx: number) => idx > 0 && table.column(idx).visible())
+                .map((idx: number) => dataColumns[idx - 1])
+                .toArray();
+            setQueryParam("columns", visibleColumns.join("."));
         });
-        if (rows == "") rows = "No extra info";
-        return '<table class="table table-striped table-bordered compact" cellspacing="0" border="0">'+rows+'</table>';
-    }
+    });
+}
 
-    // Add event listener for opening and closing details (of the hidden columns table)
-    jqTable.find('tbody').on('click', 'td.details-control', function () {
-        let tr = $(this).closest('tr');
-        let row = table.row( tr );
-
-        if ( row.child.isShown() ) {
-            // This row is already open - close it
-            row.child.hide();
-            tr.removeClass('shown');
+// Formatting function for row details
+function formatRowDetails(d: any) {
+    let rows = "";
+    table.columns().every(function (index: any) {
+        if (index === 0) return;
+        let numFormat = [];
+        if (cell_format.formatNumber != null) {
+            numFormat.push(cell_format.formatNumber);
         }
-        else {
-            // Open this row
-            row.child( format(row.data()) ).show();
-            tr.addClass('shown');
+        if (cell_format.formatMoney != null) {
+            numFormat.push(cell_format.formatMoney);
+        }
+        let title = dataColumns[index - 1];
+        console.log("TITLE ")
+        if (title != null) {
+            if (!table.column(index).visible()) {
+                let data = d[index - 1];
+                if (numFormat.includes(index - 1)) {
+                    data = data.toLocaleString("en-US");
+                }
+                rows += '<tr>' +
+                    '<td>' + title + '</td>' +
+                    '<td>' + data + '</td>' +
+                    '</tr>';
+            }
         }
     });
+    if (rows === "") rows = "No extra info";
+    return '<table class="table table-striped table-bordered compact" cellspacing="0" border="0">' + rows + '</table>';
+}
+
+// Add event listener for opening and closing details (of the hidden columns table)
+function addRowDetailsListener(jqTable: any, table: any) {
+    jqTable.querySelector('tbody').addEventListener('click', function (event: Event) {
+        const target = event.target as HTMLElement;
+        if (target.classList.contains('details-control')) {
+            const tr = target.closest('tr');
+            const row = table.row(tr);
+
+            if (row.child.isShown()) {
+                // This row is already open - close it
+                row.child.hide();
+                tr.classList.remove('shown');
+            } else {
+                // Open this row
+                row.child(formatRowDetails(row.data())).show();
+                tr.classList.add('shown');
+            }
+        }
+    });
+}
+
+// Call the functions
+preventButtonPropagation();
+handleToggleVis(containerElem, table);
+addRowDetailsListener(tableElem, table);
     // Show the table (faster to only display after setup)
     tableElem.classList.remove("d-none");
 }
