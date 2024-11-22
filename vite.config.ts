@@ -9,7 +9,13 @@ export default defineConfig({
 		}
 	  },
 	  build: {
-		target: 'es2020'
-	  }
+		minify: true,
+	  },
+	  esbuild: {
+		target: 'es2020',
+	  },
+	  server: {
+		hmr: true,
+	  },
 });
 
