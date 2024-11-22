@@ -406,14 +406,12 @@ const decompress = async (url: string) => {
     const ds = new DecompressionStream('gzip');
     const response = await fetch(url);
     console.log("Fetch time: " + (Date.now() - start) + "ms"); start = Date.now();
-    const blob_in = await response.blob();
-    console.log("Blob time: " + (Date.now() - start) + "ms"); start = Date.now();
-    const stream_in = blob_in.stream().pipeThrough(ds);
+    const stream_in = response.body.pipeThrough(ds);
     const blob_out = await new Response(stream_in).blob();
     console.log("Decompress blob time: " + (Date.now() - start) + "ms");
     return blob_out;
 };
-  
+
 /**
  * Read gzip json from a url and return a javascript object
  * @param url The s3 bucket url
