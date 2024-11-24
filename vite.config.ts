@@ -1,15 +1,21 @@
-import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
-// import legacy from '@vitejs/plugin-legacy';
+import legacy from '@vitejs/plugin-legacy';
+import babel from '@rollup/plugin-babel';
 
 export default defineConfig({
     plugins: [
-        sveltekit(),
-        // legacy({
-        //     targets: ['defaults', 'not IE 11'],
-        //     polyfills: ['es/object/has-own'],
-        //     modernPolyfills: ['es/object/has-own'],
-        // })
+        babel({
+            babelHelpers: 'bundled',
+            presets: [
+                [
+                    '@babel/preset-env',
+                    {
+                        targets: '> 0.25%, not dead',
+                    },
+                ],
+            ],
+            extensions: ['.js', '.ts', '.jsx', '.tsx', '.mjs'],
+        })
     ],
     optimizeDeps: {
         esbuildOptions: {
@@ -17,8 +23,7 @@ export default defineConfig({
         }
     },
     build: {
-        minify: true,
-        target: 'es2016'
+        minify: true
     },
     esbuild: {
         target: 'es2016'
