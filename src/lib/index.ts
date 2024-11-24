@@ -1,5 +1,6 @@
 // import msgpack from 'msgpack-lite';
 import { Unpackr } from 'msgpackr';
+import { render } from 'svelte/server';
 const extUnpackr = new Unpackr({largeBigIntToFloat: true, mapsAsObjects: true, bundleStrings: true, int64AsType: "number"});
 /*
 Shared typescript for all pages
@@ -738,7 +739,7 @@ function setupTable(containerElem: HTMLElement,
     let table = tableArr[0] = (jqTable as any).DataTable( {
         // the array of column info
         columns: [
-            { data: null, title: "#", orderable: false, searchable: false, className: 'dt-center p-0' },
+            { data: null, title: "#", orderable: false, searchable: false, className: 'dt-center p-0', defaultContent: ''},
             ...columnsInfo
         ],
         // columns: columnsInfo,
@@ -752,14 +753,11 @@ function setupTable(containerElem: HTMLElement,
         lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
         // Render after initialization (faster)
         deferRender: true,
-        // Disable ordering (faster)
         orderClasses: false,
-        // Set default column sort
         order: [sort],
         autoWidth: false,
         searchHighlight: false,
         info: false,
-        // lengthChange: false,
         processing: false,
         stateSave: false,
         scrollX: false,
@@ -772,7 +770,6 @@ function setupTable(containerElem: HTMLElement,
         },
         // Setup searchable dropdown for columns with unique values
         // Not used currently
-        // initComplete: function initComplete() {
         //     let that = this.api();
         //     that.columns().every( function (index: number) {
         //         if (index == 0 || !searchSet.has(index - 1)) return;
@@ -805,6 +802,18 @@ function setupTable(containerElem: HTMLElement,
         //         }
         //     });
         // }
+    });
+    table.on('column-reorder', function(e, settings, details) {
+        const pageInfo = table.page.info();
+        const currentPage = pageInfo.page;
+        const rowsPerPage = pageInfo.length;
+        let startI = currentPage * rowsPerPage;
+        // iterate over all the `tr` in table and set td 0 to the correct index, use jquery/html, not datatables
+        // Iterate over all the `tr` elements in the table
+        jqTable.find('tbody tr').each(function(index) {
+            // Set the textContent of the first `td` element to the correct index
+            $(this).find('td:eq(0)').text(startI + index + 1);
+        });
     });
     
     // // Apply the search for input fields
