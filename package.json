@@ -10,6 +10,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
 	"devDependencies": {
+<<<<<<< HEAD
 		"@sveltejs/adapter-auto": "^3.0.0",
 		"@sveltejs/adapter-static": "^3.0.1",
 		"@sveltejs/kit": "^2.0.0",
@@ -20,15 +21,39 @@
 		"tslib": "^2.4.1",
 		"typescript": "^5.0.0",
 		"vite": "^5.0.3"
+=======
+		"@babel/core": "^7.26.0",
+		"@babel/preset-env": "^7.26.0",
+		"@rollup/plugin-babel": "^6.0.4",
+		"@sveltejs/adapter-auto": "^3.3.1",
+		"@sveltejs/adapter-static": "^3.0.6",
+		"@sveltejs/kit": "^2.8.2",
+		"@sveltejs/vite-plugin-svelte": "^4.0.1",
+		"@types/jquery": "^3.5.32",
+		"@vitejs/plugin-legacy": "^5.4.3",
+		"svelte": "^5.2.7",
+		"svelte-check": "^4.1.0",
+		"tslib": "^2.8.1",
+		"typescript": "^5.7.2",
+		"vite": "^5.4.11"
+>>>>>>> test
 	},
 	"type": "module",
 	"dependencies": {
 		"@types/d3": "^7.4.3",
+<<<<<<< HEAD
 		"@xenova/transformers": "^2.15.1",
 		"chart.js": "^4.4.1",
 		"d3": "^7.4.3",
+=======
+		"@xenova/transformers": "^2.17.2",
+		"browserslist": "^4.24.2",
+		"caniuse-lite": "^1.0.30001684",
+		"chart.js": "^4.4.6",
+		"d3": "^7.9.0",
+>>>>>>> test
 		"msgpackr": "^1.11.2",
-		"nouislider": "^15.7.1",
+		"nouislider": "^15.8.1",
 		"svelte-select": "^5.8.3"
 	}
 }
