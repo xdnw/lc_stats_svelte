@@ -26,11 +26,11 @@
   } from "$lib";
   import { config } from "../+layout";
   // Layout tabs
-  enum Layout {
-    COALITION,
-    ALLIANCE,
-    NATION,
-  }
+  const Layout = {
+    COALITION: 0,
+    ALLIANCE: 1,
+    NATION: 2,
+  };
 
   // Set after page load
   let conflictName = "";
