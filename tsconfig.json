@@ -7,7 +7,7 @@
         "forceConsistentCasingInFileNames": true,
         "skipLibCheck": true,
         "strict": true,
-        "target": "es2015", // Ensure compatibility with older browsers
+        "target": "es2020",
         "module": "esnext",
         "removeComments": true,
         "noEmitOnError": true,
