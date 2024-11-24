@@ -1,26 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
-<<<<<<< HEAD
-
-export default defineConfig({
-	plugins: [sveltekit()],
-	optimizeDeps: {
-		esbuildOptions: {
-		  target: 'es2020'
-		}
-	  },
-	  build: {
-		minify: true,
-	  },
-	  esbuild: {
-		target: 'es2020',
-	  },
-	  server: {
-		hmr: true,
-	  },
-});
-
-=======
 // import legacy from '@vitejs/plugin-legacy';
 
 export default defineConfig({
@@ -34,18 +13,17 @@ export default defineConfig({
     ],
     optimizeDeps: {
         esbuildOptions: {
-            target: 'es2020'
+            target: 'es2016'
         }
     },
     build: {
         minify: true,
-        target: 'es2020'
+        target: 'es2016'
     },
     esbuild: {
-        target: 'es2020'
+        target: 'es2016'
     },
     server: {
         hmr: true
     },
 });
->>>>>>> test
