@@ -1,6 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
-import babel from '@rollup/plugin-babel';
 // import legacy from '@vitejs/plugin-legacy';
 
 export default defineConfig({
@@ -11,18 +10,6 @@ export default defineConfig({
         //     polyfills: ['es/object/has-own'],
         //     modernPolyfills: ['es/object/has-own'],
         // })
-        babel({
-            babelHelpers: 'bundled',
-            presets: [
-                [
-                    '@babel/preset-env',
-                    {
-                        targets: '> 0.25%, not dead',
-                    },
-                ],
-            ],
-            extensions: ['.js', '.ts', '.jsx', '.tsx', '.mjs'],
-        })
     ],
     optimizeDeps: {
         esbuildOptions: {

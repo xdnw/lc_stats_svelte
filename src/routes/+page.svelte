@@ -5,42 +5,70 @@
   import { onMount } from "svelte";
   import { config } from "./+layout";
 
-  let _adTemplates: {
-    [key: string]: {
-      img: string;
-      desc: string;
-      subtitle: string;
-      invite: string;
-      bg: string;
-    };
-  } = {
-    // RON
-    "446601982564892672": {
-      img: "https://static.wikia.nocookie.net/politicsandwar/images/b/be/Royal_Orbis_News.png",
-      desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Royal Orbis News discord server.",
-      subtitle: "Updates & Discussions",
-      invite: "https://discord.gg/royal-orbis-news",
-      bg: "#235D90",
+type AdTemplate = {
+    id: string;
+    img: string;
+    desc: string;
+    subtitle: string;
+    invite: string;
+    bg: string;
+    ad: boolean;
+    label: string;
+  };
+
+  export const _adTemplates: AdTemplate[] = [
+    {
+      id: "1",
+      img: "versus.jpg",
+      desc: "Browse a variety of tables and graphs for our featured set of ongoing and historical alliance conflicts. Data is available to download in CSV format.",
+      subtitle: "Alliance Conflicts",
+      invite: "conflicts{_guildId ? '?guild=' + _guildId : ''}",
+      bg: "",
+      ad: false,
+      label: "View Conflicts",
     },
-    // enquirer
-    "1244684694956675113": {
+    {
+      id: "3",
+      img: "sheet.jpg",
+      desc: "Browse templates or create your custom table from a variety of game data. Share or export options available.",
+      subtitle: "Table Builder",
+      invite: "https://www.locutus.link/#/custom_table",
+      bg: "#FFC929",
+      ad: false,
+      label: "Open Editor",
+    },
+    // {
+    //   id: "4",
+    //   img: "graph.png",
+    //   desc: "Browse templates or create your custom chart from a variety of game data. Share or export options available.",
+    //   subtitle: "Chart Viewer",
+    //   invite: "#",
+    //   bg: "#FFC929",
+    //   ad: false,
+    //   label: "View Graphs",
+    // },
+    {
+      id: "1244684694956675113",
       img: "media.png",
       desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Media discord server.",
       subtitle: "Updates & Discussions",
       invite: "https://discord.gg/aNg9DnzqWG",
       bg: "#111",
+      ad: true,
+      label: "Join Now!",
     },
-    // loading image
-    "0": {
+    {
+      id: "0",
       img: "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif",
       desc: "Loading...",
       subtitle: "Loading...",
       invite: "#",
       bg: "#EEE",
+      ad: false,
+      label: "Loading...",
     },
-  };
+  ];
   let _guildId: string = "";
-  let adTemplate = _adTemplates["0"];
 
   // The matrix background animation
   onMount(() => {
@@ -48,9 +76,6 @@
     let setGuild = queryParams.get("guild");
     if (setGuild) {
       _guildId = setGuild;
-      if (_adTemplates[setGuild as string]) {
-        adTemplate = _adTemplates[setGuild];
-      }
     }
 
     let c: HTMLCanvasElement,
@@ -122,10 +147,6 @@
       requestAnimationFrame(draw);
     }
     draw();
-    if (adTemplate.invite == "#") {
-      // set to enquirer by default
-      adTemplate = _adTemplates["1244684694956675113"];
-    }
   });
 </script>
 
@@ -139,7 +160,7 @@
 <canvas id="c"></canvas>
 <Navbar />
 <Sidebar />
-<!-- Ensure minimum page height so footer is at bottom -->
+
 <div class="container-fluid" style="min-height: calc(100vh - 203px);">
   <section>
     <header class="welcome-text">
@@ -152,44 +173,22 @@
   </section>
   <br />
   <hr />
-  <div class="d-flex justify-content-center">
-    <div class="row">
-      <div class="col-sm-6 d-flex align-items-center">
-        <div class="card mx-auto" style="width: 18rem;">
-          <img
-            src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTqidXxyUAKKGxZfnYC2q1FUVKXWUaLSVCWRArWqHPsKQ&s"
-            class="card-img-top"
-            alt="..."
-          />
-          <div class="card-body" style="height: 9rem;">
-            <h5 class="card-title">Featured Conflicts</h5>
-            <p class="card-text">
-              Browse a variety of tables and graphs for our featured set of
-              ongoing and historical alliance conflicts. Data is available to
-              download in CSV format.
-            </p>
-          </div>
-          <div class="card-footer">
-            <a
-              href="conflicts{_guildId ? '?guild=' + _guildId : ''}"
-              class="btn btn-lg btn-secondary btn-outline-info border-3"
-              >View Conflicts</a
-            >
-          </div>
-        </div>
-      </div>
-      <div class="col-sm-6 d-flex align-items-center">
-        <div class="card mx-auto" style="width: 18rem;">
+  <div class="d-flex flex-wrap justify-content-center">
+    {#each _adTemplates as adTemplate (adTemplate.id)}
+      {#if adTemplate.id !== "0"}
+        <div class="card m-2" style="width: 18rem;">
           <img
             src={adTemplate.img}
             style="background:{adTemplate.bg}"
-            class="card-img-top"
+            class="card-img-top img-fluid object-fit-fill"
             alt="..."
           />
           <div class="card-body" style="height: 9rem;">
             <h5 class="card-title">
-              <span class="badge text-bg-light fs-6 me-1">Ad</span
-              >{adTemplate.subtitle}
+              {#if adTemplate.ad}
+                <span class="badge text-bg-light fs-6 me-1">Ad</span>
+              {/if}
+              {adTemplate.subtitle}
             </h5>
             <p class="card-text">{adTemplate.desc}</p>
           </div>
@@ -197,12 +196,11 @@
             <a
               href={adTemplate.invite}
               class="btn btn-lg btn-secondary btn-outline-info border-3"
-              target="_blank">Join Now!</a
-            >
+              target="_blank">{adTemplate.label}</a>
           </div>
         </div>
-      </div>
-    </div>
+      {/if}
+    {/each}
   </div>
 </div>
 <Footer />
