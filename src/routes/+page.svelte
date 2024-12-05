@@ -22,7 +22,7 @@ type AdTemplate = {
       img: "versus.jpg",
       desc: "Browse a variety of tables and graphs for our featured set of ongoing and historical alliance conflicts. Data is available to download in CSV format.",
       subtitle: "Alliance Conflicts",
-      invite: "conflicts{_guildId ? '?guild=' + _guildId : ''}",
+      invite: "conflicts",
       bg: "",
       ad: false,
       label: "View Conflicts",
@@ -194,7 +194,7 @@ type AdTemplate = {
           </div>
           <div class="card-footer">
             <a
-              href={adTemplate.invite}
+              href={adTemplate.invite === "conflicts" && _guildId ? "conflicts?guild_id=" + _guildId : adTemplate.invite}
               class="btn btn-lg btn-secondary btn-outline-info border-3"
               target="_blank">{adTemplate.label}</a>
           </div>
