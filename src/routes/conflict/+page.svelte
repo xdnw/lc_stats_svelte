@@ -609,7 +609,7 @@
     initializeTimeline();
   }
 
-  window.addEventListener('load', () => {
+  (window as any).addEventListener('load', () => {
     scriptLoaded = true;
     initializeTimeline();
   });
