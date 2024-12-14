@@ -7,7 +7,7 @@ import Footer from '../../components/Footer.svelte';
 import Progress from '../../components/Progress.svelte';
 import noUiSlider from 'nouislider';
 import * as d3 from 'd3';
-import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, Palette, generateColors, setQueryParam, arrayEquals, type TierMetric } from '$lib';
+import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, Palette, generateColors, setQueryParam, arrayEquals, type TierMetric, ensureScriptsLoaded } from '$lib';
   import { config } from '../+layout';
 
 let _rawData: GraphData;
