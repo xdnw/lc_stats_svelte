@@ -544,7 +544,7 @@
 
   function initializeTimeline() {
     const script = document.getElementById("visjs");
-    if (dataLoaded && postsData && script && script.getAttribute('data-loaded')) {
+    if (dataLoaded && postsData && (script && script.getAttribute('data-loaded') || typeof vis !== 'undefined')) {
       console.log("Initializing timeline");
       // DOM element where the Timeline will be attached
       const container = document.getElementById("visualization");
