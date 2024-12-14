@@ -604,22 +604,24 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
         }
 
         console.log(`Generated graph data in ${Date.now() - start}ms`);start = Date.now();
-        Plotly.purge(graphDiv);
-        Plotly.react(graphDiv, {
-            data: traces,
-            layout: layout,
-            frames: frames
-        });
-        graphDiv.on('plotly_animated', function() {
-            Plotly.relayout(graphDiv, { 'xaxis.autorange': true, 'yaxis.autorange': true });
-        });
-        graphDiv.on('plotly_sliderchange', function(sliderData){
-            graphSliderIndex = sliderData.slider.active;
-            setQueryParam('time', graphSliderIndex);
 
-        });
+        ensureScriptsLoaded(['plotjs']).then(() => {
+            Plotly.purge(graphDiv);
+            Plotly.react(graphDiv, {
+                data: traces,
+                layout: layout,
+                frames: frames
+            });
+            graphDiv.on('plotly_animated', function() {
+                Plotly.relayout(graphDiv, { 'xaxis.autorange': true, 'yaxis.autorange': true });
+            });
+            graphDiv.on('plotly_sliderchange', function(sliderData){
+                graphSliderIndex = sliderData.slider.active;
+                setQueryParam('time', graphSliderIndex);
 
-        console.log(`Setup reactive plot in ${Date.now() - start}ms`);start = Date.now();
+            });
+            console.log(`Setup reactive plot in ${Date.now() - start}ms`);start = Date.now();
+        });
 };
 </script>
 <svelte:head>

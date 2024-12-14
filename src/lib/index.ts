@@ -600,6 +600,56 @@ export function setQueryParam(param: string, value: any) {
     }
 }
 
+function ensureJqueryLoaded(): Promise<void> {
+    return ensureScriptsLoaded(['jqjs']).then(() => {
+        if (typeof jQuery === 'undefined') {
+            return Promise.reject(new Error('jQuery did not load correctly'));
+        }
+    });
+}
+
+function ensureDTLoaded(): Promise<void> {
+    return ensureScriptsLoaded(['dtjs1', 'dtjs2', 'dtjs3']);
+}
+
+export function ensureScriptsLoaded(scriptIds: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const checkScriptsLoaded = () => {
+            for (const scriptId of scriptIds) {
+                const script = document.getElementById(scriptId) as HTMLScriptElement;
+                if (!script || !script.hasAttribute('data-loaded')) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        const onLoad = (event: Event) => {
+            const script = event.target as HTMLScriptElement;
+            script.setAttribute('data-loaded', 'true');
+            if (checkScriptsLoaded()) {
+                resolve();
+            }
+        };
+
+        for (const scriptId of scriptIds) {
+            const script = document.getElementById(scriptId) as HTMLScriptElement;
+            if (!script) {
+                reject(new Error(`Script element with id ${scriptId} not found`));
+                return;
+            }
+            if (script.hasAttribute('data-loaded')) {
+                continue;
+            }
+            script.addEventListener('load', onLoad);
+        }
+
+        if (checkScriptsLoaded()) {
+            resolve();
+        }
+    });
+}
+
 /**
  * Setup a table element, as well as its container
  * - Adds the table toggles (customize) to the container's collapse
@@ -620,6 +670,7 @@ function setupTable(containerElem: HTMLElement,
         }
     ) {
 
+    ensureJqueryLoaded().then(() => {
     let jqTable = $(tableElem);
 
     let visibleColumns = dataSetRoot.visible;
@@ -736,6 +787,7 @@ function setupTable(containerElem: HTMLElement,
         tfoot.appendChild(tfootFragment);
     }
 
+    ensureDTLoaded().then(() => {
     let table = tableArr[0] = (jqTable as any).DataTable( {
         // the array of column info
         columns: [
@@ -825,109 +877,111 @@ function setupTable(containerElem: HTMLElement,
     //     });
     // }
 
-// Prevent the search input from triggering the row details toggle
-function preventButtonPropagation() {
-    const buttons = document.querySelectorAll("button");
-    buttons.forEach(button => {        
-        button.addEventListener('click', stopPropagation);
-    });
-}
-
-// Handle clicking the show/hide column buttons
-function handleToggleVis(jqContainer: any, table: any) {
-    const toggles = jqContainer.querySelectorAll('.toggle-vis');
-    toggles.forEach(toggle => {
-        toggle.addEventListener('click', function (e: Event) {
-            e.preventDefault();
-            const target = e.target as HTMLElement;
-            const column = table.column(target.getAttribute('data-column'));
-
-            // Toggle the visibility
-            column.visible(!column.visible());
-
-            // Move element
-            if (target.parentElement && target.parentElement.tagName === "TH") {
-                (target as any).oldParent = target.parentElement;
-                const tableToggles = jqContainer.querySelector(".table-toggles");
-                tableToggles.appendChild(target);
-
-                // Find the input element of toggles
-                const inputElem = tableToggles.querySelector('input');
-                if (inputElem && inputElem.value && !target.textContent.includes(inputElem.value)) {
-                    target.classList.add('d-none');
-                }
-            } else {
-                (target as any).oldParent.appendChild(target);
-            }
-
-            // Get names of visible columns
-            const visibleColumns = table.columns().indexes()
-                .filter((idx: number) => idx > 0 && table.column(idx).visible())
-                .map((idx: number) => dataColumns[idx - 1])
-                .toArray();
-            setQueryParam("columns", visibleColumns.join("."));
+    // Prevent the search input from triggering the row details toggle
+    function preventButtonPropagation() {
+        const buttons = document.querySelectorAll("button");
+        buttons.forEach(button => {        
+            button.addEventListener('click', stopPropagation);
         });
-    });
-}
+    }
 
-// Formatting function for row details
-function formatRowDetails(d: any) {
-    let rows = "";
-    table.columns().every(function (index: any) {
-        if (index === 0) return;
-        let numFormat = [];
-        if (cell_format.formatNumber != null) {
-            numFormat.push(cell_format.formatNumber);
-        }
-        if (cell_format.formatMoney != null) {
-            numFormat.push(cell_format.formatMoney);
-        }
-        let title = dataColumns[index - 1];
-        console.log("TITLE ")
-        if (title != null) {
-            if (!table.column(index).visible()) {
-                let data = d[index - 1];
-                if (numFormat.includes(index - 1)) {
-                    data = data.toLocaleString("en-US");
+    // Handle clicking the show/hide column buttons
+    function handleToggleVis(jqContainer: any, table: any) {
+        const toggles = jqContainer.querySelectorAll('.toggle-vis');
+        toggles.forEach(toggle => {
+            toggle.addEventListener('click', function (e: Event) {
+                e.preventDefault();
+                const target = e.target as HTMLElement;
+                const column = table.column(target.getAttribute('data-column'));
+
+                // Toggle the visibility
+                column.visible(!column.visible());
+
+                // Move element
+                if (target.parentElement && target.parentElement.tagName === "TH") {
+                    (target as any).oldParent = target.parentElement;
+                    const tableToggles = jqContainer.querySelector(".table-toggles");
+                    tableToggles.appendChild(target);
+
+                    // Find the input element of toggles
+                    const inputElem = tableToggles.querySelector('input');
+                    if (inputElem && inputElem.value && !target.textContent.includes(inputElem.value)) {
+                        target.classList.add('d-none');
+                    }
+                } else {
+                    (target as any).oldParent.appendChild(target);
                 }
-                rows += '<tr>' +
-                    '<td>' + title + '</td>' +
-                    '<td>' + data + '</td>' +
-                    '</tr>';
+
+                // Get names of visible columns
+                const visibleColumns = table.columns().indexes()
+                    .filter((idx: number) => idx > 0 && table.column(idx).visible())
+                    .map((idx: number) => dataColumns[idx - 1])
+                    .toArray();
+                setQueryParam("columns", visibleColumns.join("."));
+            });
+        });
+    }
+
+    // Formatting function for row details
+    function formatRowDetails(d: any) {
+        let rows = "";
+        table.columns().every(function (index: any) {
+            if (index === 0) return;
+            let numFormat = [];
+            if (cell_format.formatNumber != null) {
+                numFormat.push(cell_format.formatNumber);
             }
-        }
-    });
-    if (rows === "") rows = "No extra info";
-    return '<table class="table table-striped table-bordered compact" cellspacing="0" border="0">' + rows + '</table>';
-}
-
-// Add event listener for opening and closing details (of the hidden columns table)
-function addRowDetailsListener(jqTable: any, table: any) {
-    jqTable.querySelector('tbody').addEventListener('click', function (event: Event) {
-        const target = event.target as HTMLElement;
-        if (target.classList.contains('details-control')) {
-            const tr = target.closest('tr');
-            const row = table.row(tr);
-
-            if (row.child.isShown()) {
-                // This row is already open - close it
-                row.child.hide();
-                tr.classList.remove('shown');
-            } else {
-                // Open this row
-                row.child(formatRowDetails(row.data())).show();
-                tr.classList.add('shown');
+            if (cell_format.formatMoney != null) {
+                numFormat.push(cell_format.formatMoney);
             }
-        }
-    });
-}
+            let title = dataColumns[index - 1];
+            console.log("TITLE ")
+            if (title != null) {
+                if (!table.column(index).visible()) {
+                    let data = d[index - 1];
+                    if (numFormat.includes(index - 1)) {
+                        data = data.toLocaleString("en-US");
+                    }
+                    rows += '<tr>' +
+                        '<td>' + title + '</td>' +
+                        '<td>' + data + '</td>' +
+                        '</tr>';
+                }
+            }
+        });
+        if (rows === "") rows = "No extra info";
+        return '<table class="table table-striped table-bordered compact" cellspacing="0" border="0">' + rows + '</table>';
+    }
 
-// Call the functions
-preventButtonPropagation();
-handleToggleVis(containerElem, table);
-addRowDetailsListener(tableElem, table);
+    // Add event listener for opening and closing details (of the hidden columns table)
+    function addRowDetailsListener(jqTable: any, table: any) {
+        jqTable.querySelector('tbody').addEventListener('click', function (event: Event) {
+            const target = event.target as HTMLElement;
+            if (target.classList.contains('details-control')) {
+                const tr = target.closest('tr');
+                const row = table.row(tr);
+
+                if (row.child.isShown()) {
+                    // This row is already open - close it
+                    row.child.hide();
+                    tr.classList.remove('shown');
+                } else {
+                    // Open this row
+                    row.child(formatRowDetails(row.data())).show();
+                    tr.classList.add('shown');
+                }
+            }
+        });
+    }
+
+    // Call the functions
+    preventButtonPropagation();
+    handleToggleVis(containerElem, table);
+    addRowDetailsListener(tableElem, table);
     // Show the table (faster to only display after setup)
     tableElem.classList.remove("d-none");
+    });
+    });
 }
 
 export function rafDelay(delay: number, func: () => void): (timestamp: number) => void {

@@ -37,6 +37,17 @@ type AdTemplate = {
       ad: false,
       label: "Open Editor",
     },
+    {
+      id: "4",
+      img: "graph.png",
+      // graph
+      desc: "Browse a selection of game charts. Share or export options available.",
+      subtitle: "Chart Viewer",
+      invite: "https://www.locutus.link/#/custom_chart",
+      bg: "#FFC929",
+      ad: false,
+      label: "View Charts",
+    },
     // {
     //   id: "4",
     //   img: "graph.png",
@@ -49,7 +60,7 @@ type AdTemplate = {
     // },
     {
       id: "1244684694956675113",
-      img: "media.png",
+      img: "media2.png",
       desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Media discord server.",
       subtitle: "Updates & Discussions",
       invite: "https://discord.gg/aNg9DnzqWG",
@@ -172,7 +183,6 @@ type AdTemplate = {
     </header>
   </section>
   <br />
-  <hr />
   <div class="d-flex flex-wrap justify-content-center">
     {#each _adTemplates as adTemplate (adTemplate.id)}
       {#if adTemplate.id !== "0"}
@@ -195,8 +205,7 @@ type AdTemplate = {
           <div class="card-footer">
             <a
               href={adTemplate.invite === "conflicts" && _guildId ? "conflicts?guild_id=" + _guildId : adTemplate.invite}
-              class="btn btn-lg btn-secondary btn-outline-info border-3"
-              target="_blank">{adTemplate.label}</a>
+              class="btn btn-lg btn-secondary btn-outline-info border-3">{adTemplate.label}</a>
           </div>
         </div>
       {/if}

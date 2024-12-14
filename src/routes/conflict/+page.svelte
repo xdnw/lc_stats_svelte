@@ -537,63 +537,82 @@
     setQueryParam("columns", null);
     loadCurrentLayout();
   }
-  // Load the forum post metadata (from the s3 json) into the timeline (vis.js)
-  // key = post name, value = [post id, post url text, timestamp]
-  function loadPosts(posts: { [key: string]: [number, string, number] }) {
-    // DOM element where the Timeline will be attached
-    var container = document.getElementById("visualization");
 
-    // Create a DataSet (allows two way data-binding)
-    var items = new vis.DataSet();
+  let scriptLoaded = false;
+  let dataLoaded = false;
+  let postsData: { [key: string]: [number, string, number] } | null = null;
 
-    // Loop through the posts and add them to the DataSet
-    for (let key in posts) {
-      let post = posts[key];
-      let id = post[0];
-      let url =
-        "https://forum.politicsandwar.com/index.php?/topic/" +
-        id +
-        "-" +
-        post[1];
-      let timestamp = post[2];
+  function initializeTimeline() {
+    if (scriptLoaded && dataLoaded && postsData) {
+      // DOM element where the Timeline will be attached
+      const container = document.getElementById("visualization");
 
-      // Convert the timestamp to a Date object
-      let date = new Date(timestamp);
+      if (!container) return;
 
-      // Add the post to the DataSet
-      items.add({
-        id: id,
-        content: `<a href="${url}" target="_blank">${key}</a>`,
-        start: date,
-      });
+      // Create a DataSet (allows two way data-binding)
+      const items = new vis.DataSet();
+
+      // Loop through the posts and add them to the DataSet
+      for (const key in postsData) {
+        const post = postsData[key];
+        const id = post[0];
+        const url = `https://forum.politicsandwar.com/index.php?/topic/${id}-${post[1]}`;
+        const timestamp = post[2];
+
+        // Convert the timestamp to a Date object
+        const date = new Date(timestamp);
+
+        // Add the post to the DataSet
+        items.add({
+          id: id,
+          content: `<a href="${url}" target="_blank">${key}</a>`,
+          start: date,
+        });
+      }
+
+      const start = _rawData.start;
+      let end = _rawData.end;
+      if (end === -1) end = Date.now();
+      const options = {
+        // Set the initial start-end range to display in the timeline
+        start: start,
+        end: end,
+        // Height of timeline canvas
+        height: "75vh",
+        // Width of timeline canvas
+        width: "100%",
+        // clickToUse: true,
+        zoomKey: "ctrlKey",
+        // Which side to put the dates
+        orientation: "top",
+        // Enable vertical scrolling
+        verticalScroll: true,
+        // zoomable: false,
+      };
+
+      // Create a Timeline
+      const timeline = new vis.Timeline(container, items, options);
+      // Add red bar at the start and end dates
+      timeline.addCustomTime(start, "t1");
+      timeline.addCustomTime(end, "t2");
     }
-
-    let start = _rawData.start;
-    let end = _rawData.end;
-    if (end === -1) end = Date.now();
-    var options = {
-      // Set the initial start-end range to display in the timeline
-      start: start,
-      end: end,
-      // Height of timeline canvas
-      height: "75vh",
-      // Width of timeline canvas
-      width: "100%",
-      // clickToUse: true,
-      zoomKey: "ctrlKey",
-      // Which side to put the dates
-      orientation: "top",
-      // Enable vertical scrolling
-      verticalScroll: true,
-      // zoomable: false,
-    };
-
-    // Create a Timeline
-    var timeline = new vis.Timeline(container, items, options);
-    // Add red bar at the start and end dates
-    timeline.addCustomTime(start, "t1");
-    timeline.addCustomTime(end, "t2");
   }
+
+  function loadPosts(posts: { [key: string]: [number, string, number] }) {
+    postsData = posts;
+    dataLoaded = true;
+    initializeTimeline();
+  }
+
+  function onScriptLoad() {
+    scriptLoaded = true;
+    initializeTimeline();
+  }
+
+  window.addEventListener('load', () => {
+    scriptLoaded = true;
+    initializeTimeline();
+  });
 </script>
 
 <svelte:head>
@@ -601,6 +620,7 @@
   <script
     async
     src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"
+    on:load={onScriptLoad}
   ></script>
 </svelte:head>
 <Navbar />
