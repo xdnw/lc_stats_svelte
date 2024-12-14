@@ -608,11 +608,6 @@
     scriptLoaded = true;
     initializeTimeline();
   }
-
-  (window as any).addEventListener('load', () => {
-    scriptLoaded = true;
-    initializeTimeline();
-  });
 </script>
 
 <svelte:head>
