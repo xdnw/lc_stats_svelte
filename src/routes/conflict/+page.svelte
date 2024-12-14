@@ -543,7 +543,9 @@
   let postsData: { [key: string]: [number, string, number] } | null = null;
 
   function initializeTimeline() {
-    if (scriptLoaded && dataLoaded && postsData) {
+    const script = document.getElementById("visjs");
+    if (dataLoaded && postsData && script && script.getAttribute('data-loaded')) {
+      console.log("Initializing timeline");
       // DOM element where the Timeline will be attached
       const container = document.getElementById("visualization");
 
@@ -601,11 +603,14 @@
   function loadPosts(posts: { [key: string]: [number, string, number] }) {
     postsData = posts;
     dataLoaded = true;
+    console.log("Posts loaded");
     initializeTimeline();
   }
 
-  function onScriptLoad() {
-    scriptLoaded = true;
+  function onScriptLoad(event: Event) {
+    console.log("Script loaded");
+    const script = event.target as HTMLScriptElement;
+    script.setAttribute('data-loaded', 'true');
     initializeTimeline();
   }
 </script>
@@ -613,6 +618,7 @@
 <svelte:head>
   <title>Conflict {conflictName}</title>
   <script
+    id="visjs"
     async
     src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"
     on:load={onScriptLoad}
