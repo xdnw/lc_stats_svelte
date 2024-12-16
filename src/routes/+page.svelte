@@ -43,7 +43,7 @@ type AdTemplate = {
       // graph
       desc: "Browse a selection of game charts. Share or export options available.",
       subtitle: "Chart Viewer",
-      invite: "https://www.locutus.link/#/custom_chart",
+      invite: "https://www.locutus.link/#/edit_graph",
       bg: "#FFC929",
       ad: false,
       label: "View Charts",
