@@ -735,7 +735,7 @@
       {/if}
       {#if _rawData?.status}
         <div class="col-md-6 col-sm-12">
-          <div class="col-md-12 ms-2 p-2 rounded border">
+          <div class="col-md-12 ms-2 p-2 rounded border bg-body">
             <h3>Status</h3>
             <pre>
                 {_rawData?.status}

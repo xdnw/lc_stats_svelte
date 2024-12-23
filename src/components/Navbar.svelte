@@ -46,7 +46,7 @@
   // }
 </script>
 
-<nav class="navbar navbar-expand-md border-bottom">
+<nav class="navbar navbar-expand-md border-bottom bg-body">
   <div class="container-fluid p-0 m-0">
     <div class="row d-flex w-100 p-0 m-0">
       <div class="col-auto p-0 pe-1">

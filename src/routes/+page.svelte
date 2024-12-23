@@ -118,6 +118,21 @@ type AdTemplate = {
 
     // Start the animation
     let frameCount: number = 0;
+    let darkTheme: boolean | undefined = undefined;
+    const updateTheme = (updateClasses: boolean) => {
+      const newTheme = document.documentElement.getAttribute("data-bs-theme") === "dark";
+      ctx.fillStyle = darkTheme ? "rgba(16, 20, 28, 0.16)" : "rgba(255, 255, 255, 0.16)";
+      if (darkTheme !== newTheme) {
+        darkTheme = newTheme;
+        if (updateClasses) {
+          c.classList.remove(darkTheme ? 'bg-white' : 'bg-black');
+          c.classList.add(darkTheme ? 'bg-black' : 'bg-white');
+        }
+        ctx.fillStyle = darkTheme ? "rgba(16, 20, 28, 1)" : "rgba(255, 255, 255, 1)";
+      }
+    };
+    updateTheme(true);
+    ctx.fillRect(0, 0, c.width, c.height);
     //drawing the characters
     function draw() {
       frameCount++;
@@ -125,13 +140,7 @@ type AdTemplate = {
         //Black BG for the canvas
         //translucent BG to show trail
         if (frameCount % 24 === 0) {
-          if (
-            document.documentElement.getAttribute("data-bs-theme") === "dark"
-          ) {
-            ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
-          } else {
-            ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
-          }
+          updateTheme(true);
           ctx.fillRect(0, 0, c.width, c.height);
         }
 
@@ -163,16 +172,11 @@ type AdTemplate = {
 
 <svelte:head>
   <title>Home</title>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Turret+Road:wght@800&display=swap"
-    rel="stylesheet"
-  />
 </svelte:head>
-<canvas id="c"></canvas>
+<canvas id="c" class="bg-body"></canvas>
 <Navbar />
 <Sidebar />
-
-<div class="container-fluid" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid" style="min-height: calc(100vh - 203px); z">
   <section>
     <header class="welcome-text">
       <svg class="welcome" style="overflow: visible;">
@@ -215,6 +219,7 @@ type AdTemplate = {
 <Footer />
 
 <style lang="postcss">
+
   .card-img-top {
     height: 9rem;
     width: 18rem;
@@ -233,7 +238,6 @@ type AdTemplate = {
     position: absolute; /* Required for z-index to work */
     z-index: -1; /* Any negative number to put it behind other elements */
   }
-
   /* The css for the animated logo */
   section {
     display: flex;
@@ -245,7 +249,7 @@ type AdTemplate = {
   }
 
   .welcome-text {
-    font-family: "Turret Road", sans-serif;
+    font-weight: 700;
     display: block;
     text-align: center;
     text-transform: uppercase;
@@ -266,12 +270,12 @@ type AdTemplate = {
       6px 6px 0 hsl(36, 99%, 27%),
       7px 7px 0 hsl(36, 99%, 26%),
       8px 8px 0 hsl(36, 99%, 25%),
-      0 0 5px rgba(255, 255, 255, 0.05),
-      1px 1px 3px rgba(255, 255, 255, 0.2),
-      2px 2px 5px rgba(255, 255, 255, 0.2),
-      4px 4px 10px rgba(255, 255, 255, 0.2),
-      8px 8px 10px rgba(255, 255, 255, 0.2),
-      16px 16px 20px rgba(255, 255, 255, 0.3);
+      0 0 5px rgba(0, 0, 0, 0.05),
+      1px 1px 3px rgba(0, 0, 0, 0.2),
+      2px 2px 5px rgba(0, 0, 0, 0.2),
+      4px 4px 10px rgba(0, 0, 0, 0.2),
+      8px 8px 10px rgba(0, 0, 0, 0.2),
+      16px 16px 20px rgba(0, 0, 0, 0.3);
   }
 
   @keyframes stroke {
