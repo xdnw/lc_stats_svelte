@@ -307,7 +307,7 @@ function setupChord(matrix: number[][], alliance_names: string[], colors: string
     <!-- <script src="https://d3js.org/d3.v6.js"></script> -->
 </svelte:head>
 <Navbar />
-<Sidebar />
+<!-- <Sidebar /> -->
 <div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
     <h1>
         <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}

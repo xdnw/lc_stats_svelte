@@ -625,7 +625,7 @@
   ></script>
 </svelte:head>
 <Navbar />
-<Sidebar />
+<!-- <Sidebar /> -->
 <div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
   <h1>
     <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}

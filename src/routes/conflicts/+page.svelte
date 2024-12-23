@@ -236,7 +236,7 @@
 <!-- Add navbar component to page  -->
 <Navbar />
 <!-- Add sidebar component to page -->
-<Sidebar />
+<!-- <Sidebar /> -->
 <div class="container-fluid" style="min-height: calc(100vh - 203px);">
   <h1 class="h4 m-1">
     <a href="{base}/"><i class="bi bi-arrow-left"></i></a>

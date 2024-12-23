@@ -175,7 +175,7 @@ type AdTemplate = {
 </svelte:head>
 <canvas id="c" class="bg-body"></canvas>
 <Navbar />
-<Sidebar />
+<!-- <Sidebar /> -->
 <div class="container-fluid" style="min-height: calc(100vh - 203px); z">
   <section>
     <header class="welcome-text">

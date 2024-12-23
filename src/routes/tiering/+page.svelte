@@ -621,7 +621,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
     </style>
 </svelte:head>
 <Navbar />
-<Sidebar />
+<!-- <Sidebar /> -->
 <div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
     <div class="row m-0 p-0">
         <div class="col-12 m-0 p-0">
