@@ -545,10 +545,10 @@ export function setupContainer(container: HTMLElement, data: TableData) {
  * @param id the id to give the table (i.e. the uuid v4 string)
  */
 function addTable(container: HTMLElement, id: string) {
-    container.appendChild(htmlToElement(`<button class="btn btn-sm mb-1 btn-secondary btn-outline-info opacity-75 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
+    container.appendChild(htmlToElement(`<button class="ms-1 btn mb-1 btn-secondary btn-info opacity-80 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
     <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
     container.appendChild(htmlToElement(`<div class="dropdown d-inline">
-    <button class="btn btn-sm mb-1 btn-secondary btn-outline-info fw-bold opacity-75" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+    <button class="btn btn mb-1 btn-secondary btn-info fw-bold opacity-80" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
     Export&nbsp;<i class="bi bi-chevron-down"></i>
     </button>
     <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
@@ -787,7 +787,7 @@ function setupTable(containerElem: HTMLElement,
     }
 
     ensureDTLoaded().then(() => {
-        $.fn.dataTableExt.oStdClasses.sWrapper = "bg-secondary-subtle py-1 border px-1 rounded dataTables_wrapper";
+        $.fn.dataTableExt.oStdClasses.sWrapper = "mt-3 py-1 border px-1 dataTables_wrapper";
     let table = tableArr[0] = (jqTable as any).DataTable( {
         // the array of column info
         columns: [

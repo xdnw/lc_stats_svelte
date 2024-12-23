@@ -237,8 +237,8 @@
 <Navbar />
 <!-- Add sidebar component to page -->
 <!-- <Sidebar /> -->
-<div class="container-fluid" style="min-height: calc(100vh - 203px);">
-  <h1 class="h4 m-1">
+<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
+  <h1 class="m-1">
     <a href="{base}/"><i class="bi bi-arrow-left"></i></a>
     <div class="d-inline-block" style="position: relative; bottom: -0.1em;">
       &nbsp;Conflict
@@ -282,6 +282,7 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
       </div>
     {/if}
   </h1>
+  <hr class="mt-1" />
   {#if !_loaded}
     <Progress />
   {/if}

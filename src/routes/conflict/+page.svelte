@@ -693,7 +693,7 @@
     </a>
   </div>
   <ul
-    class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light-subtle border-bottom border-3 p-1"
+    class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light-subtle border-bottom border-3 p-1 mb-3"
   >
     <li>Layout Picker:</li>
     {#each Object.keys(layouts) as key}
@@ -718,7 +718,7 @@
   {#if !_loaded}
     <Progress />
   {/if}
-  <div class="p-1" id="conflict-table-1"></div>
+  <div class="" id="conflict-table-1"></div>
   <!-- If coalition layout, then display the CB and Status -->
   {#if _layoutData.layout == Layout.COALITION}
     <hr />

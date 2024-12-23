@@ -40,10 +40,13 @@
     }
   }
 
-  // function navsearch(): boolean {
-  //     window.location.href = "${WebRoot.REDIRECT}/page/search/" + document.getElementById("navbar-search").value;
-  //     return false;
-  // }
+  const searchUrl = "https://api.locutus.link/page/search/";
+
+  function handleSearch(event: Event) {
+    event.preventDefault();
+    const query = (document.getElementById('navbar-search') as HTMLInputElement).value;
+    window.location.href = `${searchUrl}${encodeURIComponent(query)}`;
+  }
 </script>
 
 <nav class="navbar navbar-expand-md border-bottom bg-body">
@@ -75,7 +78,7 @@
         </div>
       </div>
       <div class="col p-0">
-        <form class="d-flex" role="search" id="navbar-search-form">
+        <form class="d-flex" role="search" id="navbar-search-form" on:submit={handleSearch}>
           <input
             id="navbar-search"
             class="form-control rounded-end-0"
@@ -86,8 +89,9 @@
           <button
             type="submit"
             class="btn btn-light text-nowrap rounded-start-0"
-            ><i class="bi bi-search"></i></button
           >
+            <i class="bi bi-search"></i>
+          </button>
         </form>
       </div>
       <div class="col-auto p-0 ps-1">
