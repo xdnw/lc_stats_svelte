@@ -687,6 +687,7 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
         <div class="mt-3 mb-5" style="position: relative; z-index: 1;" bind:this={sliderElement}></div>
     </div>
     {#if _rawData}
+    <span class="fw-bold">Select 3:</span>
     <div class="select-compact mb-2" style="position: relative; z-index: 3;">
         <Select multiple items={items} on:change={handleMetricsChange} bind:value={selected_metrics} showChevron={true}>
             <div class="empty" slot="empty">{maxItems ? 'Max 3 items' : 'No options'}</div>
