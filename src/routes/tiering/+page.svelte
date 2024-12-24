@@ -212,7 +212,7 @@ function getGraphDataAtTime(data: DataSet[], slider: number[]): {
         slider = [slider[1]];
     }
     if (slider.length == 1) {
-        const result = data.map((dataSet, i) => ({
+        return data.map((dataSet, i) => ({
             label: dataSet.label,
             data: dataSet.data[slider[0]],
             backgroundColor: dataSet.color,
@@ -266,8 +266,8 @@ function setupCharts(data: GraphData) {
         backgroundColor: string,
         stack: string,
     }[] = getGraphDataAtTime(dataSets, isAnyCumulative ? [0, response.time[1] - response.time[0]] : [0]);
-    
-
+    // print graph data
+    console.log(dataSets);
 
     let minCity = response.city_range[0];
     let maxCity = response.city_range[1];
