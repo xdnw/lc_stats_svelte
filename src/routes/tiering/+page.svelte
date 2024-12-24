@@ -266,8 +266,6 @@ function setupCharts(data: GraphData) {
         backgroundColor: string,
         stack: string,
     }[] = getGraphDataAtTime(dataSets, isAnyCumulative ? [0, response.time[1] - response.time[0]] : [0]);
-    // print graph data
-    console.log(dataSets);
 
     let minCity = response.city_range[0];
     let maxCity = response.city_range[1];
