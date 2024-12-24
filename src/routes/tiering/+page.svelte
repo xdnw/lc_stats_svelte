@@ -450,9 +450,12 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
             
             // metric -> city
             let aaBufferByMetric: number[][] = new Array(metrics.length);
+            let countsBuffer: number[] = new Array(maxCity - minCity + 1).fill(0);
+            let updatedCounts = false;
 
             let last_day = -1;
             for (let turnOrDay2 = col_time_min; turnOrDay2 <= col_time_max; turnOrDay2++) {
+                updatedCounts = false;
                 let dataI = turnOrDay2 - time_min;
                 let dataColI = turnOrDay2 - col_time_min;
                 let turnI = isAnyTurn ? (dataColI) : (dataColI) * 12;
@@ -484,7 +487,7 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                     if (!tierData) {
                         tierData = dataSet[3][dataI] = new Array(maxCity - minCity + 1).fill(0);
                     }
-                    let counts;
+                    let counts: number[] | null = null;
                     if (normalizeAny) {
                         counts = dataSet[4][dataI];
                         if (!counts) {
@@ -498,20 +501,31 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                             continue;
                         }
                         let nation_counts = nation_counts_by_day[dayI];
-                        if (!nation_counts || nation_counts.length == 0) {
-                            continue;
+                        if (nation_counts && !updatedCounts) {
+                            // updatedCounts = true;
+                            for (let l = 0; l < nation_counts.length; l++) {
+                                let value = nation_counts[l];
+                                let city = coalition.cities[l];
+                                if (value != null) {
+                                    countsBuffer[city - minCity] = value;
+                                }
+                            }
                         }
                         if (normalize == 0) {
-                            for (let l = 0; l < nation_counts.length; l++) {
+                            for (let l = 0; l < countsBuffer.length; l++) {
                                 let city = coalition.cities[l];
-                                let value = nation_counts[l];
-                                counts[city - minCity] += value;
+                                let value = countsBuffer[l];
+                                if (value != null) {
+                                    counts[city - minCity] += value;
+                                }
                             }
                         } else {
-                            for (let l = 0; l < counts.length; l++) {
+                            for (let l = 0; l < countsBuffer.length; l++) {
                                 let city = coalition.cities[l];
-                                let value = nation_counts[l];
-                                counts[city - minCity] += value * city * normalize;
+                                let value = countsBuffer[l];
+                                if (value != null) {
+                                    counts[city - minCity] += value * city * normalize;
+                                }
                             }
                         }
                     }
@@ -524,21 +538,19 @@ function getDataSetsByTime(data: GraphData, metrics: TierMetric[], alliance_ids:
                         if (value_by_city && value_by_city.length != 0) {
                             if (isCumulative) {
                                 for (let l = 0; l < value_by_city.length; l++) {
-                                    let city = coalition.cities[l];
                                     let value = value_by_city[l];
-                                    aaBuffer[l] += value;
+                                    if (value != null) {
+                                        let city = coalition.cities[l];
+                                        aaBuffer[city - minCity] += value;
+                                    }
                                 }
                             } else {
-                                for (let l = minCity; l < coalition.cities[0]; l++) {
-                                    aaBuffer[l - minCity] = 0;
-                                }
-                                for (let l = coalition.cities[coalition.cities.length - 1] + 1; l <= maxCity; l++) {
-                                    aaBuffer[l - minCity] = 0;
-                                }
                                 for (let l = 0; l < value_by_city.length; l++) {
-                                    let city = coalition.cities[l];
                                     let value = value_by_city[l];
-                                    aaBuffer[city - minCity] = value;
+                                    if (value != null) {
+                                        let city = coalition.cities[l];
+                                        aaBuffer[city - minCity] = value;
+                                    }
                                 }
                             }
                         }
