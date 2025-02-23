@@ -18,7 +18,7 @@
     downloadTableData,
     type TableData,
     type ExportType,
-    ExportTypes,
+    ExportTypes, downloadTableElem, type RawData,
   } from "$lib";
 
   let _currentRowData: TableData;
@@ -80,17 +80,17 @@
         useClipboard: boolean,
         type: string
       ) {
-        downloadTableData(
-          _currentRowData,
-          useClipboard,
-          ExportTypes[type as keyof typeof ExportTypes]
+        downloadTableElem(
+                (document.getElementById("conflictTable") as HTMLElement).querySelector("table") as HTMLTableElement,
+                useClipboard,
+                ExportTypes[type as keyof typeof ExportTypes]
         );
       };
 
       // Url of s3 bucket
       let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
 
-      decompressBson(url).then((result) => {
+      decompressBson(url).then((result: RawData) => {
         _rawData = result;
         /*
         Result is an object with the following keys:

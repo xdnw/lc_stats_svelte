@@ -10,6 +10,16 @@ export interface TierMetric {
     cumulative: boolean,
     normalize: boolean,
 }
+
+export type RawData = {
+    alliance_ids: number[];
+    alliance_names: string[];
+    headers: string[];
+    conflicts: any[][];
+    source_sets?: { [key: string]: number[] };
+    source_names?: { [key: string]: string };
+};
+
 export interface Conflict {
     // name of conflict
     name: string,
@@ -92,6 +102,40 @@ export function downloadTableData(_currentRowData: TableData, useClipboard: bool
     let data: any[][] = _currentRowData.data.map(row => _currentRowData.visible.map(index => row[index]));
     data.unshift(visibleColumns);
     downloadCells(data, useClipboard, type);
+}
+
+export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean, type: ExportType) {
+    var table = $(elem).DataTable();
+    // get visible columns
+    const visibleColumnNames: string[] = [];
+    const visibleColumnIds: Set<number> = new Set();
+    table.columns().every(function (index: number) {
+        if (table.column(index).visible()) {
+            visibleColumnNames.push(table.column(index).header().textContent);
+            visibleColumnIds.add(index);
+        }
+    });
+    // Add header names to the data array
+    const data2dInclHeaderNames: any[][] = [visibleColumnNames];
+
+// Add row data to the data array
+    table.rows({ search: 'applied' }).every(function (_: number) {
+        const rowData: any[] = [];
+        this.data().forEach((cellData: any, cellIdx: number) => {
+            if (visibleColumnIds.has(cellIdx)) {
+                rowData.push(cellData);
+            }
+        });
+        data2dInclHeaderNames.push(rowData);
+    });
+
+    console.log(JSON.stringify(data2dInclHeaderNames));
+
+    downloadCells(
+        data2dInclHeaderNames,
+        useClipboard,
+        type
+    );
 }
 
 export function downloadCells(data: any[][], useClipboard: boolean, type: ExportType) {
@@ -534,6 +578,7 @@ export function setupContainer(container: HTMLElement, data: TableData) {
     addTable(container, uuidv4());
     let table = container.getElementsByTagName("table")[0];
     setupTable(container, table, data);
+    return table;
 }
 
 /**

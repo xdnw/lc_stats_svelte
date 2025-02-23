@@ -3,7 +3,6 @@
    * This page is for viewing a single conflict
    */
   import Navbar from "../../components/Navbar.svelte";
-  import Sidebar from "../../components/Sidebar.svelte";
   import Footer from "../../components/Footer.svelte";
   import Progress from "../../components/Progress.svelte";
   import { onMount } from "svelte";
@@ -11,18 +10,14 @@
     addFormatters,
     decompressBson,
     formatDate,
-    modalWithCloseButton,
     setupContainer,
     type Conflict,
     setQueryParam,
     trimHeader,
     type TableData,
-    modalStrWithCloseButton,
-    downloadCells,
     downloadTableData,
-    type ExportType,
     ExportTypes,
-    formatDuration,
+    formatDuration, downloadCells, downloadTableElem,
   } from "$lib";
   import { config } from "../+layout";
   // Layout tabs
@@ -361,8 +356,8 @@
       row_format: row_format,
       sort: sort,
     };
-    let container = document.getElementById("conflict-table-1");
-    setupContainer(container as HTMLElement, _currentRowData);
+    const tableContainer = document.getElementById("conflict-table-1");
+    setupContainer(tableContainer as HTMLElement, _currentRowData);
   }
 
   // Set the current layout (called on page load)
@@ -505,10 +500,10 @@
 
     (window as any).download = function download(
       useClipboard: boolean,
-      type: string
+      type: string,
     ) {
-      downloadTableData(
-        _currentRowData,
+      downloadTableElem(
+              (document.getElementById("conflict-table-1") as HTMLElement).querySelector("table") as HTMLTableElement,
         useClipboard,
         ExportTypes[type as keyof typeof ExportTypes]
       );
