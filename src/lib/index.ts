@@ -111,7 +111,9 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
     const visibleColumnIds: Set<number> = new Set();
     table.columns().every(function (index: number) {
         if (table.column(index).visible()) {
-            visibleColumnNames.push(table.column(index).header().textContent);
+            if (index == 0) return;
+            visibleColumnNames.push(table.column(index).header().textContent || "name");
+            console.log(table.column(index + 1).header().textContent || "name");
             visibleColumnIds.add(index);
         }
     });
@@ -122,7 +124,7 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
     table.rows({ search: 'applied' }).every(function (_: number) {
         const rowData: any[] = [];
         this.data().forEach((cellData: any, cellIdx: number) => {
-            if (visibleColumnIds.has(cellIdx)) {
+            if (visibleColumnIds.has(cellIdx + 1)) {
                 rowData.push(cellData);
             }
         });
