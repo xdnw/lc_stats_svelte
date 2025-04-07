@@ -11,7 +11,6 @@
     } from "$lib";
     import { onMount } from "svelte";
     import Navbar from "../../components/Navbar.svelte";
-    import Sidebar from "../../components/Sidebar.svelte";
     import Footer from "../../components/Footer.svelte";
     import Progress from "../../components/Progress.svelte";
     import * as d3 from "d3";
