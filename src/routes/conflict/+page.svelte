@@ -113,6 +113,7 @@
         "loss:aircraft",
         "loss:ship",
         "loss:~$unit",
+        "net:~$unit",
       ],
     },
     Consumption: {
