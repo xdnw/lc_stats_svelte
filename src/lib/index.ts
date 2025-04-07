@@ -1,7 +1,7 @@
 // import msgpack from 'msgpack-lite';
 import { Unpackr } from 'msgpackr';
 import { render } from 'svelte/server';
-const extUnpackr = new Unpackr({largeBigIntToFloat: true, mapsAsObjects: true, bundleStrings: true, int64AsType: "number"});
+const extUnpackr = new Unpackr({ largeBigIntToFloat: true, mapsAsObjects: true, bundleStrings: true, int64AsType: "number" });
 /*
 Shared typescript for all pages
 */
@@ -34,7 +34,7 @@ export interface Conflict {
     // conflict status (or null)
     status: string,
     // post name -> [post id, post url text, timestamp]
-    posts: {[key: string]: [number, string, number]},
+    posts: { [key: string]: [number, string, number] },
     coalitions: {
         name: string, // Name of the coalition
         alliance_ids: number[], // Alliance ids in the coalition
@@ -42,16 +42,16 @@ export interface Conflict {
         nation_ids: number[], // The nation id of each nation
         nation_aa: number[], // The alliance id of each nation (same order as nation_ids)
         nation_names: string[], // The nation name of each nation (same order as nation_ids)
-            // Two 2d Arrays of count data (i.e. # wars, # attacks)
-            // First array is self-counts, 2nd is enemy counts
-            // The indexes are coalition index + alliance index + nation index (flat)
+        // Two 2d Arrays of count data (i.e. # wars, # attacks)
+        // First array is self-counts, 2nd is enemy counts
+        // The indexes are coalition index + alliance index + nation index (flat)
         // i.e. self counts for a nation at nation_ids[i] -> counts[0][j] - where j = i + alliance_ids.length + coalition_ids.length
         counts: [number[], number[]],
         // Two 2d Arrays of damage data (i.e. infra damage, money lost, units killed etc.)
         // First array is self-damage, 2nd is enemy damage
         // The indexes are coalition index + alliance index + nation index (flat)
         // i.e. self damage for a nation at nation_ids[i] -> damage[0][j] - where j = i + alliance_ids.length + coalition_ids.length
-        damage: [number[], number[]] 
+        damage: [number[], number[]]
     }[], // The array of coalitions (typically 2)
     damage_header: string[], // The column names for the damage data
     header_type: number[], // The column names for the counts data
@@ -59,17 +59,17 @@ export interface Conflict {
         headers: string[],
         // 3d array of the war web data [header index][alliance id index][alliance id index]
         // Get the alliance ids by combining the coalition alliance ids
-        data: [][][] 
+        data: [][][]
     }
 }
 
 export interface TableData {
-    columns: string[], 
-    data: any[][], 
-    searchable: number[], 
-    visible: number[], 
-    cell_format: {[key: string]: number[];}, 
-    row_format: ((row: HTMLElement, data: {[key: string]: any}, index: number) => void) | null, 
+    columns: string[],
+    data: any[][],
+    searchable: number[],
+    visible: number[],
+    cell_format: { [key: string]: number[]; },
+    row_format: ((row: HTMLElement, data: { [key: string]: any }, index: number) => void) | null,
     sort: [number, string]
 }
 
@@ -120,7 +120,7 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
     // Add header names to the data array
     const data2dInclHeaderNames: any[][] = [visibleColumnNames];
 
-// Add row data to the data array
+    // Add row data to the data array
     table.rows({ search: 'applied' }).every(function (_: number) {
         const rowData: any[] = [];
         this.data().forEach((cellData: any, cellIdx: number) => {
@@ -171,7 +171,7 @@ export function downloadCells(data: any[][], useClipboard: boolean, type: Export
     }
 }
 
-export const UNITS_PER_CITY: {[key: string]: number} = {
+export const UNITS_PER_CITY: { [key: string]: number } = {
     "soldier": 15_000,
     "tank": 1250,
     "aircraft": 75,
@@ -298,7 +298,7 @@ export interface GraphData {
     metric_names: string[], // the metric names
     metrics_day: number[], // The metric indexes that are by day
     metrics_turn: number[], // The metric indexes that are by turn
-    coalitions: [GraphCoalitionData,GraphCoalitionData]
+    coalitions: [GraphCoalitionData, GraphCoalitionData]
 }
 
 /**
@@ -327,8 +327,8 @@ export function formatDuration(x: number) {
 
     let words = ['year', 'week', 'day', 'hour', 'minute', 'second'];
     return [y, w, d, h, m, s].map((x, i) => !x ? '' :
-      `${x} ${words[i]}${x !== 1 ? 's' : ''}`)
-      .filter(x => x).join(', ').replace(/,([^,]*)$/, ' and$1')
+        `${x} ${words[i]}${x !== 1 ? 's' : ''}`)
+        .filter(x => x).join(', ').replace(/,([^,]*)$/, ' and$1')
 }
 
 // Convert the slider (turns) to a time string
@@ -347,10 +347,12 @@ export function formatTurnsToDate(value: number) {
  * @returns string with commas
  */
 export function commafy(num: number): string {
-    var parts = (''+(num<0?-num:num)).split("."), s=parts[0], L, i=L= s.length, o='';
-    while(i--){ o = (i===0?'':((L-i)%3?'':',')) 
-                    +s.charAt(i) +o }
-    return (num<0?'-':'') + o + (parts[1] ? '.' + parts[1] : ''); 
+    var parts = ('' + (num < 0 ? -num : num)).split("."), s = parts[0], L, i = L = s.length, o = '';
+    while (i--) {
+        o = (i === 0 ? '' : ((L - i) % 3 ? '' : ','))
+            + s.charAt(i) + o
+    }
+    return (num < 0 ? '-' : '') + o + (parts[1] ? '.' + parts[1] : '');
 }
 
 /**
@@ -379,7 +381,7 @@ export function addFormatters() {
 
     // Add the showNames function to the window object (which shows a popup of the alliances in a coalition)
     (window as any).showNames = (coalitionName: string, index: number) => {
-        let col: {alliance_ids: number[], alliance_names: string[]} = (window as any).getIds(coalitionName, index);
+        let col: { alliance_ids: number[], alliance_names: string[] } = (window as any).getIds(coalitionName, index);
         let alliance_ids: number[] = col.alliance_ids;
         var modalTitle = "Coalition " + (index + 1) + ": " + coalitionName;
         let ul = document.createElement("ul");
@@ -435,7 +437,7 @@ async function streamToUint8Array(readableStream: ReadableStream): Promise<Uint8
     let totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
     let resultArray = new Uint8Array(totalLength);
     let offset = 0;
-    for(let chunk of chunks) {
+    for (let chunk of chunks) {
         resultArray.set(chunk, offset);
         offset += chunk.length;
     }
@@ -483,7 +485,7 @@ export const decompressBson = async (url: string) => {
  * @returns uuid string
  */
 export function uuidv4(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
     });
@@ -538,9 +540,9 @@ export function arrayEquals(a: any[], b: any[]) {
  * @param footer the element for modal footer (e.g. a close button)
  */
 export function modal(title: string, body: HTMLElement, footer: string) {
-      let myModal = document.getElementById("exampleModal");
-  
-      var html = `<div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    let myModal = document.getElementById("exampleModal");
+
+    var html = `<div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
           <div class="modal-dialog">
               <div class="modal-content">
                   <div class="modal-header">
@@ -553,7 +555,7 @@ export function modal(title: string, body: HTMLElement, footer: string) {
               </div>
           </div>
       </div>`
-  
+
     if (myModal == null) {
         let myModal = htmlToElement(html);
         document.body.appendChild(myModal as Node);
@@ -593,7 +595,7 @@ export function setupContainer(container: HTMLElement, data: TableData) {
  */
 function addTable(container: HTMLElement, id: string) {
     container.appendChild(htmlToElement(`<button class="ms-1 btn mb-1 btn-secondary btn-info opacity-80 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
-    <i class="bi bi-table"></i>&nbsp;Customize&nbsp;<i class="bi bi-chevron-down"></i></button>`));
+    <i class="bi bi-table"></i>&nbsp;Add Column&nbsp;<i class="bi bi-chevron-down"></i></button>`));
     container.appendChild(htmlToElement(`<div class="dropdown d-inline">
     <button class="btn btn mb-1 btn-secondary btn-info fw-bold opacity-80" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
     Export&nbsp;<i class="bi bi-chevron-down"></i>
@@ -607,6 +609,11 @@ function addTable(container: HTMLElement, id: string) {
     </div>`));
     container.appendChild(htmlToElement(`<div class="bg-body border rounded collapse table-toggles" id="tblCol">
     <input id="table-search" class="form-control-sm w-100 mb-1" type="search" placeholder="Search" aria-label="Search">
+    <div class="d-flex justify-content-left align-items-center ms-1">
+        <div class="d-flex justify-content-center align-items-center alert alert-danger text-center mb-1 py-1 text-danger">
+            Use the buttons at the bottom of the table to remove a column. Click and drag the column header to rearrange.
+        </div>
+    </div>
     </div>`));
     container.appendChild(htmlToElement(`<table id="${id}" class="bg-body-secondary border table compact table-bordered table-striped d-none" style="width:100%">
         <thead class="table-info"><tr></tr></thead>
@@ -615,12 +622,12 @@ function addTable(container: HTMLElement, id: string) {
     </table>`));
 
     let input = container.getElementsByTagName("input")[0];
-    input.addEventListener('input', function() {
+    input.addEventListener('input', function () {
         let tableToggles = document.getElementsByClassName('table-toggles');
-        for(let i = 0; i < tableToggles.length; i++) {
+        for (let i = 0; i < tableToggles.length; i++) {
             let buttons = tableToggles[i].getElementsByTagName('button');
-            for(let j = 0; j < buttons.length; j++) {
-                if(buttons[j].textContent?.includes(this.value)) {
+            for (let j = 0; j < buttons.length; j++) {
+                if (buttons[j].textContent?.includes(this.value)) {
                     buttons[j].classList.remove('d-none');
                 } else {
                     buttons[j].classList.add('d-none');
@@ -703,331 +710,331 @@ export function ensureScriptsLoaded(scriptIds: string[]): Promise<void> {
  * @param tableElem 
  * @param dataSetRoot 
  */
-function setupTable(containerElem: HTMLElement, 
-    tableElem: HTMLElement, 
+function setupTable(containerElem: HTMLElement,
+    tableElem: HTMLElement,
     dataSetRoot: {
         columns: string[], // Name of the columns of the table (including all the custom ones not displayed)
         data: any[][], // 2d array of the table data in the order [row index][column index] - may be combination of numbers or string
         searchable: number[],  // the index of the columns that are searchable
         visible: number[], // the index of the columns that are visible
-        cell_format: {[key: string]: number[];},  // a map of the cell format function name to a list of column indexes e.g. `cell_format.formatNumber = [2,3,4]`
-        row_format: ((row: HTMLElement, data /* row data */: {[key: string]: any}, index /* row index */: number) => void) | null, // A function to format the row (or null)
+        cell_format: { [key: string]: number[]; },  // a map of the cell format function name to a list of column indexes e.g. `cell_format.formatNumber = [2,3,4]`
+        row_format: ((row: HTMLElement, data /* row data */: { [key: string]: any }, index /* row index */: number) => void) | null, // A function to format the row (or null)
         sort: [number, string] // the column index to sort by, and sort method (asc or desc)
-        }
-    ) {
+    }
+) {
 
     ensureJqueryLoaded().then(() => {
-    let jqTable = $(tableElem);
+        let jqTable = $(tableElem);
 
-    let visibleColumns = dataSetRoot.visible;
-    let dataColumns = dataSetRoot.columns;
-    let dataList = dataSetRoot.data;
-    let searchableColumns = dataSetRoot.searchable;
-    let searchSet = new Set<number>(searchableColumns); // faster
-    let cell_format = dataSetRoot.cell_format;
-    let row_format = dataSetRoot.row_format;
-    let sort = dataSetRoot.sort;
-    if (sort == null) sort = [0, 'asc'];
+        let visibleColumns = dataSetRoot.visible;
+        let dataColumns = dataSetRoot.columns;
+        let dataList = dataSetRoot.data;
+        let searchableColumns = dataSetRoot.searchable;
+        let searchSet = new Set<number>(searchableColumns); // faster
+        let cell_format = dataSetRoot.cell_format;
+        let row_format = dataSetRoot.row_format;
+        let sort = dataSetRoot.sort;
+        if (sort == null) sort = [0, 'asc'];
 
-    // Convert the cell format function names to their respective js functions
-    let cellFormatByCol: { [key: number]: (data: number, type: any, row: any, meta: any) => void } = {};
-    if (cell_format != null) {
-        for (let func in cell_format) {
-            let cols: number[] = cell_format[func];
-            for (let col of cols) {
-                let funcObj = (window as any)[func] as Function;
-                cellFormatByCol[col] = funcObj as any;
-                if (funcObj == null) {
-                    console.log("No function found for " + func);
-                }
-            }
-        }
-    }
-
-    // Convert the column names and format to the column info object (used by DataTables.js)
-    let columnsInfo: { data: number, className?: string, render?: any, visible?: boolean }[] = [];
-    if (dataColumns.length > 0) {
-        for (let i = 0; i < dataColumns.length; i++) {
-            let columnInfo: { orderDataType?: string, data: number; className: string; render?: any } = {data: i, className: 'details-control'};
-            let renderFunc = cellFormatByCol[i];
-            if (renderFunc != null) {
-                columnInfo.render = renderFunc;
-                if (renderFunc == (window as any).formatNumber || renderFunc == (window as any).formatMoney) {
-                    columnInfo.orderDataType = 'numeric-comma';
-                }
-            }
-            columnsInfo.push(columnInfo);
-        }
-    }
-    const tableArr = [null];
-
-    // Set column visibility and add the search input to the header
-    const thead = document.querySelector("thead tr");
-    const tfoot = document.querySelector("tfoot tr");
-    const tableToggles = document.querySelector(".table-toggles");
-    function handleSearch(input: HTMLInputElement, event: Event) {
-        const column = tableArr[0].column(input.closest('th').cellIndex);
-        if (column.search() !== input.value) {
-            column.search(input.value).draw();
-        }
-    }
-    function stopPropagation(event: Event) {
-        event.stopPropagation();
-    }
-    if (thead && tfoot && tableToggles) {
-        const theadFragment = document.createDocumentFragment();
-        const tfootFragment = document.createDocumentFragment();
-
-        const thNumber = document.createElement('th');
-        thNumber.textContent = "#";
-        theadFragment.appendChild(thNumber);
-
-        const tfNumber = document.createElement('th');
-        tfootFragment.appendChild(tfNumber);
-
-        for (let i = 0; i < columnsInfo.length; i++) {
-            let columnInfo = columnsInfo[i];
-            let title =  dataColumns[i];
-            if (visibleColumns != null) {
-                columnInfo["visible"] = visibleColumns.includes(i);
-            }
-
-            const th = document.createElement('th');
-            const tf = document.createElement('th');
-
-            if (title != null) {
-                if (searchableColumns == null || searchableColumns.includes(i)) {
-                    const input = document.createElement('input');
-                    input.type = "text";
-                    input.placeholder = title;
-                    input.style.width = "100%";
-                    input.addEventListener('keyup', handleSearch.bind(null, input));
-                    input.addEventListener('change', handleSearch.bind(null, input));
-                    input.addEventListener('clear', handleSearch.bind(null, input));
-                    input.addEventListener('click', stopPropagation);
-                    th.appendChild(input);
-                } else {
-                    th.textContent = title;
-                }
-
-                if (i != 0) {
-                    let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
-                    const button = document.createElement('button');
-                    button.className = `toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 ${color}`;
-                    button.dataset.column = (i + 1).toString();
-                    button.textContent = title;
-                    tf.appendChild(button);
-
-                    if (!columnInfo.visible) {
-                        (button as any).oldParent = tf;
-                        tableToggles.appendChild(button);
+        // Convert the cell format function names to their respective js functions
+        let cellFormatByCol: { [key: number]: (data: number, type: any, row: any, meta: any) => void } = {};
+        if (cell_format != null) {
+            for (let func in cell_format) {
+                let cols: number[] = cell_format[func];
+                for (let col of cols) {
+                    let funcObj = (window as any)[func] as Function;
+                    cellFormatByCol[col] = funcObj as any;
+                    if (funcObj == null) {
+                        console.log("No function found for " + func);
                     }
                 }
             }
-
-            theadFragment.appendChild(th);
-            tfootFragment.appendChild(tf);
         }
 
-        thead.appendChild(theadFragment);
-        tfoot.appendChild(tfootFragment);
-    }
-
-    ensureDTLoaded().then(() => {
-        $.fn.dataTableExt.oStdClasses.sWrapper = "mt-3 py-1 border px-1 dataTables_wrapper";
-    let table = tableArr[0] = (jqTable as any).DataTable( {
-        // the array of column info
-        columns: [
-            { data: null, title: "#", orderable: false, searchable: false, className: 'dt-center p-0', defaultContent: ''},
-            ...columnsInfo
-        ],
-        // columns: columnsInfo,
-        // Allow column reordering (colReorder extension)
-        colReorder: true,
-        // the array of row objects to display
-        data: dataList,
-        // Pagination
-        paging: true,
-        // Pagination settings
-        lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
-        // Render after initialization (faster)
-        deferRender: true,
-        orderClasses: false,
-        order: [sort],
-        autoWidth: false,
-        searchHighlight: false,
-        info: false,
-        processing: false,
-        stateSave: false,
-        scrollX: false,
-        // // createdRow: row_format,
-        rowCallback: function(row, data, displayIndex, displayIndexFull) {
-            $('td:eq(0)', row).html(displayIndexFull + 1);
-            if (row_format) {
-                row_format(row, data, displayIndexFull);
-            }
-        },
-        // Setup searchable dropdown for columns with unique values
-        // Not used currently
-        //     let that = this.api();
-        //     that.columns().every( function (index: number) {
-        //         if (index == 0 || !searchSet.has(index - 1)) return;
-        //         let column = that.column( index );
-        //         let title = columnsInfo[index - 1].data;
-        //         if (title != null) {
-        //             let data = column.data();
-        //             let unique = data.unique();
-        //             let uniqueCount = unique.count();
-        //             if (uniqueCount > 1 && uniqueCount < 24 && uniqueCount < data.count() / 2) {
-        //                 let select = $('<select><option value=""></option></select>')
-        //                     .appendTo($(column.header()).empty() )
-        //                     .on( 'change', function () {
-        //                         let val = ($.fn as any).dataTable.util.escapeRegex(
-        //                             $(this).val()
-        //                         );
-
-        //                         column
-        //                             .search( val ? '^'+val+'$' : '', true, false )
-        //                             .draw();
-        //                     });
-
-        //                 unique.sort().each( function ( d: any, j: any ) {
-        //                     select.append('<option value="'+d+'">'+d+'</option>' );
-        //                 });
-
-        //                 select.before(title + ": ");
-        //             }
-
-        //         }
-        //     });
-        // }
-    });
-    table.on('column-reorder', function(e, settings, details) {
-        const pageInfo = table.page.info();
-        const currentPage = pageInfo.page;
-        const rowsPerPage = pageInfo.length;
-        let startI = currentPage * rowsPerPage;
-        // iterate over all the `tr` in table and set td 0 to the correct index, use jquery/html, not datatables
-        // Iterate over all the `tr` elements in the table
-        jqTable.find('tbody tr').each(function(index) {
-            // Set the textContent of the first `td` element to the correct index
-            $(this).find('td:eq(0)').text(startI + index + 1);
-        });
-    });
-    
-    // // Apply the search for input fields
-    // function applySearch(table: any) {
-    //     table.columns().every( function (index: number) {
-            
-    //         let myInput = $( 'input', column.header() );
-            
-    //     });
-    // }
-
-    // Prevent the search input from triggering the row details toggle
-    function preventButtonPropagation() {
-        const buttons = document.querySelectorAll("button");
-        buttons.forEach(button => {        
-            button.addEventListener('click', stopPropagation);
-        });
-    }
-
-    // Handle clicking the show/hide column buttons
-    function handleToggleVis(jqContainer: any, table: any) {
-        const toggles = jqContainer.querySelectorAll('.toggle-vis');
-        toggles.forEach(toggle => {
-            toggle.addEventListener('click', function (e: Event) {
-                e.preventDefault();
-                const target = e.target as HTMLElement;
-                const column = table.column(target.getAttribute('data-column'));
-
-                // Toggle the visibility
-                column.visible(!column.visible());
-
-                // Move element
-                if (target.parentElement && target.parentElement.tagName === "TH") {
-                    (target as any).oldParent = target.parentElement;
-                    const tableToggles = jqContainer.querySelector(".table-toggles");
-                    tableToggles.appendChild(target);
-
-                    // Find the input element of toggles
-                    const inputElem = tableToggles.querySelector('input');
-                    if (inputElem && inputElem.value && !target.textContent.includes(inputElem.value)) {
-                        target.classList.add('d-none');
+        // Convert the column names and format to the column info object (used by DataTables.js)
+        let columnsInfo: { data: number, className?: string, render?: any, visible?: boolean }[] = [];
+        if (dataColumns.length > 0) {
+            for (let i = 0; i < dataColumns.length; i++) {
+                let columnInfo: { orderDataType?: string, data: number; className: string; render?: any } = { data: i, className: 'details-control' };
+                let renderFunc = cellFormatByCol[i];
+                if (renderFunc != null) {
+                    columnInfo.render = renderFunc;
+                    if (renderFunc == (window as any).formatNumber || renderFunc == (window as any).formatMoney) {
+                        columnInfo.orderDataType = 'numeric-comma';
                     }
-                } else {
-                    (target as any).oldParent.appendChild(target);
+                }
+                columnsInfo.push(columnInfo);
+            }
+        }
+        const tableArr = [null];
+
+        // Set column visibility and add the search input to the header
+        const thead = document.querySelector("thead tr");
+        const tfoot = document.querySelector("tfoot tr");
+        const tableToggles = document.querySelector(".table-toggles");
+        function handleSearch(input: HTMLInputElement, event: Event) {
+            const column = tableArr[0].column(input.closest('th').cellIndex);
+            if (column.search() !== input.value) {
+                column.search(input.value).draw();
+            }
+        }
+        function stopPropagation(event: Event) {
+            event.stopPropagation();
+        }
+        if (thead && tfoot && tableToggles) {
+            const theadFragment = document.createDocumentFragment();
+            const tfootFragment = document.createDocumentFragment();
+
+            const thNumber = document.createElement('th');
+            thNumber.textContent = "#";
+            theadFragment.appendChild(thNumber);
+
+            const tfNumber = document.createElement('th');
+            tfootFragment.appendChild(tfNumber);
+
+            for (let i = 0; i < columnsInfo.length; i++) {
+                let columnInfo = columnsInfo[i];
+                let title = dataColumns[i];
+                if (visibleColumns != null) {
+                    columnInfo["visible"] = visibleColumns.includes(i);
                 }
 
-                // Get names of visible columns
-                const visibleColumns = table.columns().indexes()
-                    .filter((idx: number) => idx > 0 && table.column(idx).visible())
-                    .map((idx: number) => dataColumns[idx - 1])
-                    .toArray();
-                setQueryParam("columns", visibleColumns.join("."));
+                const th = document.createElement('th');
+                const tf = document.createElement('th');
+
+                if (title != null) {
+                    if (searchableColumns == null || searchableColumns.includes(i)) {
+                        const input = document.createElement('input');
+                        input.type = "text";
+                        input.placeholder = title;
+                        input.style.width = "100%";
+                        input.addEventListener('keyup', handleSearch.bind(null, input));
+                        input.addEventListener('change', handleSearch.bind(null, input));
+                        input.addEventListener('clear', handleSearch.bind(null, input));
+                        input.addEventListener('click', stopPropagation);
+                        th.appendChild(input);
+                    } else {
+                        th.textContent = title;
+                    }
+
+                    if (i != 0) {
+                        let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
+                        const button = document.createElement('button');
+                        button.className = `toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 ${color}`;
+                        button.dataset.column = (i + 1).toString();
+                        button.textContent = title;
+                        tf.appendChild(button);
+
+                        if (!columnInfo.visible) {
+                            (button as any).oldParent = tf;
+                            tableToggles.appendChild(button);
+                        }
+                    }
+                }
+
+                theadFragment.appendChild(th);
+                tfootFragment.appendChild(tf);
+            }
+
+            thead.appendChild(theadFragment);
+            tfoot.appendChild(tfootFragment);
+        }
+
+        ensureDTLoaded().then(() => {
+            $.fn.dataTableExt.oStdClasses.sWrapper = "mt-3 py-1 border px-1 dataTables_wrapper";
+            let table = tableArr[0] = (jqTable as any).DataTable({
+                // the array of column info
+                columns: [
+                    { data: null, title: "#", orderable: false, searchable: false, className: 'dt-center p-0', defaultContent: '' },
+                    ...columnsInfo
+                ],
+                // columns: columnsInfo,
+                // Allow column reordering (colReorder extension)
+                colReorder: true,
+                // the array of row objects to display
+                data: dataList,
+                // Pagination
+                paging: true,
+                // Pagination settings
+                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                // Render after initialization (faster)
+                deferRender: true,
+                orderClasses: false,
+                order: [sort],
+                autoWidth: false,
+                searchHighlight: false,
+                info: false,
+                processing: false,
+                stateSave: false,
+                scrollX: false,
+                // // createdRow: row_format,
+                rowCallback: function (row, data, displayIndex, displayIndexFull) {
+                    $('td:eq(0)', row).html(displayIndexFull + 1);
+                    if (row_format) {
+                        row_format(row, data, displayIndexFull);
+                    }
+                },
+                // Setup searchable dropdown for columns with unique values
+                // Not used currently
+                //     let that = this.api();
+                //     that.columns().every( function (index: number) {
+                //         if (index == 0 || !searchSet.has(index - 1)) return;
+                //         let column = that.column( index );
+                //         let title = columnsInfo[index - 1].data;
+                //         if (title != null) {
+                //             let data = column.data();
+                //             let unique = data.unique();
+                //             let uniqueCount = unique.count();
+                //             if (uniqueCount > 1 && uniqueCount < 24 && uniqueCount < data.count() / 2) {
+                //                 let select = $('<select><option value=""></option></select>')
+                //                     .appendTo($(column.header()).empty() )
+                //                     .on( 'change', function () {
+                //                         let val = ($.fn as any).dataTable.util.escapeRegex(
+                //                             $(this).val()
+                //                         );
+
+                //                         column
+                //                             .search( val ? '^'+val+'$' : '', true, false )
+                //                             .draw();
+                //                     });
+
+                //                 unique.sort().each( function ( d: any, j: any ) {
+                //                     select.append('<option value="'+d+'">'+d+'</option>' );
+                //                 });
+
+                //                 select.before(title + ": ");
+                //             }
+
+                //         }
+                //     });
+                // }
             });
-        });
-    }
+            table.on('column-reorder', function (e, settings, details) {
+                const pageInfo = table.page.info();
+                const currentPage = pageInfo.page;
+                const rowsPerPage = pageInfo.length;
+                let startI = currentPage * rowsPerPage;
+                // iterate over all the `tr` in table and set td 0 to the correct index, use jquery/html, not datatables
+                // Iterate over all the `tr` elements in the table
+                jqTable.find('tbody tr').each(function (index) {
+                    // Set the textContent of the first `td` element to the correct index
+                    $(this).find('td:eq(0)').text(startI + index + 1);
+                });
+            });
 
-    // Formatting function for row details
-    function formatRowDetails(d: any) {
-        let rows = "";
-        table.columns().every(function (index: any) {
-            if (index === 0) return;
-            let numFormat = [];
-            if (cell_format.formatNumber != null) {
-                numFormat.push(cell_format.formatNumber);
+            // // Apply the search for input fields
+            // function applySearch(table: any) {
+            //     table.columns().every( function (index: number) {
+
+            //         let myInput = $( 'input', column.header() );
+
+            //     });
+            // }
+
+            // Prevent the search input from triggering the row details toggle
+            function preventButtonPropagation() {
+                const buttons = document.querySelectorAll("button");
+                buttons.forEach(button => {
+                    button.addEventListener('click', stopPropagation);
+                });
             }
-            if (cell_format.formatMoney != null) {
-                numFormat.push(cell_format.formatMoney);
+
+            // Handle clicking the show/hide column buttons
+            function handleToggleVis(jqContainer: any, table: any) {
+                const toggles = jqContainer.querySelectorAll('.toggle-vis');
+                toggles.forEach(toggle => {
+                    toggle.addEventListener('click', function (e: Event) {
+                        e.preventDefault();
+                        const target = e.target as HTMLElement;
+                        const column = table.column(target.getAttribute('data-column'));
+
+                        // Toggle the visibility
+                        column.visible(!column.visible());
+
+                        // Move element
+                        if (target.parentElement && target.parentElement.tagName === "TH") {
+                            (target as any).oldParent = target.parentElement;
+                            const tableToggles = jqContainer.querySelector(".table-toggles");
+                            tableToggles.appendChild(target);
+
+                            // Find the input element of toggles
+                            const inputElem = tableToggles.querySelector('input');
+                            if (inputElem && inputElem.value && !target.textContent.includes(inputElem.value)) {
+                                target.classList.add('d-none');
+                            }
+                        } else {
+                            (target as any).oldParent.appendChild(target);
+                        }
+
+                        // Get names of visible columns
+                        const visibleColumns = table.columns().indexes()
+                            .filter((idx: number) => idx > 0 && table.column(idx).visible())
+                            .map((idx: number) => dataColumns[idx - 1])
+                            .toArray();
+                        setQueryParam("columns", visibleColumns.join("."));
+                    });
+                });
             }
-            let title = dataColumns[index - 1];
-            console.log("TITLE ")
-            if (title != null) {
-                if (!table.column(index).visible()) {
-                    let data = d[index - 1];
-                    if (numFormat.includes(index - 1)) {
-                        data = data.toLocaleString("en-US");
+
+            // Formatting function for row details
+            function formatRowDetails(d: any) {
+                let rows = "";
+                table.columns().every(function (index: any) {
+                    if (index === 0) return;
+                    let numFormat = [];
+                    if (cell_format.formatNumber != null) {
+                        numFormat.push(cell_format.formatNumber);
                     }
-                    rows += '<tr>' +
-                        '<td>' + title + '</td>' +
-                        '<td>' + data + '</td>' +
-                        '</tr>';
-                }
+                    if (cell_format.formatMoney != null) {
+                        numFormat.push(cell_format.formatMoney);
+                    }
+                    let title = dataColumns[index - 1];
+                    console.log("TITLE ")
+                    if (title != null) {
+                        if (!table.column(index).visible()) {
+                            let data = d[index - 1];
+                            if (numFormat.includes(index - 1)) {
+                                data = data.toLocaleString("en-US");
+                            }
+                            rows += '<tr>' +
+                                '<td>' + title + '</td>' +
+                                '<td>' + data + '</td>' +
+                                '</tr>';
+                        }
+                    }
+                });
+                if (rows === "") rows = "No extra info";
+                return '<table class="bg-body-secondary table table-striped table-bordered compact" cellspacing="0" border="0">' + rows + '</table>';
             }
-        });
-        if (rows === "") rows = "No extra info";
-        return '<table class="bg-body-secondary table table-striped table-bordered compact" cellspacing="0" border="0">' + rows + '</table>';
-    }
 
-    // Add event listener for opening and closing details (of the hidden columns table)
-    function addRowDetailsListener(jqTable: any, table: any) {
-        jqTable.querySelector('tbody').addEventListener('click', function (event: Event) {
-            const target = event.target as HTMLElement;
-            if (target.classList.contains('details-control')) {
-                const tr = target.closest('tr');
-                const row = table.row(tr);
+            // Add event listener for opening and closing details (of the hidden columns table)
+            function addRowDetailsListener(jqTable: any, table: any) {
+                jqTable.querySelector('tbody').addEventListener('click', function (event: Event) {
+                    const target = event.target as HTMLElement;
+                    if (target.classList.contains('details-control')) {
+                        const tr = target.closest('tr');
+                        const row = table.row(tr);
 
-                if (row.child.isShown()) {
-                    // This row is already open - close it
-                    row.child.hide();
-                    tr.classList.remove('shown');
-                } else {
-                    // Open this row
-                    row.child(formatRowDetails(row.data())).show();
-                    tr.classList.add('shown');
-                }
+                        if (row.child.isShown()) {
+                            // This row is already open - close it
+                            row.child.hide();
+                            tr.classList.remove('shown');
+                        } else {
+                            // Open this row
+                            row.child(formatRowDetails(row.data())).show();
+                            tr.classList.add('shown');
+                        }
+                    }
+                });
             }
-        });
-    }
 
-    // Call the functions
-    preventButtonPropagation();
-    handleToggleVis(containerElem, table);
-    addRowDetailsListener(tableElem, table);
-    // Show the table (faster to only display after setup)
-    tableElem.classList.remove("d-none");
-    });
+            // Call the functions
+            preventButtonPropagation();
+            handleToggleVis(containerElem, table);
+            addRowDetailsListener(tableElem, table);
+            // Show the table (faster to only display after setup)
+            tableElem.classList.remove("d-none");
+        });
     });
 }
 
