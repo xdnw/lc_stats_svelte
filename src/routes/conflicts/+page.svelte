@@ -506,7 +506,7 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
         <br />
         <!-- Toggle all button -->
         <button
-          class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-danger opacity-75 fw-bold"
+          class="btn btn-sm ms-1 mb-1 btn-secondary btn-danger opacity-75 fw-bold"
           on:click={() => toggleAlliances()}
         >
           Toggle All
