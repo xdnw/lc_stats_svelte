@@ -1,8 +1,25 @@
 @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap');
+
 body {
     font-family: 'Chakra Petch', sans-serif;
-    line-height: 1.1; /* Adjust this value as needed */
+    line-height: 1.1;
+    /* Adjust this value as needed */
 }
-a, a:link, a:visited {
+
+a,
+a:link,
+a:visited {
     text-underline-offset: 1px;
+}
+
+.vis-item-content {
+    padding: 2px 0 2px 0 !important;
+    font-size: 10px;
+}
+
+
+html[data-bs-theme="dark"] .vis-item {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #444;
 }
