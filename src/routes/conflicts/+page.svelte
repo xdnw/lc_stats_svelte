@@ -490,6 +490,14 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
         </div>
       </div>
       <div class="bg-danger-subtle p-1 pb-0 mb-1">
+        <!-- Toggle all button -->
+        <button
+          class="btn btn-sm ms-1 mb-1 btn-secondary btn-danger opacity-75 fw-bold"
+          on:click={() => toggleAlliances()}
+        >
+          Toggle All
+        </button>
+        <br />
         {#each _rawData.alliance_ids as id, index}
           {#if _rawData.alliance_names[index] && _rawData.alliance_names[index]
               .toLowerCase()
@@ -503,14 +511,6 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
             </button>
           {/if}
         {/each}
-        <br />
-        <!-- Toggle all button -->
-        <button
-          class="btn btn-sm ms-1 mb-1 btn-secondary btn-danger opacity-75 fw-bold"
-          on:click={() => toggleAlliances()}
-        >
-          Toggle All
-        </button>
       </div>
     {/if}
   {/if}
