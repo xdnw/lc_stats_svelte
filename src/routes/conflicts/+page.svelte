@@ -390,6 +390,7 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
   {/if}
   <div id="conflictTable"></div>
   <h4 class="m-1">Timeline</h4>
+  <p class="ps-1">Use ctrl+mousewheel to zoom on PC</p>
   <div class="m-0" id="visualization"></div>
 </div>
 <!-- Add footer component to page -->
