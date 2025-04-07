@@ -17,7 +17,9 @@
     type TableData,
     downloadTableData,
     ExportTypes,
-    formatDuration, downloadCells, downloadTableElem,
+    formatDuration,
+    downloadCells,
+    downloadTableElem,
   } from "$lib";
   import { config } from "../+layout";
   // Layout tabs
@@ -162,7 +164,7 @@
     type: Layout,
     layout: string[],
     sortBy: string,
-    sortDir: string
+    sortDir: string,
   ) {
     conflictName = _rawData.name;
     let coalitions = _rawData.coalitions;
@@ -188,7 +190,7 @@
         row_format = (
           row: HTMLElement,
           data: (number | number[])[],
-          index: number
+          index: number,
         ) => {
           let name = data[0] as number;
           if (name == 0) {
@@ -202,7 +204,7 @@
         row_format = (
           row: HTMLElement,
           data: (number | number[])[],
-          index: number
+          index: number,
         ) => {
           let id = (data[0] as number[])[1];
           if (col1.has(id)) {
@@ -216,7 +218,7 @@
         row_format = (
           row: HTMLElement,
           data: (number | number[])[],
-          index: number
+          index: number,
         ) => {
           let id = (data[0] as number[])[2] as number;
           if (col1.has(id)) {
@@ -239,10 +241,10 @@
         if (type == 0) {
           columns.push("loss:" + header);
           columns.push(
-            "dealt:" + header.replace("_loss", "").replace("loss_", "")
+            "dealt:" + header.replace("_loss", "").replace("loss_", ""),
           );
           columns.push(
-            "net:" + header.replace("_loss", "").replace("loss_", "")
+            "net:" + header.replace("_loss", "").replace("loss_", ""),
           );
         } else if (type == 1) {
           columns.push("def:" + header);
@@ -395,7 +397,7 @@
       _layoutData.layout,
       _layoutData.columns,
       _layoutData.sort,
-      _layoutData.order
+      _layoutData.order,
     );
   }
 
@@ -409,11 +411,11 @@
       _rawData = data;
       setColNames(
         _rawData.coalitions[0].alliance_ids,
-        _rawData.coalitions[0].alliance_names
+        _rawData.coalitions[0].alliance_names,
       );
       setColNames(
         _rawData.coalitions[1].alliance_ids,
-        _rawData.coalitions[1].alliance_names
+        _rawData.coalitions[1].alliance_names,
       );
       loadCurrentLayout();
       if (_rawData.posts && Object.keys(_rawData.posts).length) {
@@ -440,7 +442,7 @@
     addFormatters();
     (window as any).getIds = (
       coalitionName: string,
-      index: number
+      index: number,
     ): { alliance_ids: number[]; alliance_names: string[] } => {
       return _rawData?.coalitions[index] as {
         alliance_ids: number[];
@@ -453,7 +455,7 @@
       data: any,
       type: any,
       row: any,
-      meta: any
+      meta: any,
     ) => {
       let aaId = data[2] as number;
       let aaName = namesByAllianceId[aaId];
@@ -489,11 +491,11 @@
       button.setAttribute("type", "button");
       button.setAttribute(
         "class",
-        "ms-1 btn btn-info btn-sm fw-bold opacity-75"
+        "ms-1 btn btn-info btn-sm fw-bold opacity-75",
       );
       button.setAttribute(
         "onclick",
-        `showNames('${_rawData.coalitions[index].name}',${index})`
+        `showNames('${_rawData.coalitions[index].name}',${index})`,
       );
       button.textContent = _rawData.coalitions[index].name;
       return button.outerHTML;
@@ -504,9 +506,11 @@
       type: string,
     ) {
       downloadTableElem(
-              (document.getElementById("conflict-table-1") as HTMLElement).querySelector("table") as HTMLTableElement,
+        (
+          document.getElementById("conflict-table-1") as HTMLElement
+        ).querySelector("table") as HTMLTableElement,
         useClipboard,
-        ExportTypes[type as keyof typeof ExportTypes]
+        ExportTypes[type as keyof typeof ExportTypes],
       );
     };
 
@@ -525,8 +529,8 @@
   function handleClick(event: MouseEvent): void {
     _layoutData.layout = parseInt(
       (event.target as HTMLButtonElement).getAttribute(
-        "data-bs-layout"
-      ) as string
+        "data-bs-layout",
+      ) as string,
     );
     setQueryParam("layout", _layoutData.layout);
     setQueryParam("sort", null);
@@ -534,13 +538,17 @@
     loadCurrentLayout();
   }
 
-  let scriptLoaded = false;
   let dataLoaded = false;
   let postsData: { [key: string]: [number, string, number] } | null = null;
 
   function initializeTimeline() {
     const script = document.getElementById("visjs");
-    if (dataLoaded && postsData && (script && script.getAttribute('data-loaded') || typeof vis !== 'undefined')) {
+    if (
+      dataLoaded &&
+      postsData &&
+      ((script && script.getAttribute("data-loaded")) ||
+        typeof vis !== "undefined")
+    ) {
       console.log("Initializing timeline");
       // DOM element where the Timeline will be attached
       const container = document.getElementById("visualization");
@@ -606,7 +614,7 @@
   function onScriptLoad(event: Event) {
     console.log("Script loaded");
     const script = event.target as HTMLScriptElement;
-    script.setAttribute('data-loaded', 'true');
+    script.setAttribute("data-loaded", "true");
     initializeTimeline();
   }
 </script>
@@ -750,7 +758,7 @@
 {#if _rawData && _rawData.update_ms}
   <p>
     Last updated {formatDuration(
-      Math.round((Date.now() - _rawData.update_ms) / 1000)
+      Math.round((Date.now() - _rawData.update_ms) / 1000),
     )} ago
   </p>
 {/if}

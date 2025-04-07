@@ -15,10 +15,43 @@ export type RawData = {
     alliance_ids: number[];
     alliance_names: string[];
     headers: string[];
-    conflicts: any[][];
+    conflicts: JSONValue[][];
     source_sets?: { [key: string]: number[] };
     source_names?: { [key: string]: string };
 };
+export enum ConflictIndex {
+    ID = 0,
+    NAME = 1,
+    C1_NAME = 2,
+    C2_NAME = 3,
+    START = 4,
+    END = 5,
+    WARS = 6,
+    ACTIVE_WARS = 7,
+    C1_DEALT = 8,
+    C2_DEALT = 9,
+    C1_ID = 10,
+    C2_ID = 11,
+    WIKI = 12,
+    STATUS = 13,
+    CB = 14,
+    POSTS = 15,
+    TOTAL = 16
+}
+
+export type JSONValue =
+    | string
+    | number
+    | boolean
+    | null
+    | JSONObject
+    | JSONArray;
+
+export interface JSONObject {
+    [key: string]: JSONValue;
+}
+
+export interface JSONArray extends Array<JSONValue> { }
 
 export interface Conflict {
     // name of conflict

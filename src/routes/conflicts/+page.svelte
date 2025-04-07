@@ -1,28 +1,28 @@
 <script lang="ts">
-  import { config } from "./../+layout.ts";
+  import { config } from "./../+layout";
   /**
    * This page is for viewing the table of all conflicts
    */
   import { base } from "$app/paths";
   import Navbar from "../../components/Navbar.svelte";
   import Progress from "../../components/Progress.svelte";
-  import Sidebar from "../../components/Sidebar.svelte";
   import Footer from "../../components/Footer.svelte";
   import { onMount } from "svelte";
   import {
     decompressBson,
-    modalWithCloseButton,
     modalStrWithCloseButton,
     setupContainer,
     addFormatters,
-    downloadTableData,
     type TableData,
-    type ExportType,
-    ExportTypes, downloadTableElem, type RawData,
+    ExportTypes,
+    downloadTableElem,
+    type RawData,
+    ConflictIndex,
+    type JSONValue,
   } from "$lib";
 
   let _currentRowData: TableData;
-  let _rawData: any = null;
+  let _rawData: RawData | null = null;
   let currSource = ["All", 0];
   let _loaded = false;
   let allianceNameById: { [key: number]: string } = {};
@@ -42,11 +42,11 @@
 
       (window as any).getIds = (
         coalitionName: string,
-        index: number
+        index: number,
       ): { alliance_ids: number[]; alliance_names: string[] } => {
         const alliance_ids = allianceIdsByCoalition[coalitionName][index];
         const alliance_names = alliance_ids.map(
-          (id) => allianceNameById[id] || "AA:" + id
+          (id) => allianceNameById[id] || "AA:" + id,
         );
         return { alliance_ids, alliance_names };
       };
@@ -57,7 +57,7 @@
         data: string,
         type: any,
         row: any,
-        meta: any
+        meta: any,
       ) => {
         let id = row[0];
         let result = `<span class='text-nowrap'>`;
@@ -66,7 +66,7 @@
           button.setAttribute("type", "button");
           button.setAttribute(
             "class",
-            "ms-1 btn btn-outline-info btn-secondary btn-sm fw-bold opacity-75"
+            "ms-1 btn btn-outline-info btn-secondary btn-sm fw-bold opacity-75",
           );
           button.setAttribute("onclick", `showNames('${data}',${i})`);
           button.textContent = "C" + (i + 1);
@@ -78,12 +78,14 @@
 
       (window as any).download = function download(
         useClipboard: boolean,
-        type: string
+        type: string,
       ) {
         downloadTableElem(
-                (document.getElementById("conflictTable") as HTMLElement).querySelector("table") as HTMLTableElement,
-                useClipboard,
-                ExportTypes[type as keyof typeof ExportTypes]
+          (
+            document.getElementById("conflictTable") as HTMLElement
+          ).querySelector("table") as HTMLTableElement,
+          useClipboard,
+          ExportTypes[type as keyof typeof ExportTypes],
         );
       };
 
@@ -96,7 +98,7 @@
         Result is an object with the following keys:
         alliance_ids: number[]; - array of alliance ids
         alliance_names: string[]; - array of alliance names (corresponding to the alliance_ids array)
-        headers: string[]; - array of the column names, currently (by index):
+        headers: string[]; - array of the column names, currently (by index): (see ConflictIndex type)
         - 0:id
         - 1:name
         - 2:c1_name
@@ -125,25 +127,35 @@
         let setParam = queryParams.get("guild");
 
         setupConflicts(result, setParam);
-
         _loaded = true;
+        initializeTimeline();
       });
     } catch (error) {
       console.error("Error reading from S3 bucket:", error);
     }
   });
 
-  function setupConflicts(result: any, setParam: string | null) {
+  function setupConflicts(result: RawData, setParam: string | null) {
     let columns: string[] = result.headers as string[];
-    let visible: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let visible: number[] = [
+      ConflictIndex.NAME,
+      ConflictIndex.C1_NAME,
+      ConflictIndex.C2_NAME,
+      ConflictIndex.START,
+      ConflictIndex.END,
+      ConflictIndex.WARS,
+      ConflictIndex.ACTIVE_WARS,
+      ConflictIndex.C1_DEALT,
+      ConflictIndex.C2_DEALT,
+    ];
     let searchable: number[] = [1];
     let cell_format: { [key: string]: number[] } = {};
-    let sort: [number, string] = [5, "desc"];
+    let sort: [number, string] = [ConflictIndex.END, "desc"];
     let rows: any[][] = result.conflicts as any[][];
 
     let sourceI = columns.indexOf("source");
-    let source_sets = result.source_sets;
-    let source_names = result.source_names;
+    let source_sets = result.source_sets!;
+    let source_names = result.source_names!;
     let ss = setParam && source_sets ? source_sets[setParam] : null;
     if (ss) {
       currSource = [
@@ -171,29 +183,43 @@
         setParam,
         source_sets,
         rows.length,
-        source_sets
+        source_sets,
       );
     }
     // Set the coalition names
     for (let i = 0; i < rows.length; i++) {
       let conflict = rows[i];
       let conName = conflict[1];
-      allianceIdsByCoalition[conName] = [conflict[10], conflict[11]];
-      colNames[conName] = [conflict[2], conflict[3]];
+      allianceIdsByCoalition[conName] = [
+        conflict[ConflictIndex.C1_ID],
+        conflict[ConflictIndex.C2_ID],
+      ];
+      colNames[conName] = [
+        conflict[ConflictIndex.C1_NAME],
+        conflict[ConflictIndex.C2_NAME],
+      ];
     }
 
     // Add total damage column (as combination of c1_dealt and c2_dealt)
     columns.push("total");
     for (let i in rows) {
-      let damage = rows[i][8] + rows[i][8];
+      let damage =
+        rows[i][ConflictIndex.C1_DEALT] + rows[i][ConflictIndex.C2_DEALT];
       rows[i].push(damage);
     }
 
     // Set the cell format functions to specific columns
-    cell_format["formatUrl"] = [1];
-    cell_format["formatNumber"] = [6, 7, 16];
-    cell_format["formatMoney"] = [8, 9];
-    cell_format["formatDate"] = [4, 5];
+    cell_format["formatUrl"] = [ConflictIndex.NAME];
+    cell_format["formatNumber"] = [
+      ConflictIndex.WARS,
+      ConflictIndex.ACTIVE_WARS,
+    ];
+    cell_format["formatMoney"] = [
+      ConflictIndex.C1_DEALT,
+      ConflictIndex.C2_DEALT,
+      ConflictIndex.TOTAL,
+    ];
+    cell_format["formatDate"] = [ConflictIndex.START, ConflictIndex.END];
 
     let container = document.getElementById("conflictTable");
     _currentRowData = {
@@ -223,15 +249,91 @@
   function selectSource(event: Event) {
     const target = event.target as HTMLSelectElement;
     const id = target.value;
-    const name = _rawData.source_names[id];
+    const name = _rawData!.source_names![id];
     currSource = [name, id];
-    setupConflicts(_rawData, id);
+    setupConflicts(_rawData!, id);
+  }
+
+  function initializeTimeline() {
+    const script = document.getElementById("visjs");
+    if (
+      _loaded &&
+      _rawData &&
+      ((script && script.getAttribute("data-loaded")) ||
+        typeof vis !== "undefined")
+    ) {
+      // DOM element where the Timeline will be attached
+      const container = document.getElementById("visualization");
+      if (!container || container.hasChildNodes()) return;
+
+      // Create a DataSet (allows two way data-binding)
+      const items = new vis.DataSet();
+
+      let minStart = Date.now();
+      let maxEnd = 0;
+
+      console.log("Loading timeline data", _rawData.conflicts.length);
+
+      _rawData.conflicts.forEach((row: JSONValue[]) => {
+        // get the conflict name, start date, and end date
+        // url should match the one in the table
+        const name = row[ConflictIndex.NAME] as string;
+        const start = row[ConflictIndex.START] as number;
+        const end = row[ConflictIndex.END] as number;
+        minStart = Math.min(minStart, start);
+        maxEnd = Math.max(maxEnd, end == -1 ? Date.now() : end);
+        const url = `${base}/conflict?id=${row[ConflictIndex.ID]}`;
+
+        items.add({
+          id: row[ConflictIndex.ID],
+          content: `<a href="${url}" target="_blank" title="${name}">${name}</a>`,
+          start: start,
+          end: end === -1 ? Date.now() : end,
+        });
+      });
+
+      const options = {
+        // Set the initial start-end range to display in the timeline
+        start: minStart,
+        end: maxEnd,
+        // Height of timeline canvas
+        height: "75vh",
+        // Width of timeline canvas
+        width: "100%",
+        // clickToUse: true,
+        zoomKey: "ctrlKey",
+        // Which side to put the dates
+        orientation: "top",
+        // Enable vertical scrolling
+        verticalScroll: true,
+        // zoomable: false,
+      };
+
+      // Create a Timeline
+      const timeline = new vis.Timeline(container, items, options);
+      // Add red bar at the start and end dates
+      timeline.addCustomTime(minStart, "t1");
+      timeline.addCustomTime(maxEnd, "t2");
+    }
+  }
+
+  function onScriptLoad(event: Event) {
+    console.log("Script loaded");
+    const script = event.target as HTMLScriptElement;
+    script.setAttribute("data-loaded", "true");
+    initializeTimeline();
   }
 </script>
 
 <svelte:head>
   <!-- Modify head -->
   <title>Conflicts</title>
+  <script
+    id="visjs"
+    async
+    src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"
+    on:load={onScriptLoad}
+  ></script>
 </svelte:head>
 <!-- Add navbar component to page  -->
 <Navbar />
@@ -275,7 +377,7 @@ A comma separated list of alliances<br/>
 A unix timestamp, a DMY date or a time difference that will resolve to a timestamp from the current date<br/>
 <code>[end]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#longtimestamp">Long[Timestamp]</a><br/>
 <code>[-g includeGraphs]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#boolean">boolean</a></p>
-<a class="btn btn-outline-info" href="https://github.com/xdnw/locutus/wiki/conflict_webpage">More info</a>`
+<a class="btn btn-outline-info" href="https://github.com/xdnw/locutus/wiki/conflict_webpage">More info</a>`,
               )}>Create Conflict</button
           >
         </div>
@@ -287,6 +389,8 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
     <Progress />
   {/if}
   <div id="conflictTable"></div>
+  <h4 class="m-1">Timeline</h4>
+  <div class="m-0" id="visualization"></div>
 </div>
 <!-- Add footer component to page -->
 <Footer />
