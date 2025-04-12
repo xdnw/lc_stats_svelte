@@ -36,7 +36,9 @@ export enum ConflictIndex {
     STATUS = 13,
     CB = 14,
     POSTS = 15,
-    TOTAL = 16
+    SOURCE = 16,
+    CATEGORY = 17,
+    TOTAL = 18
 }
 
 export type JSONValue =

@@ -121,6 +121,8 @@
         - 13:status
         - 14:cb
         - 15:posts - not displayed
+        - 16:source - not displayed
+        - 17:category - displayed
         conflicts: any[][]; - 2D array of the table cell data in the form [row index][column index]
         */
         let alliance_ids = result.alliance_ids;
@@ -165,6 +167,7 @@
       ConflictIndex.ACTIVE_WARS,
       ConflictIndex.C1_DEALT,
       ConflictIndex.C2_DEALT,
+      ConflictIndex.CATEGORY,
     ];
     let searchable: number[] = [ConflictIndex.NAME];
     let cell_format: { [key: string]: number[] } = {};
