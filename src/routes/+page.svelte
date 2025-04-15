@@ -56,7 +56,7 @@
       invite: "https://www.locutus.link/#/raid",
       bg: "#2EC2A0",
       ad: false,
-      label: "View Charts",
+      label: "Find Targets",
     },
     // {
     //   id: "4",
