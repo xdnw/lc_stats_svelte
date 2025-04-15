@@ -5,7 +5,7 @@
   import { onMount } from "svelte";
   import { config } from "./+layout";
 
-type AdTemplate = {
+  type AdTemplate = {
     id: string;
     img: string;
     desc: string;
@@ -45,6 +45,16 @@ type AdTemplate = {
       subtitle: "Chart Viewer",
       invite: "https://www.locutus.link/#/edit_graph",
       bg: "#FFC929",
+      ad: false,
+      label: "View Charts",
+    },
+    {
+      id: "5",
+      img: "chest.png",
+      subtitle: "Raid Finder",
+      desc: "Find raidable nations in your score range",
+      invite: "https://www.locutus.link/#/raid",
+      bg: "#2EC2A0",
       ad: false,
       label: "View Charts",
     },
@@ -120,15 +130,20 @@ type AdTemplate = {
     let frameCount: number = 0;
     let darkTheme: boolean | undefined = undefined;
     const updateTheme = (updateClasses: boolean) => {
-      const newTheme = document.documentElement.getAttribute("data-bs-theme") === "dark";
-      ctx.fillStyle = darkTheme ? "rgba(16, 20, 28, 0.16)" : "rgba(255, 255, 255, 0.16)";
+      const newTheme =
+        document.documentElement.getAttribute("data-bs-theme") === "dark";
+      ctx.fillStyle = darkTheme
+        ? "rgba(16, 20, 28, 0.16)"
+        : "rgba(255, 255, 255, 0.16)";
       if (darkTheme !== newTheme) {
         darkTheme = newTheme;
         if (updateClasses) {
-          c.classList.remove(darkTheme ? 'bg-white' : 'bg-black');
-          c.classList.add(darkTheme ? 'bg-black' : 'bg-white');
+          c.classList.remove(darkTheme ? "bg-white" : "bg-black");
+          c.classList.add(darkTheme ? "bg-black" : "bg-white");
         }
-        ctx.fillStyle = darkTheme ? "rgba(16, 20, 28, 1)" : "rgba(255, 255, 255, 1)";
+        ctx.fillStyle = darkTheme
+          ? "rgba(16, 20, 28, 1)"
+          : "rgba(255, 255, 255, 1)";
       }
     };
     updateTheme(true);
@@ -208,8 +223,12 @@ type AdTemplate = {
           </div>
           <div class="card-footer">
             <a
-              href={adTemplate.invite === "conflicts" && _guildId ? "conflicts?guild_id=" + _guildId : adTemplate.invite}
-              class="btn btn-lg btn-secondary btn-outline-info border-3">{adTemplate.label}</a>
+              href={adTemplate.invite === "conflicts" && _guildId
+                ? "conflicts?guild_id=" + _guildId
+                : adTemplate.invite}
+              class="btn btn-lg btn-secondary btn-outline-info border-3"
+              >{adTemplate.label}</a
+            >
           </div>
         </div>
       {/if}
@@ -219,7 +238,6 @@ type AdTemplate = {
 <Footer />
 
 <style lang="postcss">
-
   .card-img-top {
     height: 9rem;
     width: 18rem;
