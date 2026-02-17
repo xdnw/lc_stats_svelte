@@ -35,11 +35,24 @@
   let allianceNameById: { [key: number]: string } = {};
   let allianceIdsByCoalition: { [key: string]: number[][] } = {};
   let colNames: { [key: string]: string[] } = {};
+  let conflictDetailsById: {
+    [key: number]: {
+      name: string;
+      wiki: string | null;
+      status: string | null;
+      cb: string | null;
+      posts: any;
+    };
+  } = {};
+  let timelineRows: JSONValue[][] = [];
   let guildParam: string | null = null;
 
   let _allowedAllianceIds: Set<number> = new Set();
   let showDiv = false; // State to toggle visibility
   let searchQuery = ""; // State for search input
+
+  let categoryCounts: { [key: string]: number } = {};
+  let selectedCategories: Set<string> = new Set();
 
   const getVis = (): any => (window as any).vis;
 
@@ -84,7 +97,36 @@
           button.textContent = "C" + (i + 1);
           result += button.outerHTML;
         }
-        result += `&nbsp;<a href="conflict?id=${id}">${data}</a></span>`;
+        result += `&nbsp;<a href="conflict?id=${id}">${data}</a>`;
+        const wiki = row[ConflictIndex.WIKI];
+        const status = row[ConflictIndex.STATUS];
+        const cb = row[ConflictIndex.CB];
+        const posts = row[ConflictIndex.POSTS];
+
+        const hasWiki = wiki != null && `${wiki}`.trim().length > 0;
+        const hasStatus = status != null && `${status}`.trim().length > 0;
+        const hasCb = cb != null && `${cb}`.trim().length > 0;
+        const hasPosts = posts && typeof posts === "object";
+
+        result += `<span class='ms-1 d-inline-flex gap-1 float-end'>`;
+        if (hasWiki) {
+          const wikiUrl = normalizeWikiUrl(`${wiki}`);
+          result += `<a class='btn ux-btn btn-sm fw-bold' href='${wikiUrl}' target='_blank' rel='noopener noreferrer'>Wiki</a>`;
+        }
+        if (status != null && `${status}`.trim().length > 0) {
+          result += `<button type='button' class='btn ux-btn btn-sm fw-bold' onclick='openConflictField(${id},"status")'>Status</button>`;
+        }
+        if (hasCb) {
+          result += `<button type='button' class='btn ux-btn btn-sm fw-bold' onclick='openConflictField(${id},"cb")'>CB</button>`;
+        }
+        if (hasPosts) {
+          result += `<button type='button' class='btn ux-btn btn-sm fw-bold' onclick='openConflictField(${id},"posts")'>Posts</button>`;
+        }
+        if (!hasWiki && !hasStatus && !hasCb && !hasPosts) {
+          result += `<span class='ux-muted'>N/A</span>`;
+        }
+        result += `</span>`;
+        result += `</span>`;
         return result;
       };
 
@@ -99,6 +141,103 @@
           useClipboard,
           ExportTypes[type as keyof typeof ExportTypes],
         );
+      };
+
+      (window as any).openConflictField = (
+        conflictId: number,
+        field: "status" | "cb" | "posts",
+      ) => {
+        const details = conflictDetailsById[conflictId];
+        if (!details) return;
+
+        const title = `${details.name} - ${field.toUpperCase()}`;
+        const body = document.createElement("div");
+
+        if (field === "status") {
+          body.innerHTML = `<ul class='m-0'><li>${details.status ?? "N/A"}</li></ul>`;
+        } else if (field === "cb") {
+          body.innerHTML = `<ul class='m-0'><li>${details.cb ?? "N/A"}</li></ul>`;
+        } else {
+          const posts = details.posts;
+          const ul = document.createElement("ul");
+          ul.className = "m-0";
+          let hasPosts = false;
+          if (posts && typeof posts === "object") {
+            Object.entries(posts).forEach(([name, value]) => {
+              const v = value as any;
+              const li = document.createElement("li");
+              const postId = Array.isArray(v) ? v[0] : null;
+              const postText = Array.isArray(v) ? (v[1] ?? name) : name;
+              const postTime = Array.isArray(v) ? v[2] : null;
+              if (postId != null) {
+                const a = document.createElement("a");
+                a.href = `https://forum.politicsandwar.com/index.php?/topic/${postId}`;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                a.textContent = postText;
+                li.appendChild(a);
+              } else {
+                li.textContent = postText;
+              }
+              if (typeof postTime === "number") {
+                const small = document.createElement("small");
+                small.className = "text-muted ms-2";
+                small.textContent = formatDatasetProvenance("", postTime)
+                  .replace("Version:  • ", "")
+                  .replace("Version: ", "");
+                li.appendChild(small);
+              }
+              ul.appendChild(li);
+              hasPosts = true;
+            });
+          }
+          if (!hasPosts) {
+            body.innerHTML = "<ul class='m-0'><li>No posts available</li></ul>";
+          } else {
+            body.appendChild(ul);
+          }
+        }
+
+        modalStrWithCloseButton(title, body.outerHTML);
+      };
+
+      (window as any).formatPinnedAlliances = (
+        _data: any,
+        _type: any,
+        row: any,
+        _meta: any,
+      ) => {
+        if (_allowedAllianceIds.size === _rawData?.alliance_ids.length) {
+          return "<span class='ux-muted'>All</span>";
+        }
+        const c1_ids = row[ConflictIndex.C1_ID] as number[];
+        const c2_ids = row[ConflictIndex.C2_ID] as number[];
+
+        const c1 = c1_ids.filter((id) => _allowedAllianceIds.has(id));
+        const c2 = c2_ids.filter((id) => _allowedAllianceIds.has(id));
+        const total = c1.length + c2.length;
+
+        if (total === 0) return "<span class='ux-muted'>-</span>";
+
+        let chips: string[] = [];
+        const pushChip = (ids: number[], side: string, cls: string) => {
+          for (const id of ids) {
+            if (chips.length >= 4) return;
+            const name = allianceNameById[id] ?? `AA:${id}`;
+            chips.push(
+              `<span class='badge ${cls}' title='${side}: ${name}'>${side}:${name}</span>`,
+            );
+          }
+        };
+
+        pushChip(c1, "C1", "text-bg-primary");
+        pushChip(c2, "C2", "text-bg-danger");
+        if (total > chips.length) {
+          chips.push(
+            `<span class='badge text-bg-secondary'>+${total - chips.length}</span>`,
+          );
+        }
+        return `<span class='d-inline-flex flex-wrap gap-1'>${chips.join("")}</span>`;
       };
 
       // Url of s3 bucket
@@ -191,10 +330,16 @@
       ConflictIndex.C2_DEALT,
       ConflictIndex.CATEGORY,
     ];
-    let searchable: number[] = [ConflictIndex.NAME];
+    let searchable: number[] = [
+      ConflictIndex.NAME,
+      ConflictIndex.CATEGORY,
+      ConflictIndex.C1_NAME,
+      ConflictIndex.C2_NAME,
+    ];
     let cell_format: { [key: string]: number[] } = {};
     let sort: [number, string] = [ConflictIndex.END + 1, "desc"];
     let rows: JSONValue[][] = result.conflicts as JSONValue[][];
+    conflictDetailsById = {};
     if (_allowedAllianceIds.size != _rawData?.alliance_ids.length) {
       rows = rows.filter((row) => {
         const c1_ids: number[] = row[ConflictIndex.C1_ID] as number[];
@@ -239,6 +384,30 @@
         source_sets,
       );
     }
+
+    // Build quick filter counts and preserve selection where possible
+    categoryCounts = {};
+    for (const row of rows) {
+      const category = `${row[ConflictIndex.CATEGORY] ?? "uncategorized"}`;
+      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+    }
+
+    if (selectedCategories.size === 0) {
+      selectedCategories = new Set(Object.keys(categoryCounts));
+    } else {
+      selectedCategories = new Set(
+        [...selectedCategories].filter((cat) => categoryCounts[cat] != null),
+      );
+      if (selectedCategories.size === 0) {
+        selectedCategories = new Set(Object.keys(categoryCounts));
+      }
+    }
+
+    rows = rows.filter((row) => {
+      const category = `${row[ConflictIndex.CATEGORY] ?? "uncategorized"}`;
+      return selectedCategories.has(category);
+    });
+
     // Set the coalition names
     for (let i = 0; i < rows.length; i++) {
       let conflict = rows[i];
@@ -251,16 +420,30 @@
         conflict[ConflictIndex.C1_NAME] as string,
         conflict[ConflictIndex.C2_NAME] as string,
       ];
+      const id = conflict[ConflictIndex.ID] as number;
+      conflictDetailsById[id] = {
+        name: conName,
+        wiki: (conflict[ConflictIndex.WIKI] as string | null) ?? null,
+        status: (conflict[ConflictIndex.STATUS] as string | null) ?? null,
+        cb: (conflict[ConflictIndex.CB] as string | null) ?? null,
+        posts: conflict[ConflictIndex.POSTS],
+      };
     }
+
+    timelineRows = rows;
 
     // Add total damage column (as combination of c1_dealt and c2_dealt)
     columns.push("total");
+    columns.push("pinned");
     rows = rows.map((row) => {
       const damage =
         (row[ConflictIndex.C1_DEALT] as number) +
         (row[ConflictIndex.C2_DEALT] as number);
-      return [...row, damage];
+      return [...row, damage, ""];
     });
+
+    const pinnedIdx = columns.length - 1;
+    visible.push(pinnedIdx);
 
     // Set the cell format functions to specific columns
     cell_format["formatUrl"] = [ConflictIndex.NAME];
@@ -271,9 +454,10 @@
     cell_format["formatMoney"] = [
       ConflictIndex.C1_DEALT,
       ConflictIndex.C2_DEALT,
-      columns.length - 1,
+      ConflictIndex.TOTAL,
     ];
     cell_format["formatDate"] = [ConflictIndex.START, ConflictIndex.END];
+    cell_format["formatPinnedAlliances"] = [pinnedIdx];
 
     let container = document.getElementById("conflictTable");
     _currentRowData = {
@@ -309,6 +493,27 @@
     setQueryParam("guild", id === "0" ? null : id);
     saveCurrentQueryParams();
     setupConflicts(_rawData!, id);
+    initializeTimeline(true);
+  }
+
+  function normalizeWikiUrl(wiki: string): string {
+    const value = wiki.trim();
+    if (!value) return "#";
+    if (/^https?:\/\//i.test(value)) return value;
+    return `https://github.com/xdnw/locutus/wiki/${encodeURIComponent(value)}`;
+  }
+
+  function toggleCategory(category: string) {
+    const next = new Set(selectedCategories);
+    if (next.has(category)) {
+      if (next.size === 1) return;
+      next.delete(category);
+    } else {
+      next.add(category);
+    }
+    selectedCategories = next;
+    setupConflicts(_rawData!, guildParam);
+    initializeTimeline(true);
   }
 
   function setLayoutAlliance(id: number) {
@@ -348,6 +553,7 @@
     _allowedAllianceIds = new Set(_rawData.alliance_ids);
     guildParam = null;
     currSource = ["All", 0];
+    selectedCategories = new Set();
     searchQuery = "";
     resetQueryParams(["ids", "guild", "guild_id"]);
     saveCurrentQueryParams();
@@ -386,7 +592,7 @@
       const filterConflicts =
         _rawData.alliance_ids.length != _allowedAllianceIds.size;
 
-      _rawData.conflicts.forEach((row: JSONValue[]) => {
+      timelineRows.forEach((row: JSONValue[]) => {
         if (filterConflicts) {
           if (
             !(row[ConflictIndex.C1_ID] as number[]).some((id) =>
@@ -516,6 +722,30 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
     </div>
   {/if}
   {#if _rawData}
+    <div class="ux-surface p-2 mb-2">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="fw-bold">Quick filters:</span>
+        <span class="ux-muted">Category</span>
+        {#each Object.entries(categoryCounts) as [category, count]}
+          <button
+            class="btn btn-sm fw-bold"
+            class:ux-btn={selectedCategories.has(category)}
+            class:btn-outline-secondary={!selectedCategories.has(category)}
+            on:click={() => toggleCategory(category)}
+            title="Toggle category"
+          >
+            {category} <span class="badge text-bg-light ms-1">{count}</span>
+          </button>
+        {/each}
+
+        {#if _allowedAllianceIds.size !== _rawData.alliance_ids.length}
+          <span class="ux-muted ms-2">Pinned alliance badges:</span>
+          <span class="badge text-bg-primary">C1</span>
+          <span class="badge text-bg-danger">C2</span>
+        {/if}
+      </div>
+    </div>
+
     <div class="d-flex gap-1 mb-2 align-items-center">
       <button class="btn ux-btn" on:click={() => (showDiv = !showDiv)}>
         Filter Alliances&nbsp;<i
