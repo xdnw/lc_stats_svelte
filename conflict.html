@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" data-bs-core="modern">
+
+<head>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/js-polyfills/0.1.43/polyfill.min.js"></script>
+	<!-- Google Tag Manager -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-4J3KV26E2Z"></script>
+	<script>
+		window.dataLayer = window.dataLayer || [];
+		function gtag() { dataLayer.push(arguments); }
+		gtag('js', new Date());
+		gtag('config', 'G-4J3KV26E2Z');
+	</script>
+	<!-- End Google Tag Manager -->
+	<!-- <script src="bytebuffer.js?1.0"></script>
+		<script src="PSON.js?1.0"></script> -->
+	<!--  -->
+	<meta charset="utf-8" />
+	<link rel="icon" type="image/x-icon" href="./favicon.ico" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="color-scheme" content="light dark">
+	<title>Conflicts</title>
+
+	<!-- <script defer src="https://cdn.datatables.net/v/dt/jq-3.7.0/dt-2.1.8/cr-2.0.4/datatables.min.js"></script>
+		<script defer src="https://cdn.datatables.net/plug-ins/2.1.8/sorting/numeric-comma.js"></script>
+		<link media="print" onload="this.media='all'" href="https://cdn.datatables.net/v/dt/jq-3.7.0/dt-2.1.8/cr-2.0.4/datatables.min.css" rel="stylesheet"> -->
+	<!-- ^ Disabled, use v1 insteas as its faster -->
+
+	<!-- Halfmoon is a bootstrap theme (light & dark) -->
+	<script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+	<script id="jqjs" defer src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs1" defer src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs2" defer src="https://cdn.datatables.net/colreorder/1.7.0/js/dataTables.colReorder.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs3" defer src="https://cdn.datatables.net/plug-ins/1.13.7/sorting/numeric-comma.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="plotjs" defer src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.29.1/plotly.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdnjs.cloudflare.com/ajax/libs/Halfmoon/2.0.1/css/halfmoon.min.css" />
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdn.jsdelivr.net/npm/halfmoon@2.0.1/css/cores/halfmoon.modern.css">
+	<!-- Icons for links/buttons -->
+	<!-- For dropdowns, currently unused -->
+	<!-- <link rel="stylesheet"  media="print" onload="this.media='all'" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/css/bootstrap-select.min.css"> -->
+	<!-- For tables -->
+	<link rel="stylesheet" media="print" onload="this.media='all'" type="text/css"
+		href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+	<link rel="stylesheet" media="print" onload="this.media='all'" type="text/css"
+		href="https://cdn.datatables.net/colreorder/1.7.0/css/colReorder.dataTables.min.css">
+	<!-- For graphs (more performant than chartjs) - UNUSED -->
+	<!-- <link rel="stylesheet"  media="print" onload="this.media='all'" type="text/css" href="https://cdn.jsdelivr.net/npm/uplot@1.6.28/dist/uPlot.min.css"> -->
+	<!-- Bootstrap -->
+
+	<!-- Bootstrap select is UNUSED  -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script> -->
+	<!-- For highlighting code in pre tags UNUSED -->
+	<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.4.1/highlight.min.js"></script> -->
+	<!-- <script src="https://unpkg.com/twemoji@14.0.2/dist/twemoji.min.js"></script> -->
+	<!-- For data tables -->
+
+	<!-- For charts (uplot faster than chart.js) UNUSED -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.28/dist/uPlot.iife.min.js"></script> -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> -->
+	<!-- For reading and decompressing gzip json -->
+	<!-- <script src="https://cdn.jsdelivr.net/gh/tdzl2003/PSON@patch-1/dist/PSON.js"></script> -->
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css" />
+	<link rel="stylesheet" media="print" onload="this.media='all'" href="./styles/main.css" />
+	
+		<link href="./_app/immutable/assets/index.BQLQbZAD.css" rel="stylesheet">
+		<link rel="modulepreload" href="./_app/immutable/entry/start.VSDwDm4B.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/entry.CdrcocmI.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/runtime.DMLHWUus.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/paths.BVsJ1pVq.js">
+		<link rel="modulepreload" href="./_app/immutable/entry/app.CqwrWKEr.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/render.CoimT3AH.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/disclose-version.xy21-f78.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index-client.D_ywJSmp.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/props.C-rJn9xF.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/store.BLr8Sqcx.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/0.CKnou1FE.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/_layout.BJmI2Ulo.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/5.C8FsKgSj.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/legacy.N0bfMBuo.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/Footer.C7bm1xTi.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index.DcoiBfme.js"><!--[--><script id="visjs" async src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"></script><!----><!--]--><title>Conflict </title>
+	<script defer>
+		var systemColorMode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+		var cookieVal = document.cookie.split('; ').find(row => row.startsWith('halfmoonColorMode='));
+		var setColorMode = cookieVal ? cookieVal.split('=')[1] : systemColorMode;
+		document.documentElement.setAttribute("data-bs-theme", setColorMode);
+	</script>
+</head>
+
+<body data-sveltekit-preload-data="hover" class="app-shell">
+	<div style="display: contents"><!--[--><!--[--><!----><!----><nav class="navbar navbar-expand-md border-bottom bg-body-subtle shadow-sm sticky-top"><div class="container-fluid py-1"><div class="row d-flex w-100 g-1 align-items-center"><div class="col-auto"><div class="btn-group ux-surface p-1"><button type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" class="btn ux-btn d-md-none" aria-label="Open sidebar"><i class="bi bi-layout-sidebar"></i></button> <button class="btn ux-btn d-md-block" aria-label="Toggle dark mode"><i class="bi bi-moon-stars-fill"></i></button> <div class="d-inline text-truncate mt-1 ux-muted"></div></div></div> <div class="col"><form class="d-flex ux-surface p-1" role="search" id="navbar-search-form"><input id="navbar-search" class="form-control border-0" type="search" placeholder="Search pages..." aria-label="Search"> <button type="submit" class="btn ux-btn ux-btn-primary text-nowrap" aria-label="Search"><i class="bi bi-search"></i></button></form></div> <div class="col-auto"></div></div></div></nav><!----> <div class="container-fluid p-2" style="min-height: calc(100vh - 203px);"><h1 class="m-0 mb-2 p-2 ux-surface ux-page-title"><a href="conflicts" aria-label="Back to conflicts"><i class="bi bi-arrow-left"></i></a> Conflict:  <!--[!--><!--]--></h1> <hr class="mt-2 mb-2"> <div class="row p-0 m-0 ux-tabstrip fw-bold"><button class="col-2 ps-0 pe-0 btn is-active" id="profile-pill" data-bs-layout="0">◑ Coalition</button> <button class="col-2 btn ps-0 pe-0 " id="alliance-pill" data-bs-layout="1">𖣯 Alliance</button> <button class="col-2 ps-0 pe-0 btn " id="nation-pill" data-bs-layout="2">♟ Nation</button> <a class="col-2 ps-0 pe-0 btn" href="tiering?id=">📊 Tier/Time</a> <a class="col-2 ps-0 pe-0 btn" href="bubble?id=">📈 Bubble/Time</a> <a class="col-2 ps-0 pe-0 btn" href="chord?id=">🌐 Web</a></div> <ul class="nav fw-bold nav-pills nav-fill m-0 p-2 ux-surface mb-3"><li>Layout Picker:</li> <!--[--><li><button class="btn ux-btn btn-sm ms-1 fw-bold active">Summary</button></li><li><button class="btn ux-btn btn-sm ms-1 fw-bold ">Dealt</button></li><li><button class="btn ux-btn btn-sm ms-1 fw-bold ">Received</button></li><li><button class="btn ux-btn btn-sm ms-1 fw-bold ">Units</button></li><li><button class="btn ux-btn btn-sm ms-1 fw-bold ">Consumption</button></li><li><button class="btn ux-btn btn-sm ms-1 fw-bold ">Attacks</button></li><!--]--></ul> <!--[--><div class="progress flex-grow-1 svelte-7mqq29" role="status" aria-label="Loading"><div class="progress-bar text-bg-info progress-bar-animated placeholder-wave svelte-7mqq29" style="width: 100%;"></div></div><!--]--> <!--[!--><!--]--> <div class="d-flex gap-1 mb-2"><button class="btn ux-btn btn-sm fw-bold">Copy share link</button> <button class="btn ux-btn btn-sm fw-bold">Reset</button></div> <div id="conflict-table-1"></div> <!--[--><hr> <div class="row m-0"><!--[!--><!--]--> <!--[!--><!--]--></div><!--]--> <hr> <div class="ux-surface p-2"><h4>N/A - N/A</h4> <div class="m-0" id="visualization"></div></div> <!--[!--><!--]--></div> <!--[!--><!--]--> <footer class="bd-footer border-top border-1 mt-3 py-4 bg-body-tertiary"><div class="container-md p-3 p-md-4"><div class="row g-4"><div class="col-12 col-md-4"><div class="d-flex align-items-center gap-2"><img src="favicon-large.webp" alt="Logo" width="20" height="20"> <h5 class="fw-semibold m-0">Locutus</h5></div> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://github.com/xdnw/locutus"><i class="bi bi-git"></i> Source Code</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/wiki"><i class="bi bi-wikipedia"></i> Wiki</a></li> <li class="mb-2"><a href="https://locutus.link:8443/job/locutus/"><i class="bi bi-box"></i> Jenkins</a></li></ul></div> <div class="col-12 col-md-4"><h5 class="fw-medium m-0">Get in Touch</h5> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://discord.gg/cUuskPDrB7"><i class="bi bi-discord"></i> Discord Server</a></li> <li class="mb-2"><a href="discord://discord.com/users/664156861033087000"><i class="bi bi-person-circle"></i> Discord User</a></li> <li class="mb-2"><a href="https://politicsandwar.com/nation/id=189573"><i class="bi bi-joystick"></i> In-Game</a></li> <li class="mb-2"><a href="mailto:jessepaleg@gmail.com"><i class="bi bi-at"></i> Email</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/issues"><i class="bi bi-github"></i> Report Issue</a></li></ul></div> <div class="col-12 col-md-4"><h5 class="fw-medium m-0">Legal</h5> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/LICENSE"><i class="bi bi-list-columns-reverse"></i> License</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/ToS.MD"><i class="bi bi-list-check"></i> Terms Of Service</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/PRIVACY.MD"><i class="bi bi-list-stars"></i> Privacy Policy</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/SECURITY.md"><i class="bi bi-incognito"></i> Vulnerability Disclosure</a></li></ul></div></div></div></footer><!----><!----><!----><!----><!--]--> <!--[!--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_43b273 = {
+						base: new URL(".", location).pathname.slice(0, -1)
+					};
+
+					const element = document.currentScript.parentElement;
+
+					const data = [null,null];
+
+					Promise.all([
+						import("./_app/immutable/entry/start.VSDwDm4B.js"),
+						import("./_app/immutable/entry/app.CqwrWKEr.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 5],
+							data,
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+</body>
+
+</html>

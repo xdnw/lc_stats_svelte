@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" data-bs-core="modern">
+
+<head>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/js-polyfills/0.1.43/polyfill.min.js"></script>
+	<!-- Google Tag Manager -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-4J3KV26E2Z"></script>
+	<script>
+		window.dataLayer = window.dataLayer || [];
+		function gtag() { dataLayer.push(arguments); }
+		gtag('js', new Date());
+		gtag('config', 'G-4J3KV26E2Z');
+	</script>
+	<!-- End Google Tag Manager -->
+	<!-- <script src="bytebuffer.js?1.0"></script>
+		<script src="PSON.js?1.0"></script> -->
+	<!--  -->
+	<meta charset="utf-8" />
+	<link rel="icon" type="image/x-icon" href="./favicon.ico" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="color-scheme" content="light dark">
+	<title>Conflicts</title>
+
+	<!-- <script defer src="https://cdn.datatables.net/v/dt/jq-3.7.0/dt-2.1.8/cr-2.0.4/datatables.min.js"></script>
+		<script defer src="https://cdn.datatables.net/plug-ins/2.1.8/sorting/numeric-comma.js"></script>
+		<link media="print" onload="this.media='all'" href="https://cdn.datatables.net/v/dt/jq-3.7.0/dt-2.1.8/cr-2.0.4/datatables.min.css" rel="stylesheet"> -->
+	<!-- ^ Disabled, use v1 insteas as its faster -->
+
+	<!-- Halfmoon is a bootstrap theme (light & dark) -->
+	<script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+	<script id="jqjs" defer src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs1" defer src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs2" defer src="https://cdn.datatables.net/colreorder/1.7.0/js/dataTables.colReorder.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs3" defer src="https://cdn.datatables.net/plug-ins/1.13.7/sorting/numeric-comma.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="plotjs" defer src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.29.1/plotly.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdnjs.cloudflare.com/ajax/libs/Halfmoon/2.0.1/css/halfmoon.min.css" />
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdn.jsdelivr.net/npm/halfmoon@2.0.1/css/cores/halfmoon.modern.css">
+	<!-- Icons for links/buttons -->
+	<!-- For dropdowns, currently unused -->
+	<!-- <link rel="stylesheet"  media="print" onload="this.media='all'" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/css/bootstrap-select.min.css"> -->
+	<!-- For tables -->
+	<link rel="stylesheet" media="print" onload="this.media='all'" type="text/css"
+		href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+	<link rel="stylesheet" media="print" onload="this.media='all'" type="text/css"
+		href="https://cdn.datatables.net/colreorder/1.7.0/css/colReorder.dataTables.min.css">
+	<!-- For graphs (more performant than chartjs) - UNUSED -->
+	<!-- <link rel="stylesheet"  media="print" onload="this.media='all'" type="text/css" href="https://cdn.jsdelivr.net/npm/uplot@1.6.28/dist/uPlot.min.css"> -->
+	<!-- Bootstrap -->
+
+	<!-- Bootstrap select is UNUSED  -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script> -->
+	<!-- For highlighting code in pre tags UNUSED -->
+	<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.4.1/highlight.min.js"></script> -->
+	<!-- <script src="https://unpkg.com/twemoji@14.0.2/dist/twemoji.min.js"></script> -->
+	<!-- For data tables -->
+
+	<!-- For charts (uplot faster than chart.js) UNUSED -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.28/dist/uPlot.iife.min.js"></script> -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> -->
+	<!-- For reading and decompressing gzip json -->
+	<!-- <script src="https://cdn.jsdelivr.net/gh/tdzl2003/PSON@patch-1/dist/PSON.js"></script> -->
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css" />
+	<link rel="stylesheet" media="print" onload="this.media='all'" href="./styles/main.css" />
+	
+		<link href="./_app/immutable/assets/2.DFrU9ibi.css" rel="stylesheet">
+		<link rel="modulepreload" href="./_app/immutable/entry/start.VSDwDm4B.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/entry.CdrcocmI.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/runtime.DMLHWUus.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/paths.BVsJ1pVq.js">
+		<link rel="modulepreload" href="./_app/immutable/entry/app.CqwrWKEr.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/render.CoimT3AH.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/disclose-version.xy21-f78.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index-client.D_ywJSmp.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/props.C-rJn9xF.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/store.BLr8Sqcx.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/0.CKnou1FE.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/_layout.BJmI2Ulo.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/2.7U7NLgpb.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/legacy.N0bfMBuo.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/Footer.C7bm1xTi.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/props.CafjQWHw.js"><!--[--><!--]--><title>Home</title>
+	<script defer>
+		var systemColorMode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+		var cookieVal = document.cookie.split('; ').find(row => row.startsWith('halfmoonColorMode='));
+		var setColorMode = cookieVal ? cookieVal.split('=')[1] : systemColorMode;
+		document.documentElement.setAttribute("data-bs-theme", setColorMode);
+	</script>
+</head>
+
+<body data-sveltekit-preload-data="hover" class="app-shell">
+	<div style="display: contents"><!--[--><!--[--><!----><!----><canvas id="c" class="bg-body svelte-1mygirr"></canvas> <nav class="navbar navbar-expand-md border-bottom bg-body-subtle shadow-sm sticky-top"><div class="container-fluid py-1"><div class="row d-flex w-100 g-1 align-items-center"><div class="col-auto"><div class="btn-group ux-surface p-1"><button type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" class="btn ux-btn d-md-none" aria-label="Open sidebar"><i class="bi bi-layout-sidebar"></i></button> <button class="btn ux-btn d-md-block" aria-label="Toggle dark mode"><i class="bi bi-moon-stars-fill"></i></button> <div class="d-inline text-truncate mt-1 ux-muted"></div></div></div> <div class="col"><form class="d-flex ux-surface p-1" role="search" id="navbar-search-form"><input id="navbar-search" class="form-control border-0" type="search" placeholder="Search pages..." aria-label="Search"> <button type="submit" class="btn ux-btn ux-btn-primary text-nowrap" aria-label="Search"><i class="bi bi-search"></i></button></form></div> <div class="col-auto"></div></div></div></nav><!----> <div class="container-fluid svelte-1mygirr" style="min-height: calc(100vh - 203px); z"><section class="svelte-1mygirr"><header class="welcome-text svelte-1mygirr"><svg class="welcome svelte-1mygirr" style="overflow: visible;"><text x="50%" y="50%" dy=".35em" text-anchor="middle" class="svelte-1mygirr">Locutus</text></svg></header></section> <br class="svelte-1mygirr"> <div class="d-flex flex-wrap justify-content-center svelte-1mygirr"><!--[--><!--[--><div class="card m-2 svelte-1mygirr" style="width: 18rem;"><img src="versus.jpg" style="background:" class="card-img-top img-fluid object-fit-fill svelte-1mygirr" alt="Alliance Conflicts card"> <div class="card-body svelte-1mygirr" style="height: 9rem;"><h5 class="card-title svelte-1mygirr"><!--[!--><!--]--> Alliance Conflicts</h5> <p class="card-text svelte-1mygirr">Browse a variety of tables and graphs for our featured set of ongoing and historical alliance conflicts. Data is available to download in CSV format.</p></div> <div class="card-footer svelte-1mygirr"><a href="conflicts" class="btn btn-lg btn-secondary btn-outline-info border-3 svelte-1mygirr">View Conflicts</a></div></div><!--]--><!--[--><div class="card m-2 svelte-1mygirr" style="width: 18rem;"><img src="sheet.jpg" style="background:#FFC929" class="card-img-top img-fluid object-fit-fill svelte-1mygirr" alt="Table Builder card"> <div class="card-body svelte-1mygirr" style="height: 9rem;"><h5 class="card-title svelte-1mygirr"><!--[!--><!--]--> Table Builder</h5> <p class="card-text svelte-1mygirr">Browse templates or create your custom table from a variety of game data. Share or export options available.</p></div> <div class="card-footer svelte-1mygirr"><a href="https://www.locutus.link/#/custom_table" class="btn btn-lg btn-secondary btn-outline-info border-3 svelte-1mygirr">Open Editor</a></div></div><!--]--><!--[--><div class="card m-2 svelte-1mygirr" style="width: 18rem;"><img src="graph.png" style="background:#FFC929" class="card-img-top img-fluid object-fit-fill svelte-1mygirr" alt="Chart Viewer card"> <div class="card-body svelte-1mygirr" style="height: 9rem;"><h5 class="card-title svelte-1mygirr"><!--[!--><!--]--> Chart Viewer</h5> <p class="card-text svelte-1mygirr">Browse a selection of game charts. Share or export options available.</p></div> <div class="card-footer svelte-1mygirr"><a href="https://www.locutus.link/#/edit_graph" class="btn btn-lg btn-secondary btn-outline-info border-3 svelte-1mygirr">View Charts</a></div></div><!--]--><!--[--><div class="card m-2 svelte-1mygirr" style="width: 18rem;"><img src="chest.png" style="background:#2EC2A0" class="card-img-top img-fluid object-fit-fill svelte-1mygirr" alt="Raid Finder card"> <div class="card-body svelte-1mygirr" style="height: 9rem;"><h5 class="card-title svelte-1mygirr"><!--[!--><!--]--> Raid Finder</h5> <p class="card-text svelte-1mygirr">Find raidable nations in your score range</p></div> <div class="card-footer svelte-1mygirr"><a href="https://www.locutus.link/#/raid" class="btn btn-lg btn-secondary btn-outline-info border-3 svelte-1mygirr">Find Targets</a></div></div><!--]--><!--[--><div class="card m-2 svelte-1mygirr" style="width: 18rem;"><img src="media2.png" style="background:#111" class="card-img-top img-fluid object-fit-fill svelte-1mygirr" alt="Updates &amp; Discussions card"> <div class="card-body svelte-1mygirr" style="height: 9rem;"><h5 class="card-title svelte-1mygirr"><!--[--><span class="badge text-bg-light fs-6 me-1 svelte-1mygirr">Ad</span><!--]--> Updates &amp; Discussions</h5> <p class="card-text svelte-1mygirr">Get breaking news about ongoing conflicts and share in their discussions. Available on the Media discord server.</p></div> <div class="card-footer svelte-1mygirr"><a href="https://discord.gg/aNg9DnzqWG" class="btn btn-lg btn-secondary btn-outline-info border-3 svelte-1mygirr">Join Now!</a></div></div><!--]--><!--[!--><!--]--><!--]--></div></div> <footer class="bd-footer border-top border-1 mt-3 py-4 bg-body-tertiary"><div class="container-md p-3 p-md-4"><div class="row g-4"><div class="col-12 col-md-4"><div class="d-flex align-items-center gap-2"><img src="favicon-large.webp" alt="Logo" width="20" height="20"> <h5 class="fw-semibold m-0">Locutus</h5></div> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://github.com/xdnw/locutus"><i class="bi bi-git"></i> Source Code</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/wiki"><i class="bi bi-wikipedia"></i> Wiki</a></li> <li class="mb-2"><a href="https://locutus.link:8443/job/locutus/"><i class="bi bi-box"></i> Jenkins</a></li></ul></div> <div class="col-12 col-md-4"><h5 class="fw-medium m-0">Get in Touch</h5> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://discord.gg/cUuskPDrB7"><i class="bi bi-discord"></i> Discord Server</a></li> <li class="mb-2"><a href="discord://discord.com/users/664156861033087000"><i class="bi bi-person-circle"></i> Discord User</a></li> <li class="mb-2"><a href="https://politicsandwar.com/nation/id=189573"><i class="bi bi-joystick"></i> In-Game</a></li> <li class="mb-2"><a href="mailto:jessepaleg@gmail.com"><i class="bi bi-at"></i> Email</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/issues"><i class="bi bi-github"></i> Report Issue</a></li></ul></div> <div class="col-12 col-md-4"><h5 class="fw-medium m-0">Legal</h5> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/LICENSE"><i class="bi bi-list-columns-reverse"></i> License</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/ToS.MD"><i class="bi bi-list-check"></i> Terms Of Service</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/PRIVACY.MD"><i class="bi bi-list-stars"></i> Privacy Policy</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/SECURITY.md"><i class="bi bi-incognito"></i> Vulnerability Disclosure</a></li></ul></div></div></div></footer><!----><!----><!----><!----><!--]--> <!--[!--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_43b273 = {
+						base: new URL(".", location).pathname.slice(0, -1)
+					};
+
+					const element = document.currentScript.parentElement;
+
+					const data = [null,null];
+
+					Promise.all([
+						import("./_app/immutable/entry/start.VSDwDm4B.js"),
+						import("./_app/immutable/entry/app.CqwrWKEr.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 2],
+							data,
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+</body>
+
+</html>
