@@ -922,7 +922,6 @@
             target="_blank"
             rel="noopener noreferrer">Create Conflict</a
           >
-          >
         </div>
       </div>
     {/if}
