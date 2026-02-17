@@ -25,6 +25,7 @@
     copyShareLink,
     resetQueryParams,
     formatDatasetProvenance,
+    formatAllianceName,
   } from "$lib";
 
   let _currentRowData: TableData;
@@ -61,8 +62,8 @@
         index: number,
       ): { alliance_ids: number[]; alliance_names: string[] } => {
         const alliance_ids = allianceIdsByCoalition[coalitionName][index];
-        const alliance_names = alliance_ids.map(
-          (id) => allianceNameById[id] || "AA:" + id,
+        const alliance_names = alliance_ids.map((id) =>
+          formatAllianceName(allianceNameById[id], id),
         );
         return { alliance_ids, alliance_names };
       };
@@ -141,7 +142,10 @@
           let alliance_ids = result.alliance_ids;
           let alliance_names = result.alliance_names;
           for (let i = 0; i < alliance_ids.length; i++) {
-            allianceNameById[alliance_ids[i]] = alliance_names[i];
+            allianceNameById[alliance_ids[i]] = formatAllianceName(
+              alliance_names[i],
+              alliance_ids[i],
+            );
           }
 
           let queryParams = new URLSearchParams(window.location.search);
@@ -517,7 +521,14 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
     </div>
   {/if}
   {#if _rawData}
-    <div class="d-flex gap-1 mb-2">
+    <div class="d-flex gap-1 mb-2 align-items-center">
+      <button class="btn ux-btn" on:click={() => (showDiv = !showDiv)}>
+        Filter Alliances&nbsp;<i
+          class="bi"
+          class:bi-chevron-down={!showDiv}
+          class:bi-chevron-up={showDiv}
+        ></i>
+      </button>
       <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}
         >Copy share link</button
       >
@@ -525,14 +536,6 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
         >Reset</button
       >
     </div>
-    <!-- Toggle visibility button -->
-    <button class="btn ux-btn mb-2" on:click={() => (showDiv = !showDiv)}>
-      Filter Alliances&nbsp;<i
-        class="bi"
-        class:bi-chevron-down={!showDiv}
-        class:bi-chevron-up={showDiv}
-      ></i>
-    </button>
     {#if showDiv}
       <input
         type="text"
@@ -556,15 +559,15 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
         </button>
         <br />
         {#each _rawData.alliance_ids as id, index}
-          {#if _rawData.alliance_names[index] && _rawData.alliance_names[index]
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase())}
+          {#if formatAllianceName(_rawData.alliance_names[index], id)
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase())}
             <button
               class="btn ux-btn btn-sm ms-1 mb-1"
               class:active={_allowedAllianceIds.has(id)}
               on:click={() => setLayoutAlliance(id)}
             >
-              {_rawData.alliance_names[index]}
+              {formatAllianceName(_rawData.alliance_names[index], id)}
             </button>
           {/if}
         {/each}
@@ -572,14 +575,14 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
     {/if}
   {/if}
   <div id="conflictTable" class="inline-block"></div>
-  {#if datasetProvenance}
-    <div class="small text-muted mt-1">{datasetProvenance}</div>
-  {/if}
   <div class="ux-surface p-2 mt-2">
     <h4 class="m-1">Timeline</h4>
     <p class="ps-1 ux-muted">Use ctrl+mousewheel to zoom on PC</p>
     <div class="m-0" id="visualization"></div>
   </div>
+  {#if datasetProvenance}
+    <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
+  {/if}
 </div>
 <!-- Add footer component to page -->
 <Footer />

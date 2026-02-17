@@ -26,6 +26,7 @@
         copyShareLink,
         resetQueryParams,
         formatDatasetProvenance,
+        formatAllianceName,
     } from "$lib";
     import { config } from "../+layout";
     import Select from "svelte-select";
@@ -59,12 +60,12 @@
      * The raw data for the conflict, uninitialized until setupChartData is called
      */
     let _rawData: GraphData;
-
-    let selected_metrics: { value: string; label: string }[] = ["nation"].map(
-        (name) => {
+    const defaultMetricSelection = ["nation"];
+    let selected_metrics: { value: string; label: string }[] =
+        defaultMetricSelection.map((name) => {
             return { value: name, label: name };
-        },
-    );
+        });
+
     $: maxItems = selected_metrics?.length === 4;
     $: items =
         maxItems || !_rawData
@@ -300,7 +301,10 @@
         previous_normalize = false;
         useSingleColor = false;
         previous_useSingleColor = false;
-        selected_metrics = ["nation"].map((name) => ({ value: name, label: name }));
+        selected_metrics = ["nation"].map((name) => ({
+            value: name,
+            label: name,
+        }));
         previous_selected = selected_metrics.slice();
         _allowedAllianceIds = new Set();
         resetQueryParams(["selected", "normalize", "unicolor", "ids"], ["id"]);
@@ -613,7 +617,10 @@
             for (let j = 0; j < coalition.alliance_ids.length; j++) {
                 let alliance_id = coalition.alliance_ids[j];
                 if (!allowed_alliances.has(alliance_id)) continue;
-                let name = coalition.alliance_names[j];
+                let name = formatAllianceName(
+                    coalition.alliance_names[j],
+                    alliance_id,
+                );
 
                 // metric -> city
                 let aaBufferByMetric: number[][] = new Array(metrics.length);
@@ -866,9 +873,14 @@
             <Progress />
         {/if}
         {#if _loadError}
-            <div class="alert alert-danger m-2 d-flex justify-content-between align-items-center">
+            <div
+                class="alert alert-danger m-2 d-flex justify-content-between align-items-center"
+            >
                 <span>{_loadError}</span>
-                <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}>Retry</button>
+                <button
+                    class="btn btn-sm btn-outline-danger fw-bold"
+                    on:click={retryLoad}>Retry</button
+                >
             </div>
         {/if}
         <div class="col-12">
@@ -886,9 +898,12 @@
                                 class="btn ux-btn btn-sm ms-1 mb-1"
                                 class:active={_allowedAllianceIds.has(id)}
                                 on:click={() => setLayoutAlliance(0, id)}
-                                >{_rawData.coalitions[0].alliance_names[
-                                    index
-                                ]}</button
+                                >{formatAllianceName(
+                                    _rawData.coalitions[0].alliance_names[
+                                        index
+                                    ],
+                                    id,
+                                )}</button
                             >
                         {/each}
                     </div>
@@ -901,9 +916,12 @@
                                 class="btn ux-btn btn-sm ms-1 mb-1"
                                 class:active={_allowedAllianceIds.has(id)}
                                 on:click={() => setLayoutAlliance(1, id)}
-                                >{_rawData.coalitions[1].alliance_names[
-                                    index
-                                ]}</button
+                                >{formatAllianceName(
+                                    _rawData.coalitions[1].alliance_names[
+                                        index
+                                    ],
+                                    id,
+                                )}</button
                             >
                         {/each}
                     </div>
@@ -933,8 +951,14 @@
                 class="ux-control-strip mb-1"
                 style="position: relative; z-index: 2;"
             >
-                <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
-                <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
+                <button
+                    class="btn ux-btn btn-sm fw-bold"
+                    on:click={() => copyShareLink()}>Copy share link</button
+                >
+                <button
+                    class="btn ux-btn btn-sm fw-bold"
+                    on:click={resetFilters}>Reset</button
+                >
                 <label for="inlineCheckbox1" class="ux-toggle-chip">
                     <span>Use Percent</span>
                     <input
@@ -957,9 +981,14 @@
                         on:change={handleColorCheck}
                     />
                 </label>
-                <span class="small text-muted" title="Metrics with ':' are cumulative sums across time ranges. Without ':', values represent the selected point in time.">
-                    ℹ cumulative vs point-in-time
-                </span>
+                <button
+                    type="button"
+                    class="btn btn-link btn-sm p-0 align-baseline"
+                    title="Metrics with ':' are cumulative sums across time ranges. Without ':', values represent the selected point in time."
+                    aria-label="Metric behavior help"
+                >
+                    <i class="bi bi-info-circle"></i>
+                </button>
                 {#if _rawData}
                     <div class="ux-quick-layouts">
                         <span class="fw-bold">Quick Layouts:</span>
@@ -974,9 +1003,6 @@
                     </div>
                 {/if}
             </div>
-            {#if datasetProvenance}
-                <div class="small text-muted mb-1">{datasetProvenance}</div>
-            {/if}
         </div>
     </div>
     <div class="container-fluid m-0 p-0 mt-2 ux-surface p-2">
@@ -988,5 +1014,8 @@
         </div>
         <!-- <canvas id="myChart" width="400" height="400"></canvas> -->
     </div>
+    {#if datasetProvenance}
+        <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
+    {/if}
 </div>
 <Footer />

@@ -16,13 +16,13 @@
     trimHeader,
     type TableData,
     ExportTypes,
-    formatDuration,
     downloadTableElem,
     applySavedQueryParamsIfMissing,
     saveCurrentQueryParams,
     copyShareLink,
     resetQueryParams,
     formatDatasetProvenance,
+    formatAllianceName,
   } from "$lib";
   import { config } from "../+layout";
   // Layout tabs
@@ -150,7 +150,6 @@
     sort: layouts.Summary.sort,
     order: "desc",
   };
-
   let _currentRowData: TableData;
   const getVis = (): any => (window as any).vis;
 
@@ -313,7 +312,10 @@
           for (let i = 0; i < alliance_ids.length; i++) {
             let row = [];
             let alliance_id = alliance_ids[i];
-            let alliance_name = alliance_names[i];
+            let alliance_name = formatAllianceName(
+              alliance_names[i],
+              alliance_id,
+            );
             row.push([alliance_name, alliance_id]);
             addStats2Row(row, damage[i * 2 + o], damage[i * 2 + o + 1]);
             rows.push(row);
@@ -437,7 +439,7 @@
   let namesByAllianceId: { [key: number]: string } = {};
   function setColNames(ids: number[], names: string[]) {
     for (let i = 0; i < ids.length; i++) {
-      namesByAllianceId[ids[i]] = names[i];
+      namesByAllianceId[ids[i]] = formatAllianceName(names[i], ids[i]);
     }
   }
 
@@ -470,7 +472,7 @@
       _meta: any,
     ) => {
       let aaId = data[2] as number;
-      let aaName = namesByAllianceId[aaId];
+      let aaName = formatAllianceName(namesByAllianceId[aaId], aaId);
       return (
         '<a href="https://politicsandwar.com/alliance/id=' +
         data[2] +
@@ -491,11 +493,13 @@
       _row: any,
       _meta: any,
     ) => {
+      let allianceId = data[1] as number;
+      let allianceName = formatAllianceName(data[0], allianceId);
       return (
         '<a href="https://politicsandwar.com/alliance/id=' +
-        data[1] +
+        allianceId +
         '">' +
-        data[0] +
+        allianceName +
         "</a>"
       );
     };
@@ -755,6 +759,14 @@
         >
       </li>
     {/each}
+    <li class="ms-auto d-flex gap-1 justify-content-end">
+      <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}
+        >Copy share link</button
+      >
+      <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}
+        >Reset</button
+      >
+    </li>
   </ul>
   {#if !_loaded}
     <Progress />
@@ -769,14 +781,6 @@
       >
     </div>
   {/if}
-  <div class="d-flex gap-1 mb-2">
-    <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}
-      >Copy share link</button
-    >
-    <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}
-      >Reset</button
-    >
-  </div>
   <div id="conflict-table-1"></div>
   <!-- If coalition layout, then display the CB and Status -->
   {#if _layoutData.layout == Layout.COALITION}
@@ -816,7 +820,7 @@
     <div class="m-0" id="visualization"></div>
   </div>
   {#if datasetProvenance}
-    <div class="small text-muted mt-1">{datasetProvenance}</div>
+    <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
   {/if}
 </div>
 <Footer />

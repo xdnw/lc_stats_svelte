@@ -13,6 +13,7 @@
         copyShareLink,
         resetQueryParams,
         formatDatasetProvenance,
+        formatAllianceName,
     } from "$lib";
     import { onMount } from "svelte";
     import Navbar from "../../components/Navbar.svelte";
@@ -181,7 +182,10 @@
         let allianceNameById: { [key: number]: string } = {};
         data.coalitions.forEach((coalition) => {
             coalition.alliance_ids.forEach((id: number, index: number) => {
-                allianceNameById[id] = coalition.alliance_names[index];
+                allianceNameById[id] = formatAllianceName(
+                    coalition.alliance_names[index],
+                    id,
+                );
             });
         });
         console.log(data.war_web.headers);
@@ -510,12 +514,14 @@
                 <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}>Retry</button>
             </div>
         {/if}
-        <div class="d-flex gap-1 mb-2">
-            <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
-            <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
-        </div>
         {#if _rawData}
-            <span class="fw-bold">Layout Picker:</span>
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-bold">Layout Picker:</span>
+                <div class="d-flex gap-1">
+                    <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
+                    <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
+                </div>
+            </div>
             {#each _rawData.war_web.headers as header (header)}
                 <button
                     class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
@@ -531,7 +537,10 @@
                         class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
                         class:active={_allowedAllianceIds.has(id)}
                         on:click={() => setLayoutAlliance(0, id)}
-                        >{_rawData.coalitions[0].alliance_names[index]}</button
+                            >{formatAllianceName(
+                                _rawData.coalitions[0].alliance_names[index],
+                                id,
+                            )}</button
                     >
                 {/each}
             </div>
@@ -542,7 +551,10 @@
                         class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
                         class:active={_allowedAllianceIds.has(id)}
                         on:click={() => setLayoutAlliance(1, id)}
-                        >{_rawData.coalitions[1].alliance_names[index]}</button
+                        >{formatAllianceName(
+                            _rawData.coalitions[1].alliance_names[index],
+                            id,
+                        )}</button
                     >
                 {/each}
             </div>
@@ -561,7 +573,7 @@
         <div class="mt-1" id="myTooltip" style="min-height:15em"></div>
     </div>
     {#if datasetProvenance}
-        <div class="small text-muted mt-1">{datasetProvenance}</div>
+        <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
     <br />
 </div>

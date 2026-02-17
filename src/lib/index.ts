@@ -391,6 +391,11 @@ export function commafy(num: number): string {
     return (num < 0 ? '-' : '') + o + (parts[1] ? '.' + parts[1] : '');
 }
 
+export function formatAllianceName(name: string | null | undefined, id: number): string {
+    const trimmed = (name ?? '').trim();
+    return trimmed.length > 0 ? trimmed : `AA:${id}`;
+}
+
 /**
  * Add the formatting functions to the window object
  * - These are used by the setupTable function to format columns
@@ -423,8 +428,7 @@ export function addFormatters() {
         let ul = document.createElement("ul");
         for (let i = 0; i < alliance_ids.length; i++) {
             let alliance_id = alliance_ids[i];
-            let alliance_name = col.alliance_names[i];
-            if (alliance_name == undefined) alliance_name = "N/A";
+            let alliance_name = formatAllianceName(col.alliance_names[i], alliance_id);
             let a = document.createElement("a");
             a.setAttribute("href", "https://politicsandwar.com/alliance/id=" + alliance_id);
             a.textContent = alliance_name;

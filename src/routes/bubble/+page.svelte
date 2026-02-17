@@ -23,6 +23,7 @@
         copyShareLink,
         resetQueryParams,
         formatDatasetProvenance,
+        formatAllianceName,
     } from "$lib";
     import { config } from "../+layout";
 
@@ -49,13 +50,15 @@
     let plotlyAnimatedListener: (() => void) | null = null;
     let plotlySliderChangeListener: ((sliderData: any) => void) | null = null;
 
-    let selected_metrics: { value: string; label: string }[] = [
+    const defaultMetricSelection = [
         "dealt:loss_value",
         "loss:loss_value",
         "off:wars",
-    ].map((name) => {
-        return { value: name, label: name };
-    });
+    ];
+    let selected_metrics: { value: string; label: string }[] =
+        defaultMetricSelection.map((name) => {
+            return { value: name, label: name };
+        });
     $: maxItems = selected_metrics?.length === 3;
     $: items =
         maxItems || !_rawData
@@ -118,7 +121,10 @@
         ].map((name) => ({ value: name, label: name }));
         previous_selected = selected_metrics.slice();
 
-        resetQueryParams(["city_min", "city_max", "time", "normalize", "selected"], ["id"]);
+        resetQueryParams(
+            ["city_min", "city_max", "time", "normalize", "selected"],
+            ["id"],
+        );
         setQueryParam(
             "selected",
             selected_metrics.map((metric) => metric.value).join("."),
@@ -396,7 +402,10 @@
 
             for (let j = 0; j < coalition.alliance_ids.length; j++) {
                 let alliance_id = coalition.alliance_ids[j];
-                let name = coalition.alliance_names[j];
+                let name = formatAllianceName(
+                    coalition.alliance_names[j],
+                    alliance_id,
+                );
 
                 let buffer: number[] = [0, 0, 0];
                 let lastDay = -1;
@@ -925,6 +934,7 @@
             plotlySliderChangeListener = function (sliderData: any) {
                 graphSliderIndex = sliderData.slider.active;
                 setQueryParam("time", graphSliderIndex, { replace: true });
+                saveCurrentQueryParams();
             };
             graphDivAny.on?.("plotly_animated", plotlyAnimatedListener);
             graphDivAny.on?.("plotly_sliderchange", plotlySliderChangeListener);
@@ -955,9 +965,8 @@
         {#if (_rawData as any)?.wiki}
             <a
                 class="btn ux-btn fw-bold"
-                href="https://politicsandwar.fandom.com/wiki/{(
-                    _rawData as any
-                ).wiki}"
+                href="https://politicsandwar.fandom.com/wiki/{(_rawData as any)
+                    .wiki}"
                 >Wiki:{(_rawData as any)?.wiki}&nbsp;<i
                     class="bi bi-box-arrow-up-right"
                 ></i></a
@@ -966,42 +975,34 @@
     </h1>
     <hr class="mt-2 mb-2" />
     <div class="row p-0 m-0 ux-tabstrip fw-bold">
-                <a
-                    href="conflict?id={conflictId}&layout=coalition"
-                    class="col-2 ps-0 pe-0 btn"
-                >
-                    ◑&nbsp;Coalition
-                </a>
-                <a
-                    href="conflict?id={conflictId}&layout=alliance"
-                    class="col-2 btn ps-0 pe-0"
-                >
-                    𖣯&nbsp;Alliance
-                </a>
-                <a
-                    href="conflict?id={conflictId}&layout=nation"
-                    class="col-2 ps-0 pe-0 btn"
-                >
-                    ♟&nbsp;Nation
-                </a>
-                <a
-                    class="col-2 ps-0 pe-0 btn"
-                    href="tiering?id={conflictId}"
-                >
-                    📊&nbsp;Tier/Time
-                </a>
-                <button
-                    class="col-2 ps-0 pe-0 btn is-active"
-                >
-                    📈&nbsp;Bubble/Time
-                </button>
-                <a
-                    class="col-2 ps-0 pe-0 btn"
-                    href="chord?id={conflictId}"
-                >
-                    🌐&nbsp;Web
-                </a>
-            </div>
+        <a
+            href="conflict?id={conflictId}&layout=coalition"
+            class="col-2 ps-0 pe-0 btn"
+        >
+            ◑&nbsp;Coalition
+        </a>
+        <a
+            href="conflict?id={conflictId}&layout=alliance"
+            class="col-2 btn ps-0 pe-0"
+        >
+            𖣯&nbsp;Alliance
+        </a>
+        <a
+            href="conflict?id={conflictId}&layout=nation"
+            class="col-2 ps-0 pe-0 btn"
+        >
+            ♟&nbsp;Nation
+        </a>
+        <a class="col-2 ps-0 pe-0 btn" href="tiering?id={conflictId}">
+            📊&nbsp;Tier/Time
+        </a>
+        <button class="col-2 ps-0 pe-0 btn is-active">
+            📈&nbsp;Bubble/Time
+        </button>
+        <a class="col-2 ps-0 pe-0 btn" href="chord?id={conflictId}">
+            🌐&nbsp;Web
+        </a>
+    </div>
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"
@@ -1010,9 +1011,14 @@
             <Progress />
         {/if}
         {#if _loadError}
-            <div class="alert alert-danger m-2 d-flex justify-content-between align-items-center">
+            <div
+                class="alert alert-danger m-2 d-flex justify-content-between align-items-center"
+            >
                 <span>{_loadError}</span>
-                <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}>Retry</button>
+                <button
+                    class="btn btn-sm btn-outline-danger fw-bold"
+                    on:click={retryLoad}>Retry</button
+                >
             </div>
         {/if}
         <div class="col-12">
@@ -1025,14 +1031,28 @@
             </div>
             {#if _rawData}
                 <div class="d-flex justify-content-between align-items-center">
-                    <span class="fw-bold">Select 3:</span>
+                    <span class="fw-bold"
+                        >Select 3
+                        <button
+                            type="button"
+                            class="btn btn-link btn-sm p-0 ms-1 align-baseline"
+                            title="Metrics with ':' are cumulative sums over time. Metrics without ':' are point-in-time values for each frame."
+                            aria-label="Metric behavior help"
+                        >
+                            <i class="bi bi-info-circle"></i>
+                        </button></span
+                    >
                     <div class="d-flex gap-1">
-                        <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
-                        <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
+                        <button
+                            class="btn ux-btn btn-sm fw-bold"
+                            on:click={() => copyShareLink()}
+                            >Copy share link</button
+                        >
+                        <button
+                            class="btn ux-btn btn-sm fw-bold"
+                            on:click={resetFilters}>Reset</button
+                        >
                     </div>
-                </div>
-                <div class="small text-muted mb-1" title="Metrics with ':' are cumulative sums over time. Metrics without ':' are point-in-time values for each frame.">
-                    ℹ Metric behavior: cumulative (sum over time) vs point-in-time.
                 </div>
                 <div
                     class="select-compact mb-2"
@@ -1055,9 +1075,6 @@
                         .map((item) => item.label)
                         .join(" / ")} • Cities {cityValues[0]}-{cityValues[1]}
                 </div>
-                {#if datasetProvenance}
-                    <div class="small text-muted mb-2">{datasetProvenance}</div>
-                {/if}
                 <span class="fw-bold">Per Unit or Nation:</span>
                 <div
                     class="form-check form-check-inline"
@@ -1110,10 +1127,16 @@
             {/if}
         </div>
     </div>
-    <div class="row m-0 p-0 mt-2 ux-surface" style="overflow-x: hidden; position: relative; z-index: 1;">
+    <div
+        class="row m-0 p-0 mt-2 ux-surface"
+        style="overflow-x: hidden; position: relative; z-index: 1;"
+    >
         <div class="col-12 m-0 p-0">
             <div class="m-0 p-0" bind:this={graphDiv}></div>
         </div>
     </div>
+    {#if datasetProvenance}
+        <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
+    {/if}
 </div>
 <Footer />
