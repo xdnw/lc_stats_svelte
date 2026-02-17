@@ -665,8 +665,6 @@
             </a>
         {/if}
     </h1>
-
-    <hr class="mt-2 mb-2" />
     <ConflictRouteTabs {conflictId} active="aava" />
 
     <div class="ux-surface ux-tab-panel p-2 fw-bold mb-2">

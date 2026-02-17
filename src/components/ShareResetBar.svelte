@@ -4,7 +4,7 @@
     export let onReset: (() => void) | null = null;
 </script>
 
-<div class="d-flex gap-1 align-items-center">
+<div class="d-flex flex-wrap gap-1 align-items-center justify-content-end">
     <slot />
     <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>
         Copy share link

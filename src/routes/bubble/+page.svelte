@@ -259,7 +259,10 @@
 
     function fetchConflictGraphData(conflictId: string) {
         let start = Date.now();
-        let url = getConflictGraphDataUrl(conflictId, config.version.graph_data);
+        let url = getConflictGraphDataUrl(
+            conflictId,
+            config.version.graph_data,
+        );
         decompressBson(url)
             .then((data) => {
                 console.log(`Loaded ${url} in ${Date.now() - start}ms`);
@@ -764,6 +767,7 @@
 
         var layout: any = {
             height: window.innerHeight * 0.8,
+            margin: { l: 0, r: 0, t: 30, b: 60 },
             xaxis: {
                 title: getFullName(metrics[0]),
             },
@@ -940,8 +944,7 @@
             >
         {/if}
     </h1>
-    <hr class="mt-2 mb-2" />
-    <ConflictRouteTabs conflictId={conflictId} active="bubble" />
+    <ConflictRouteTabs {conflictId} active="bubble" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"

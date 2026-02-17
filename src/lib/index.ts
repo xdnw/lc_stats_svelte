@@ -1,4 +1,3 @@
-// import msgpack from 'msgpack-lite';
 import { Unpackr } from 'msgpackr';
 declare const $: any;
 declare const jQuery: any;
@@ -509,55 +508,6 @@ export type WarWebMetricMeta = {
     rowToPrimaryLabel: (h: string) => string;
     directionNote: (h: string) => string;
 };
-
-export function resolveWarWebMetricMeta(header: string): WarWebMetricMeta {
-    if (header.endsWith("_loss") || header.endsWith("_loss_value") || header === "loss_value") {
-        return {
-            primaryToRowLabel: (h) => `${h} inflicted by Compared`,
-            rowToPrimaryLabel: (h) => `${h} inflicted by Selected`,
-            directionNote: (h) =>
-                `${h} counts losses inflicted by each side in battles against the other.`,
-        };
-    }
-    if (header.startsWith("consume_")) {
-        return {
-            primaryToRowLabel: (h) => `${h} consumed by Selected`,
-            rowToPrimaryLabel: (h) => `${h} consumed by Compared`,
-            directionNote: (h) =>
-                `${h} is the resources consumed by each side during battles against the other.`,
-        };
-    }
-    if (header === "loot_value") {
-        return {
-            primaryToRowLabel: () => `Loot taken by Compared`,
-            rowToPrimaryLabel: () => `Loot taken by Selected`,
-            directionNote: () =>
-                `loot_value is the loot taken by each side from the other.`,
-        };
-    }
-    if (header.endsWith("_attacks") || header === "attacks") {
-        return {
-            primaryToRowLabel: (h) => `${h} by Selected`,
-            rowToPrimaryLabel: (h) => `${h} by Compared`,
-            directionNote: (h) =>
-                `${h} counts attacks launched by each side against the other.`,
-        };
-    }
-    if (header.startsWith("wars_") || header.endsWith("_wars") || header === "wars") {
-        return {
-            primaryToRowLabel: (h) => `${h} as attacker: Selected`,
-            rowToPrimaryLabel: (h) => `${h} as attacker: Compared`,
-            directionNote: (h) =>
-                `${h} counts wars where each side was the attacker/initiator.`,
-        };
-    }
-    return {
-        primaryToRowLabel: (h) => `${h} (Compared → Selected)`,
-        rowToPrimaryLabel: (h) => `${h} (Selected → Compared)`,
-        directionNote: (h) =>
-            `${h}: "Selected" is the value attributed to Compared coalition, "Compared" to the Selected coalition.`,
-    };
-}
 
 /**
  * Add the formatting functions to the window object
@@ -1187,8 +1137,9 @@ function setupTable(containerElem: HTMLElement,
         }
 
         ensureDTLoaded().then(() => {
-            $.fn.dataTableExt.oStdClasses.sWrapper = "mt-2 py-2 px-2 dataTables_wrapper";
+            $.fn.dataTableExt.oStdClasses.sWrapper = "py-2 px-2 dataTables_wrapper";
             let table = tableArr[0] = (jqTable as any).DataTable({
+                dom: "rt<'ux-dt-bottom'plf>",
                 // the array of column info
                 columns: [
                     { data: null, title: "#", orderable: false, searchable: false, className: 'dt-center p-0', defaultContent: '' },
@@ -1430,3 +1381,53 @@ export function rafDelay(delay: number, func: () => void): (timestamp: number) =
 
 //     return [reds, greens, blues, neutrals]
 // }
+
+
+export function resolveWarWebMetricMeta(header: string): WarWebMetricMeta {
+    if (header.endsWith("_loss") || header.endsWith("_loss_value") || header === "loss_value") {
+        return {
+            primaryToRowLabel: (h) => `${h} inflicted by Compared`,
+            rowToPrimaryLabel: (h) => `${h} inflicted by Selected`,
+            directionNote: (h) =>
+                `${h} counts losses inflicted by each side in battles against the other.`,
+        };
+    }
+    if (header.startsWith("consume_")) {
+        return {
+            primaryToRowLabel: (h) => `${h} consumed by Selected`,
+            rowToPrimaryLabel: (h) => `${h} consumed by Compared`,
+            directionNote: (h) =>
+                `${h} is the resources consumed by each side during battles against the other.`,
+        };
+    }
+    if (header === "loot_value") {
+        return {
+            primaryToRowLabel: () => `Loot taken by Compared`,
+            rowToPrimaryLabel: () => `Loot taken by Selected`,
+            directionNote: () =>
+                `loot_value is the loot taken by each side from the other.`,
+        };
+    }
+    if (header.endsWith("_attacks") || header === "attacks") {
+        return {
+            primaryToRowLabel: (h) => `${h} by Selected`,
+            rowToPrimaryLabel: (h) => `${h} by Compared`,
+            directionNote: (h) =>
+                `${h} counts attacks launched by each side against the other.`,
+        };
+    }
+    if (header.startsWith("wars_") || header.endsWith("_wars") || header === "wars") {
+        return {
+            primaryToRowLabel: (h) => `${h} as attacker: Selected`,
+            rowToPrimaryLabel: (h) => `${h} as attacker: Compared`,
+            directionNote: (h) =>
+                `${h} counts wars where each side was the attacker/initiator.`,
+        };
+    }
+    return {
+        primaryToRowLabel: (h) => `${h} (Compared → Selected)`,
+        rowToPrimaryLabel: (h) => `${h} (Selected → Compared)`,
+        directionNote: (h) =>
+            `${h}: "Selected" is the value attributed to Compared coalition, "Compared" to the Selected coalition.`,
+    };
+}

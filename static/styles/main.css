@@ -126,6 +126,9 @@ html[data-bs-theme="dark"] .ux-toggle-btn.active {
 }
 
 .ux-tabstrip {
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible;
     margin-top: 0;
     gap: 0;
     margin-bottom: -1px;
@@ -133,6 +136,7 @@ html[data-bs-theme="dark"] .ux-toggle-btn.active {
 
 .ux-tabstrip .btn,
 .ux-tabstrip a.btn {
+    flex: 1 1 9rem !important;
     color: var(--ux-text) !important;
     background: color-mix(in srgb, var(--ux-surface-alt) 94%, transparent);
     border: 1px solid var(--ux-border) !important;
@@ -186,13 +190,13 @@ html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
     box-shadow: inset 0 2px 0 color-mix(in srgb, var(--ux-brand) 26%, transparent) !important;
 }
 
-.ux-tabstrip > .btn:first-child,
-.ux-tabstrip > a.btn:first-child {
+.ux-tabstrip>.btn:first-child,
+.ux-tabstrip>a.btn:first-child {
     border-top-left-radius: var(--ux-radius-sm) !important;
 }
 
-.ux-tabstrip > .btn:last-child,
-.ux-tabstrip > a.btn:last-child {
+.ux-tabstrip>.btn:last-child,
+.ux-tabstrip>a.btn:last-child {
     border-top-right-radius: var(--ux-radius-sm) !important;
 }
 
@@ -207,9 +211,9 @@ html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
         0 0 0 0.12rem color-mix(in srgb, var(--ux-brand) 18%, transparent) !important;
 }
 
-.ux-tabstrip + .ux-surface,
-.ux-tabstrip + ul.ux-surface,
-.ux-tabstrip + div.ux-surface {
+.ux-tabstrip+.ux-surface,
+.ux-tabstrip+ul.ux-surface,
+.ux-tabstrip+div.ux-surface {
     border-top: 0 !important;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
@@ -289,12 +293,72 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 }
 
 .ux-table-wrap {
-    margin-top: 0.3rem;
+    margin-top: 0;
     border: 1px solid var(--ux-border);
     background: color-mix(in srgb, var(--ux-surface) 90%, transparent);
     border-radius: var(--ux-radius-md);
     box-shadow: var(--ux-shadow-sm);
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.ux-table-wrap .dataTables_wrapper,
+.ux-table-wrap table {
+    min-width: max-content;
+}
+
+.ux-conflict-cell {
+    display: inline-flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.ux-conflict-cell-actions {
+    display: inline-flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.ux-conflict-name-btn {
+    text-align: left;
+    white-space: normal;
+}
+
+.ux-conflict-popup-meta {
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    padding: 0.5rem;
+    background: color-mix(in srgb, var(--ux-surface) 93%, transparent);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+    font-size: 0.95rem;
+}
+
+.ux-conflict-popup-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.38rem;
+}
+
+.ux-conflict-popup-actions .btn {
+    min-height: 2.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ux-conflict-popup-actions .btn[aria-disabled="true"] {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.ux-conflict-subview-controls {
+    display: flex;
+    gap: 0.4rem;
 }
 
 .table-toggles {
@@ -385,7 +449,39 @@ html[data-bs-theme="dark"] .ux-btn-primary {
     margin-bottom: 0.25rem !important;
 }
 
-.container-fluid > h1.ux-surface {
+.dataTables_wrapper .ux-dt-bottom {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.45rem 1rem;
+    width: 100%;
+}
+
+.dataTables_wrapper .ux-dt-bottom .dataTables_paginate,
+.dataTables_wrapper .ux-dt-bottom .dataTables_length,
+.dataTables_wrapper .ux-dt-bottom .dataTables_filter {
+    float: none !important;
+    text-align: left !important;
+    margin: 0 !important;
+}
+
+.dataTables_wrapper .ux-dt-bottom .dataTables_filter label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.dataTables_wrapper .ux-dt-bottom .dataTables_filter input {
+    margin-left: 0 !important;
+}
+
+.dataTables_wrapper .dataTables_paginate {
+    float: none !important;
+    text-align: left !important;
+}
+
+.container-fluid>h1.ux-surface {
     padding: 0.45rem 0.75rem !important;
 }
 
@@ -409,12 +505,12 @@ h1.ux-surface.ux-page-title {
     border-radius: 0 !important;
 }
 
-.app-shell .input-group.ux-inputbar > :first-child {
+.app-shell .input-group.ux-inputbar> :first-child {
     border-top-left-radius: 0.5rem !important;
     border-bottom-left-radius: 0.5rem !important;
 }
 
-.app-shell .input-group.ux-inputbar > :last-child {
+.app-shell .input-group.ux-inputbar> :last-child {
     border-top-right-radius: 0.5rem !important;
     border-bottom-right-radius: 0.5rem !important;
 }
@@ -567,6 +663,67 @@ html[data-bs-theme="dark"] .vis-item {
     .ux-toolbar {
         gap: 0.35rem;
     }
+
+    .ux-tabstrip {
+        gap: 0.2rem;
+        margin-bottom: 0.2rem;
+    }
+
+    .ux-tabstrip>.btn,
+    .ux-tabstrip>a.btn {
+        flex: 1 1 calc(50% - 0.2rem) !important;
+        min-width: 0;
+        font-size: 0.87rem;
+        white-space: normal;
+        text-align: center;
+        padding: 0.4rem 0.42rem !important;
+        border-radius: var(--ux-radius-sm) !important;
+    }
+
+    .ux-table-wrap {
+        border-radius: var(--ux-radius-sm);
+    }
+
+    .dataTables_wrapper {
+        font-size: 0.92rem;
+    }
+
+    .dataTables_wrapper .ux-dt-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
+    }
+
+    .dataTables_wrapper table.dataTable thead th,
+    .dataTables_wrapper table.dataTable thead td,
+    .dataTables_wrapper table.dataTable tbody td,
+    .dataTables_wrapper table.dataTable tbody th {
+        white-space: nowrap;
+    }
+
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+        padding: 0.1rem 0.4rem !important;
+        margin-left: 0.08rem !important;
+    }
+
+    .ux-conflict-cell {
+        width: 100%;
+    }
+
+    .ux-conflict-cell-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .ux-conflict-popup-actions {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.34rem;
+    }
+
+    .ux-conflict-popup-actions .btn {
+        min-height: 2.35rem;
+        font-size: 0.95rem;
+    }
 }
 
 .ux-coalition-panel {
@@ -584,21 +741,17 @@ html[data-bs-theme="dark"] .vis-item {
 
 .ux-coalition-panel--red {
     border-left: 0.28rem solid color-mix(in srgb, var(--ux-danger) 60%, var(--ux-border));
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface-alt)),
-        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
-    );
+    background: linear-gradient(90deg,
+            color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface-alt)),
+            color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-danger) 18%, transparent);
 }
 
 .ux-coalition-panel--blue {
     border-left: 0.28rem solid color-mix(in srgb, var(--ux-brand) 60%, var(--ux-border));
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface-alt)),
-        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
-    );
+    background: linear-gradient(90deg,
+            color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface-alt)),
+            color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-brand) 18%, transparent);
 }
 

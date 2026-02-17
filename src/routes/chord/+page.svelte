@@ -441,7 +441,6 @@
             >
         {/if}
     </h1>
-    <hr class="mt-2 mb-2" />
     <ConflictRouteTabs conflictId={conflictId} active="chord" />
     <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 116px;">
         {#if !_loaded}

@@ -188,7 +188,10 @@
     function setupChartData(conflictId: string) {
         _loadError = null;
         _loaded = false;
-        let url = getConflictGraphDataUrl(conflictId, config.version.graph_data);
+        let url = getConflictGraphDataUrl(
+            conflictId,
+            config.version.graph_data,
+        );
         decompressBson(url)
             .then((data) => {
                 _rawData = data;
@@ -775,8 +778,7 @@
             ><i class="bi bi-arrow-left"></i></a
         >&nbsp;Conflict Tiering: {conflictName}
     </h1>
-    <hr class="mt-2 mb-2" />
-    <ConflictRouteTabs conflictId={conflictId} active="tiering" />
+    <ConflictRouteTabs {conflictId} active="tiering" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"

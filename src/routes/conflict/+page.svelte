@@ -689,7 +689,6 @@
       >
     {/if}
   </h1>
-  <hr class="mt-2 mb-2" />
   <ConflictRouteTabs
     {conflictId}
     mode="layout-picker"
@@ -697,7 +696,9 @@
     active="coalition"
     onLayoutSelect={handleClick}
   />
-  <ul class="nav fw-bold nav-pills nav-fill m-0 p-2 ux-surface mb-3">
+  <ul
+    class="nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
+  >
     <li>Layout Picker:</li>
     {#each Object.keys(layouts) as key}
       <li>
@@ -718,7 +719,7 @@
         >
       </li>
     {/each}
-    <li class="ms-auto d-flex gap-1 justify-content-end">
+    <li class="ms-auto d-flex flex-wrap gap-1 justify-content-end">
       <ShareResetBar onReset={resetFilters} />
     </li>
   </ul>
