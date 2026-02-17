@@ -646,11 +646,10 @@
     {/if}
   </h1>
   <hr class="mt-2 mb-2" />
-  <div class="row p-0 m-0 ux-tabstrip">
+  <div class="row p-0 m-0 ux-tabstrip fw-bold">
     <button
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold {_layoutData.layout ==
-      Layout.COALITION
-        ? 'is-active bg-light-subtle border-bottom-0'
+      class="col-2 ps-0 pe-0 btn {_layoutData.layout == Layout.COALITION
+        ? 'is-active'
         : ''}"
       id="profile-pill"
       data-bs-layout={Layout.COALITION}
@@ -659,9 +658,8 @@
       ◑&nbsp;Coalition
     </button>
     <button
-      class="col-2 btn ps-0 pe-0 btn btn-outline-secondary fw-bold {_layoutData.layout ==
-      Layout.ALLIANCE
-        ? 'is-active bg-light-subtle border-bottom-0'
+      class="col-2 btn ps-0 pe-0 {_layoutData.layout == Layout.ALLIANCE
+        ? 'is-active'
         : ''}"
       id="alliance-pill"
       data-bs-layout={Layout.ALLIANCE}
@@ -670,9 +668,8 @@
       𖣯&nbsp;Alliance
     </button>
     <button
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold {_layoutData.layout ==
-      Layout.NATION
-        ? 'is-active bg-light-subtle border-bottom-0'
+      class="col-2 ps-0 pe-0 btn {_layoutData.layout == Layout.NATION
+        ? 'is-active'
         : ''}"
       id="nation-pill"
       data-bs-layout={Layout.NATION}
@@ -680,22 +677,13 @@
     >
       ♟&nbsp;Nation
     </button>
-    <a
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
-      href="tiering?id={conflictId}"
-    >
+    <a class="col-2 ps-0 pe-0 btn" href="tiering?id={conflictId}">
       📊&nbsp;Tier/Time
     </a>
-    <a
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
-      href="bubble?id={conflictId}"
-    >
+    <a class="col-2 ps-0 pe-0 btn" href="bubble?id={conflictId}">
       📈&nbsp;Bubble/Time
     </a>
-    <a
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
-      href="chord?id={conflictId}"
-    >
+    <a class="col-2 ps-0 pe-0 btn" href="chord?id={conflictId}">
       🌐&nbsp;Web
     </a>
   </div>

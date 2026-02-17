@@ -924,74 +924,70 @@
 <Navbar />
 <!-- <Sidebar /> -->
 <div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
-    <div class="row m-0 p-0">
-        <div class="col-12 m-0 p-0">
-            <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-                <a href="conflicts" aria-label="Back to conflicts"
-                    ><i class="bi bi-arrow-left"></i></a
-                >&nbsp;Conflict: {conflictName}
-                {#if (_rawData as any)?.wiki}
-                    <a
-                        class="btn ux-btn fw-bold"
-                        href="https://politicsandwar.fandom.com/wiki/{(
-                            _rawData as any
-                        ).wiki}"
-                        >Wiki:{(_rawData as any)?.wiki}&nbsp;<i
-                            class="bi bi-box-arrow-up-right"
-                        ></i></a
-                    >
-                {/if}
-            </h1>
-            <hr class="mt-2 mb-2" />
-            <div class="row p-0 m-0 ux-tabstrip">
+    <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
+        <a href="conflicts" aria-label="Back to conflicts"
+            ><i class="bi bi-arrow-left"></i></a
+        >&nbsp;Conflict: {conflictName}
+        {#if (_rawData as any)?.wiki}
+            <a
+                class="btn ux-btn fw-bold"
+                href="https://politicsandwar.fandom.com/wiki/{(
+                    _rawData as any
+                ).wiki}"
+                >Wiki:{(_rawData as any)?.wiki}&nbsp;<i
+                    class="bi bi-box-arrow-up-right"
+                ></i></a
+            >
+        {/if}
+    </h1>
+    <hr class="mt-2 mb-2" />
+    <div class="row p-0 m-0 ux-tabstrip fw-bold">
                 <a
                     href="conflict?id={conflictId}&layout=coalition"
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+                    class="col-2 ps-0 pe-0 btn"
                 >
                     ◑&nbsp;Coalition
                 </a>
                 <a
                     href="conflict?id={conflictId}&layout=alliance"
-                    class="col-2 btn ps-0 pe-0 btn btn-outline-secondary fw-bold"
+                    class="col-2 btn ps-0 pe-0"
                 >
                     𖣯&nbsp;Alliance
                 </a>
                 <a
                     href="conflict?id={conflictId}&layout=nation"
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+                    class="col-2 ps-0 pe-0 btn"
                 >
                     ♟&nbsp;Nation
                 </a>
                 <a
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+                    class="col-2 ps-0 pe-0 btn"
                     href="tiering?id={conflictId}"
                 >
                     📊&nbsp;Tier/Time
                 </a>
                 <button
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold is-active bg-light-subtle border-bottom-0"
+                    class="col-2 ps-0 pe-0 btn is-active"
                 >
                     📈&nbsp;Bubble/Time
                 </button>
                 <a
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+                    class="col-2 ps-0 pe-0 btn"
                     href="chord?id={conflictId}"
                 >
                     🌐&nbsp;Web
                 </a>
             </div>
-        </div>
-    </div>
-    {#if !_loaded}
-        <Progress />
-    {/if}
-    {#if _loadError}
-        <div class="alert alert-danger m-2">{_loadError}</div>
-    {/if}
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"
     >
+        {#if !_loaded}
+            <Progress />
+        {/if}
+        {#if _loadError}
+            <div class="alert alert-danger m-2">{_loadError}</div>
+        {/if}
         <div class="col-12">
             <div style="width: calc(100% - 30px);margin-left:15px;">
                 <div

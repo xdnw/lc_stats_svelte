@@ -418,39 +418,39 @@
         {/if}
     </h1>
     <hr class="mt-2 mb-2" />
-    <div class="row p-0 m-0 ux-tabstrip">
+    <div class="row p-0 m-0 ux-tabstrip fw-bold">
         <a
             href="conflict?id={conflictId}&layout=coalition"
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+            class="col-2 ps-0 pe-0 btn"
         >
             ◑&nbsp;Coalition
         </a>
         <a
             href="conflict?id={conflictId}&layout=alliance"
-            class="col-2 btn ps-0 pe-0 btn btn-outline-secondary fw-bold"
+            class="col-2 btn ps-0 pe-0"
         >
             𖣯&nbsp;Alliance
         </a>
         <a
             href="conflict?id={conflictId}&layout=nation"
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+            class="col-2 ps-0 pe-0 btn"
         >
             ♟&nbsp;Nation
         </a>
         <a
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+            class="col-2 ps-0 pe-0 btn"
             href="tiering?id={conflictId}"
         >
             📊&nbsp;Tier/Time
         </a>
         <a
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
+            class="col-2 ps-0 pe-0 btn"
             href="bubble?id={conflictId}"
         >
             📈&nbsp;Bubble/Time
         </a>
         <button
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold is-active bg-light-subtle border-bottom-0"
+            class="col-2 ps-0 pe-0 btn is-active"
         >
             🌐&nbsp;Web
         </button>

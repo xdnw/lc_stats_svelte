@@ -72,10 +72,7 @@
         for (let i = 0; i <= 1; i++) {
           let button = document.createElement("button");
           button.setAttribute("type", "button");
-          button.setAttribute(
-            "class",
-            "ms-1 btn btn-outline-info btn-secondary btn-sm fw-bold opacity-75",
-          );
+          button.setAttribute("class", "ms-1 btn ux-btn btn-sm fw-bold");
           button.setAttribute("onclick", `showNames('${data}',${i})`);
           button.textContent = "C" + (i + 1);
           result += button.outerHTML;
@@ -173,7 +170,7 @@
     ];
     let searchable: number[] = [ConflictIndex.NAME];
     let cell_format: { [key: string]: number[] } = {};
-    let sort: [number, string] = [ConflictIndex.END, "desc"];
+    let sort: [number, string] = [ConflictIndex.END + 1, "desc"];
     let rows: JSONValue[][] = result.conflicts as JSONValue[][];
     if (_allowedAllianceIds.size != _rawData?.alliance_ids.length) {
       rows = rows.filter((row) => {
@@ -235,12 +232,12 @@
 
     // Add total damage column (as combination of c1_dealt and c2_dealt)
     columns.push("total");
-    for (let i in rows) {
-      let damage =
-        (rows[i][ConflictIndex.C1_DEALT] as number) +
-        (rows[i][ConflictIndex.C2_DEALT] as number);
-      rows[i].push(damage);
-    }
+    rows = rows.map((row) => {
+      const damage =
+        (row[ConflictIndex.C1_DEALT] as number) +
+        (row[ConflictIndex.C2_DEALT] as number);
+      return [...row, damage];
+    });
 
     // Set the cell format functions to specific columns
     cell_format["formatUrl"] = [ConflictIndex.NAME];
@@ -251,7 +248,7 @@
     cell_format["formatMoney"] = [
       ConflictIndex.C1_DEALT,
       ConflictIndex.C2_DEALT,
-      ConflictIndex.TOTAL,
+      columns.length - 1,
     ];
     cell_format["formatDate"] = [ConflictIndex.START, ConflictIndex.END];
 

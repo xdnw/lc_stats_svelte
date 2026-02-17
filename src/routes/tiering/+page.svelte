@@ -769,53 +769,41 @@
 <Navbar />
 <!-- <Sidebar /> -->
 <div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
-    <div class="row m-0 p-0">
-        <div class="col-12 m-0 p-0">
-            <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-                <a href="conflicts" aria-label="Back to conflicts"
-                    ><i class="bi bi-arrow-left"></i></a
-                >&nbsp;Conflict Tiering: {conflictName}
-            </h1>
-            <hr class="mt-2 mb-2" />
-            <!-- The tabs -->
-            <div class="row p-0 m-0 ux-tabstrip">
-                <a
-                    href="conflict?id={conflictId}&layout=coalition"
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
-                >
-                    ◑&nbsp;Coalition
-                </a>
-                <a
-                    href="conflict?id={conflictId}&layout=alliance"
-                    class="col-2 btn ps-0 pe-0 btn btn-outline-secondary fw-bold"
-                >
-                    𖣯&nbsp;Alliance
-                </a>
-                <a
-                    href="conflict?id={conflictId}&layout=nation"
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
-                >
-                    ♟&nbsp;Nation
-                </a>
-                <button
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold is-active bg-light-subtle border-bottom-0"
-                >
-                    📊&nbsp;Tier/Time
-                </button>
-                <a
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
-                    href="bubble?id={conflictId}"
-                >
-                    📈&nbsp;Bubble/Time
-                </a>
-                <a
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
-                    href="chord?id={conflictId}"
-                >
-                    🌐&nbsp;Web
-                </a>
-            </div>
-        </div>
+    <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
+        <a href="conflicts" aria-label="Back to conflicts"
+            ><i class="bi bi-arrow-left"></i></a
+        >&nbsp;Conflict Tiering: {conflictName}
+    </h1>
+    <hr class="mt-2 mb-2" />
+    <!-- The tabs -->
+    <div class="row p-0 m-0 ux-tabstrip fw-bold">
+        <a
+            href="conflict?id={conflictId}&layout=coalition"
+            class="col-2 ps-0 pe-0 btn"
+        >
+            ◑&nbsp;Coalition
+        </a>
+        <a
+            href="conflict?id={conflictId}&layout=alliance"
+            class="col-2 btn ps-0 pe-0"
+        >
+            𖣯&nbsp;Alliance
+        </a>
+        <a
+            href="conflict?id={conflictId}&layout=nation"
+            class="col-2 ps-0 pe-0 btn"
+        >
+            ♟&nbsp;Nation
+        </a>
+        <button class="col-2 ps-0 pe-0 btn is-active">
+            📊&nbsp;Tier/Time
+        </button>
+        <a class="col-2 ps-0 pe-0 btn" href="bubble?id={conflictId}">
+            📈&nbsp;Bubble/Time
+        </a>
+        <a class="col-2 ps-0 pe-0 btn" href="chord?id={conflictId}">
+            🌐&nbsp;Web
+        </a>
     </div>
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
@@ -825,9 +813,14 @@
             <Progress />
         {/if}
         <div class="col-12">
-            <div class="p-1 fw-bold border-bottom border-3 pb-0" style="min-height: 71px;">
+            <div
+                class="p-1 fw-bold border-bottom border-3 pb-0"
+                style="min-height: 71px;"
+            >
                 {#if _rawData}
-                    <div class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red">
+                    <div
+                        class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red"
+                    >
                         {_rawData?.coalitions[0].name}:
                         {#each _rawData.coalitions[0].alliance_ids as id, index}
                             <button
@@ -840,7 +833,9 @@
                             >
                         {/each}
                     </div>
-                    <div class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue">
+                    <div
+                        class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue"
+                    >
                         {_rawData?.coalitions[1].name}:
                         {#each _rawData.coalitions[1].alliance_ids as id, index}
                             <button
@@ -875,7 +870,10 @@
                     </div>
                 </Select>
             </div>
-            <div class="ux-control-strip mb-1" style="position: relative; z-index: 2;">
+            <div
+                class="ux-control-strip mb-1"
+                style="position: relative; z-index: 2;"
+            >
                 <label for="inlineCheckbox1" class="ux-toggle-chip">
                     <span>Use Percent</span>
                     <input

@@ -1,4 +1,5 @@
 // import msgpack from 'msgpack-lite';
+import { page } from '$app/stores';
 import { Unpackr } from 'msgpackr';
 declare const $: any;
 declare const jQuery: any;
@@ -511,7 +512,8 @@ export const decompressBson = async (url: string) => {
     console.log("Decompression time: " + (Date.now() - start) + "ms"); start = Date.now();
     let stream: ReadableStream<Uint8Array> = result.stream();
     let uint8Array = await streamToUint8Array(stream);
-    console.log("Stream to uint8Array time: " + (Date.now() - start) + "ms"); start = Date.now();
+    console.log("Stream to uint8Array time: " + (Date.now() - start) + "ms | len " + uint8Array.length); start = Date.now();
+
     let decoded = extUnpackr.unpack(uint8Array);
     console.log("PSON decode time: " + (Date.now() - start) + "ms");
     return decoded;
@@ -806,7 +808,7 @@ function setupTable(containerElem: HTMLElement,
         let columnsInfo: { data: number, className?: string, render?: any, visible?: boolean }[] = [];
         if (dataColumns.length > 0) {
             for (let i = 0; i < dataColumns.length; i++) {
-                let columnInfo: { orderDataType?: string, data: number; className: string; render?: any } = { data: i, className: 'details-control' };
+                let columnInfo: { orderDataType?: string, data: number; className: string; render?: any, defaultContent?: string } = { data: i, className: 'details-control', defaultContent: '' };
                 let renderFunc = cellFormatByCol[i];
                 if (renderFunc != null) {
                     columnInfo.render = renderFunc;
@@ -910,6 +912,7 @@ function setupTable(containerElem: HTMLElement,
                 paging: true,
                 // Pagination settings
                 lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                pageLength: 10,
                 // Render after initialization (faster)
                 deferRender: true,
                 orderClasses: false,
