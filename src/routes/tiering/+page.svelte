@@ -781,35 +781,35 @@
             <div class="row p-0 m-0 ux-tabstrip">
                 <a
                     href="conflict?id={conflictId}&layout=coalition"
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
                 >
                     ◑&nbsp;Coalition
                 </a>
                 <a
                     href="conflict?id={conflictId}&layout=alliance"
-                    class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                    class="col-2 btn ps-0 pe-0 btn btn-outline-secondary fw-bold"
                 >
                     𖣯&nbsp;Alliance
                 </a>
                 <a
                     href="conflict?id={conflictId}&layout=nation"
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
                 >
                     ♟&nbsp;Nation
                 </a>
                 <button
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold bg-light-subtle border-0 border-bottom-0"
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold is-active bg-light-subtle border-bottom-0"
                 >
                     📊&nbsp;Tier/Time
                 </button>
                 <a
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
                     href="bubble?id={conflictId}"
                 >
                     📈&nbsp;Bubble/Time
                 </a>
                 <a
-                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
                     href="chord?id={conflictId}"
                 >
                     🌐&nbsp;Web
@@ -875,68 +875,46 @@
                     </div>
                 </Select>
             </div>
-            <label
-                for="inlineCheckbox1"
-                style="position: relative; z-index: 2;"
-            >
-                <div
-                    class:bg-info-subtle={normalize}
-                    class:bg-light-subtle={!normalize}
-                    class="p-1 rounded d-inline-block"
-                >
-                    <span class="fw-bold">Use Percent:</span>
+            <div class="ux-control-strip mb-1" style="position: relative; z-index: 2;">
+                <label for="inlineCheckbox1" class="ux-toggle-chip">
+                    <span>Use Percent</span>
                     <input
-                        class="form-check-input m-1"
-                        style="position: relative; z-index: 2;"
+                        class="form-check-input"
                         type="checkbox"
                         id="inlineCheckbox1"
                         value="option1"
                         bind:checked={normalize}
                         on:change={handlePercentCheck}
                     />
-                </div>
-            </label>
-            <label
-                for="inlineCheckbox2"
-                style="position: relative; z-index: 2;"
-            >
-                <div
-                    class:bg-info-subtle={useSingleColor}
-                    class:bg-light-subtle={!useSingleColor}
-                    class="p-1 rounded d-inline-block"
-                >
-                    <span class="fw-bold">Single Color:</span>
+                </label>
+                <label for="inlineCheckbox2" class="ux-toggle-chip">
+                    <span>Single Color</span>
                     <input
-                        class="form-check-input m-1"
-                        style="position: relative; z-index: 2;"
+                        class="form-check-input"
                         type="checkbox"
                         id="inlineCheckbox2"
                         value="option1"
                         bind:checked={useSingleColor}
                         on:change={handleColorCheck}
                     />
-                </div>
-            </label>
-            {#if _rawData}
-                <div
-                    class="ux-surface rounded p-1 d-inline-block"
-                    style="position: relative; z-index:2;"
-                >
-                    <span class="fw-bold">Quick Layouts:</span>
-                    {#each Object.entries(_chartLayouts) as [name, _layout]}
-                        <button
-                            on:click={() => setLayout(name)}
-                            class="btn ux-btn btn-sm fw-bold"
-                            style="margin:-1px 1px -1px 1px;"
-                        >
-                            {name}
-                        </button>
-                    {/each}
-                </div>
-            {/if}
+                </label>
+                {#if _rawData}
+                    <div class="ux-quick-layouts">
+                        <span class="fw-bold">Quick Layouts:</span>
+                        {#each Object.entries(_chartLayouts) as [name, _layout]}
+                            <button
+                                on:click={() => setLayout(name)}
+                                class="btn ux-btn btn-sm fw-bold"
+                            >
+                                {name}
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
-    <div class="container-fluid m0 p0 mt-2 ux-surface p-2">
+    <div class="container-fluid m-0 p-0 mt-2 ux-surface p-2">
         <div
             class="chart-container"
             style="position: relative; height:80vh; width:100%;"

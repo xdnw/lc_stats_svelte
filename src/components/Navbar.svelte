@@ -35,8 +35,8 @@
 <nav
   class="navbar navbar-expand-md border-bottom bg-body-subtle shadow-sm sticky-top"
 >
-  <div class="container-fluid py-2">
-    <div class="row d-flex w-100 g-2 align-items-center">
+  <div class="container-fluid py-1">
+    <div class="row d-flex w-100 g-1 align-items-center">
       <div class="col-auto">
         <div class="btn-group ux-surface p-1">
           <button

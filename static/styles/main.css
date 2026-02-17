@@ -14,11 +14,11 @@
     --ux-danger: #e15656;
     --ux-warning: #e99b33;
     --ux-success: #2fa66a;
-    --ux-shadow-sm: 0 2px 8px rgba(15, 28, 52, 0.08);
-    --ux-shadow-md: 0 8px 26px rgba(15, 28, 52, 0.12);
-    --ux-radius-sm: 0.5rem;
-    --ux-radius-md: 0.85rem;
-    --ux-radius-lg: 1.2rem;
+    --ux-shadow-sm: 0 1px 5px rgba(15, 28, 52, 0.08);
+    --ux-shadow-md: 0 6px 20px rgba(15, 28, 52, 0.11);
+    --ux-radius-sm: 0.35rem;
+    --ux-radius-md: 0.55rem;
+    --ux-radius-lg: 0.8rem;
 }
 
 html[data-bs-theme="dark"] {
@@ -76,10 +76,10 @@ a:not(.btn):hover {
 }
 
 .ux-surface {
-    background: color-mix(in srgb, var(--ux-surface) 94%, transparent);
-    backdrop-filter: blur(8px);
+    background: color-mix(in srgb, var(--ux-surface) 97%, transparent);
+    backdrop-filter: blur(4px);
     border: 1px solid var(--ux-border);
-    border-radius: 0.65rem;
+    border-radius: var(--ux-radius-md);
     box-shadow: var(--ux-shadow-sm);
 }
 
@@ -92,10 +92,10 @@ a:not(.btn):hover {
 }
 
 .ux-btn {
-    border-radius: 0.45rem !important;
-    border: 1px solid color-mix(in srgb, var(--ux-brand) 36%, var(--ux-border)) !important;
+    border-radius: var(--ux-radius-sm) !important;
+    border: 1px solid color-mix(in srgb, var(--ux-brand) 26%, var(--ux-border)) !important;
     color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-surface-alt) 82%, transparent) !important;
+    background: color-mix(in srgb, var(--ux-surface-alt) 90%, transparent) !important;
     font-weight: 700 !important;
 }
 
@@ -109,10 +109,10 @@ a:not(.btn):hover {
 .ux-btn:active,
 .app-shell .btn.active.ux-btn,
 .ux-toggle-btn.active {
-    color: #fff !important;
-    background: linear-gradient(145deg, color-mix(in srgb, var(--ux-brand) 90%, #fff), color-mix(in srgb, var(--ux-brand-2) 64%, var(--ux-brand))) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 65%, var(--ux-brand-2)) !important;
-    box-shadow: 0 0 0 0.13rem color-mix(in srgb, var(--ux-brand) 18%, transparent) !important;
+    color: var(--ux-text) !important;
+    background: color-mix(in srgb, var(--ux-brand) 18%, var(--ux-surface)) !important;
+    border-color: color-mix(in srgb, var(--ux-brand) 42%, var(--ux-border)) !important;
+    box-shadow: none !important;
 }
 
 html[data-bs-theme="dark"] .ux-btn.active,
@@ -127,36 +127,76 @@ html[data-bs-theme="dark"] .ux-toggle-btn.active {
 
 .ux-tabstrip {
     margin-top: 0;
+    gap: 0;
+    margin-bottom: -1px;
 }
 
 .ux-tabstrip .btn,
 .ux-tabstrip a.btn {
     color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-surface-alt) 84%, transparent);
-    border-color: var(--ux-border);
+    background: color-mix(in srgb, var(--ux-surface-alt) 92%, transparent);
+    border: 1px solid var(--ux-border) !important;
+    min-height: 2.4rem;
+    margin: 0;
+    padding: 0.5rem 0.35rem !important;
+    line-height: 1.15 !important;
+    white-space: nowrap;
     border-radius: 0 !important;
-    border-top-left-radius: 0 !important;
-    border-top-right-radius: 0 !important;
-    border-bottom-left-radius: 0 !important;
-    border-bottom-right-radius: 0 !important;
+    box-shadow: none !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 120ms ease, border-color 120ms ease;
 }
 
+.ux-tabstrip .btn.is-active,
+.ux-tabstrip a.btn.is-active,
 .ux-tabstrip .btn.border-bottom-0,
 .ux-tabstrip a.btn.border-bottom-0,
 .ux-tabstrip .btn.bg-light-subtle,
 .ux-tabstrip a.btn.bg-light-subtle {
-    color: #fff !important;
-    background: linear-gradient(145deg, color-mix(in srgb, var(--ux-brand) 90%, #fff), color-mix(in srgb, var(--ux-brand-2) 64%, var(--ux-brand))) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 65%, var(--ux-brand-2)) !important;
+    color: var(--ux-text) !important;
+    background: var(--ux-surface) !important;
+    border-color: var(--ux-border) !important;
+    border-bottom-color: var(--ux-surface) !important;
+    box-shadow: inset 0 2px 0 color-mix(in srgb, var(--ux-brand) 34%, transparent) !important;
+    font-weight: 700 !important;
+    position: relative;
+    z-index: 2;
 }
 
+/* Keep active tabs from changing box model (prevents vertical/text jump when route changes) */
+.ux-tabstrip .btn.border-bottom-0,
+.ux-tabstrip a.btn.border-bottom-0,
+.ux-tabstrip .btn.is-active,
+.ux-tabstrip a.btn.is-active {
+    border-bottom-width: 1px !important;
+}
+
+html[data-bs-theme="dark"] .ux-tabstrip .btn.is-active,
+html[data-bs-theme="dark"] .ux-tabstrip a.btn.is-active,
 html[data-bs-theme="dark"] .ux-tabstrip .btn.border-bottom-0,
 html[data-bs-theme="dark"] .ux-tabstrip a.btn.border-bottom-0,
 html[data-bs-theme="dark"] .ux-tabstrip .btn.bg-light-subtle,
 html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-brand) 24%, var(--ux-surface-elevated)) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 46%, var(--ux-border)) !important;
+    background: color-mix(in srgb, var(--ux-surface) 90%, transparent) !important;
+    border-bottom-color: color-mix(in srgb, var(--ux-surface) 90%, transparent) !important;
+    box-shadow: none !important;
+}
+
+.ux-tabstrip > .btn:first-child,
+.ux-tabstrip > a.btn:first-child {
+    border-top-left-radius: var(--ux-radius-sm) !important;
+}
+
+.ux-tabstrip > .btn:last-child,
+.ux-tabstrip > a.btn:last-child {
+    border-top-right-radius: var(--ux-radius-sm) !important;
+}
+
+.ux-tabstrip .btn:not(.is-active):hover,
+.ux-tabstrip a.btn:not(.is-active):hover {
+    background: color-mix(in srgb, var(--ux-brand) 8%, var(--ux-surface-alt)) !important;
 }
 
 .ux-tabstrip + .ux-surface,
@@ -168,9 +208,47 @@ html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
 }
 
 .ux-tab-panel {
-    border-top: 0 !important;
+    border-top: 1px solid var(--ux-border) !important;
     border-top-left-radius: 0 !important;
     border-top-right-radius: 0 !important;
+}
+
+.ux-control-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    background: color-mix(in srgb, var(--ux-surface-alt) 88%, transparent);
+}
+
+.ux-toggle-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0;
+    padding: 0.2rem 0.45rem;
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    background: color-mix(in srgb, var(--ux-surface) 92%, transparent);
+    font-weight: 700;
+}
+
+.ux-toggle-chip input {
+    margin: 0 0 0 0.1rem !important;
+}
+
+.ux-quick-layouts {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.ux-quick-layouts .ux-btn {
+    margin: 0 !important;
 }
 
 .ux-btn-primary {
@@ -464,7 +542,7 @@ html[data-bs-theme="dark"] .vis-item {
 .ux-coalition-panel {
     background: color-mix(in srgb, var(--ux-surface-alt) 92%, transparent);
     border: 1px solid var(--ux-border);
-    border-radius: 0.5rem;
+    border-radius: var(--ux-radius-sm);
     padding: 0.5rem;
     margin-bottom: 0.4rem;
 }
@@ -475,9 +553,19 @@ html[data-bs-theme="dark"] .vis-item {
 }
 
 .ux-coalition-panel--red {
-    border-left: 0.25rem solid color-mix(in srgb, var(--ux-danger) 62%, var(--ux-border));
+    border-left: 0.15rem solid color-mix(in srgb, var(--ux-danger) 24%, var(--ux-border));
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--ux-danger) 6%, var(--ux-surface-alt)),
+        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
+    );
 }
 
 .ux-coalition-panel--blue {
-    border-left: 0.25rem solid color-mix(in srgb, var(--ux-brand) 62%, var(--ux-border));
+    border-left: 0.15rem solid color-mix(in srgb, var(--ux-brand) 24%, var(--ux-border));
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--ux-brand) 6%, var(--ux-surface-alt)),
+        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
+    );
 }

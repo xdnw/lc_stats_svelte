@@ -551,6 +551,9 @@
       const container = document.getElementById("visualization");
 
       if (!container) return;
+      if (container.hasChildNodes()) {
+        container.innerHTML = "";
+      }
 
       // Create a DataSet (allows two way data-binding)
       const vis = getVis();
@@ -645,10 +648,10 @@
   <hr class="mt-2 mb-2" />
   <div class="row p-0 m-0 ux-tabstrip">
     <button
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout ==
+      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold {_layoutData.layout ==
       Layout.COALITION
-        ? 'bg-light-subtle border border-bottom-0'
-        : 'border-0 border-bottom'}"
+        ? 'is-active bg-light-subtle border-bottom-0'
+        : ''}"
       id="profile-pill"
       data-bs-layout={Layout.COALITION}
       on:click={handleClick}
@@ -656,10 +659,10 @@
       ◑&nbsp;Coalition
     </button>
     <button
-      class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout ==
+      class="col-2 btn ps-0 pe-0 btn btn-outline-secondary fw-bold {_layoutData.layout ==
       Layout.ALLIANCE
-        ? 'bg-light-subtle border border-bottom-0'
-        : 'border-0 border-bottom'}"
+        ? 'is-active bg-light-subtle border-bottom-0'
+        : ''}"
       id="alliance-pill"
       data-bs-layout={Layout.ALLIANCE}
       on:click={handleClick}
@@ -667,10 +670,10 @@
       𖣯&nbsp;Alliance
     </button>
     <button
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout ==
+      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold {_layoutData.layout ==
       Layout.NATION
-        ? 'bg-light-subtle border border-bottom-0'
-        : 'border-0 border-bottom'}"
+        ? 'is-active bg-light-subtle border-bottom-0'
+        : ''}"
       id="nation-pill"
       data-bs-layout={Layout.NATION}
       on:click={handleClick}
@@ -678,19 +681,19 @@
       ♟&nbsp;Nation
     </button>
     <a
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
       href="tiering?id={conflictId}"
     >
       📊&nbsp;Tier/Time
     </a>
     <a
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
       href="bubble?id={conflictId}"
     >
       📈&nbsp;Bubble/Time
     </a>
     <a
-      class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+      class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
       href="chord?id={conflictId}"
     >
       🌐&nbsp;Web

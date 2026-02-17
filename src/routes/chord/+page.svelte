@@ -421,41 +421,41 @@
     <div class="row p-0 m-0 ux-tabstrip">
         <a
             href="conflict?id={conflictId}&layout=coalition"
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
         >
             ◑&nbsp;Coalition
         </a>
         <a
             href="conflict?id={conflictId}&layout=alliance"
-            class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+            class="col-2 btn ps-0 pe-0 btn btn-outline-secondary fw-bold"
         >
             𖣯&nbsp;Alliance
         </a>
         <a
             href="conflict?id={conflictId}&layout=nation"
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
         >
             ♟&nbsp;Nation
         </a>
         <a
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
             href="tiering?id={conflictId}"
         >
             📊&nbsp;Tier/Time
         </a>
         <a
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold"
             href="bubble?id={conflictId}"
         >
             📈&nbsp;Bubble/Time
         </a>
         <button
-            class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold bg-light-subtle border border-bottom-0"
+            class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold is-active bg-light-subtle border-bottom-0"
         >
             🌐&nbsp;Web
         </button>
     </div>
-    <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 119px;">
+    <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 116px;">
         {#if !_loaded}
             <Progress />
         {/if}
