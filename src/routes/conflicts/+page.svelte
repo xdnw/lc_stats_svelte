@@ -640,7 +640,7 @@
     const value = wiki.trim();
     if (!value) return "#";
     if (/^https?:\/\//i.test(value)) return value;
-    return `https://github.com/xdnw/locutus/wiki/${encodeURIComponent(value)}`;
+    return `https://politicsandwar.fandom.com/wiki/${encodeURIComponent(value)}`;
   }
 
   function stopTableEvent(event?: Event) {
