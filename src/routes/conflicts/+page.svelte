@@ -100,7 +100,35 @@
       ) => {
         const id = row[ConflictIndex.ID] as number;
         const safeLabel = escapeHtml(`${data}`);
-        return `<span class='ux-conflict-cell'><button type='button' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='openConflictCard(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Open conflict details'>${safeLabel}</button></span>`;
+        const conflictUrl = `${base}/conflict?id=${id}`;
+        return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='return openConflictCardFromName(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
+      };
+
+      (window as any).openConflictCardFromName = (
+        event: MouseEvent | undefined,
+        conflictId: number,
+      ) => {
+        if (!event) {
+          (window as any).openConflictCard(undefined, conflictId);
+          return false;
+        }
+
+        event.stopPropagation();
+
+        const isPlainLeftClick =
+          event.button === 0 &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          !event.altKey;
+
+        if (!isPlainLeftClick) {
+          return true;
+        }
+
+        event.preventDefault();
+        (window as any).openConflictCard(undefined, conflictId);
+        return false;
       };
 
       (window as any).download = function download(
