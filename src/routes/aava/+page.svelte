@@ -722,8 +722,10 @@
                             class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1"
                         >
                             <strong>
-                                Selected coalition ({getPrimaryCoalition()
-                                    ?.name})
+                                <span class="badge text-bg-danger ms-1"
+                                    >Selected coalition</span
+                                >
+                                ({getPrimaryCoalition()?.name})
                                 {selectedPrimaryIds.length}/{getPrimaryCoalition()
                                     ?.alliance_ids.length ?? 0}
                             </strong>
@@ -763,7 +765,10 @@
                             class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1"
                         >
                             <strong>
-                                Compared coalition ({getVsCoalition()?.name})
+                                <span class="badge text-bg-primary ms-1"
+                                    >Compared coalition</span
+                                >
+                                ({getVsCoalition()?.name})
                                 {selectedVsIds.length}/{getVsCoalition()
                                     ?.alliance_ids.length ?? 0}
                             </strong>

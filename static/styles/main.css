@@ -583,19 +583,53 @@ html[data-bs-theme="dark"] .vis-item {
 }
 
 .ux-coalition-panel--red {
-    border-left: 0.15rem solid color-mix(in srgb, var(--ux-danger) 24%, var(--ux-border));
+    border-left: 0.28rem solid color-mix(in srgb, var(--ux-danger) 60%, var(--ux-border));
     background: linear-gradient(
         90deg,
-        color-mix(in srgb, var(--ux-danger) 6%, var(--ux-surface-alt)),
+        color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface-alt)),
         color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
     );
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-danger) 18%, transparent);
 }
 
 .ux-coalition-panel--blue {
-    border-left: 0.15rem solid color-mix(in srgb, var(--ux-brand) 24%, var(--ux-border));
+    border-left: 0.28rem solid color-mix(in srgb, var(--ux-brand) 60%, var(--ux-border));
     background: linear-gradient(
         90deg,
-        color-mix(in srgb, var(--ux-brand) 6%, var(--ux-surface-alt)),
+        color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface-alt)),
         color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
     );
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-brand) 18%, transparent);
+}
+
+.ux-coalition-panel--red .ux-btn.active,
+.ux-coalition-panel--red .ux-btn:active {
+    border-color: color-mix(in srgb, var(--ux-danger) 52%, transparent);
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-danger) 12%, transparent);
+}
+
+.ux-coalition-panel--blue .ux-btn.active,
+.ux-coalition-panel--blue .ux-btn:active {
+    border-color: color-mix(in srgb, var(--ux-brand) 52%, transparent);
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-brand) 14%, transparent);
+}
+
+table.dataTable thead th.ux-col-selected,
+table.dataTable tfoot th.ux-col-selected {
+    background: color-mix(in srgb, var(--ux-danger) 14%, var(--ux-surface-alt));
+    color: color-mix(in srgb, var(--ux-danger) 64%, var(--ux-text));
+}
+
+table.dataTable thead th.ux-col-compared,
+table.dataTable tfoot th.ux-col-compared {
+    background: color-mix(in srgb, var(--ux-brand) 14%, var(--ux-surface-alt));
+    color: color-mix(in srgb, var(--ux-brand) 64%, var(--ux-text));
+}
+
+table.dataTable tbody td.ux-col-selected {
+    background-color: color-mix(in srgb, var(--ux-danger) 8%, transparent);
+}
+
+table.dataTable tbody td.ux-col-compared {
+    background-color: color-mix(in srgb, var(--ux-brand) 8%, transparent);
 }

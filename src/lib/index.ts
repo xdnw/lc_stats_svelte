@@ -1055,6 +1055,13 @@ function setupTable(containerElem: HTMLElement,
     }
 ) {
 
+    function getColumnToneClass(title: string | null | undefined): string {
+        const normalized = (title ?? '').toLowerCase();
+        if (normalized.includes('selected')) return 'ux-col-selected';
+        if (normalized.includes('compared') || normalized.includes('confirmed')) return 'ux-col-compared';
+        return '';
+    }
+
     ensureJqueryLoaded().then(() => {
         let jqTable = $(tableElem);
 
@@ -1086,7 +1093,8 @@ function setupTable(containerElem: HTMLElement,
         let columnsInfo: { data: number, className?: string, render?: any, visible?: boolean }[] = [];
         if (dataColumns.length > 0) {
             for (let i = 0; i < dataColumns.length; i++) {
-                let columnInfo: { orderDataType?: string, data: number; className: string; render?: any, defaultContent?: string } = { data: i, className: 'details-control', defaultContent: '' };
+                const toneClass = getColumnToneClass(dataColumns[i]);
+                let columnInfo: { orderDataType?: string, data: number; className: string; render?: any, defaultContent?: string } = { data: i, className: `details-control ${toneClass}`.trim(), defaultContent: '' };
                 let renderFunc = cellFormatByCol[i];
                 if (renderFunc != null) {
                     columnInfo.render = renderFunc;
@@ -1136,6 +1144,11 @@ function setupTable(containerElem: HTMLElement,
                 const tf = document.createElement('th');
 
                 if (title != null) {
+                    const toneClass = getColumnToneClass(title);
+                    if (toneClass) {
+                        th.classList.add(toneClass);
+                        tf.classList.add(toneClass);
+                    }
                     if (searchableColumns == null || searchableColumns.includes(i)) {
                         const input = document.createElement('input');
                         input.type = "text";
