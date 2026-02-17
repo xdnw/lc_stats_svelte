@@ -2,8 +2,8 @@
   /**
    * This page is for viewing a single conflict
    */
-  import Navbar from "../../components/Navbar.svelte";
-  import Footer from "../../components/Footer.svelte";
+  import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
+  import ShareResetBar from "../../components/ShareResetBar.svelte";
   import Progress from "../../components/Progress.svelte";
   import { onMount } from "svelte";
   import {
@@ -19,7 +19,6 @@
     downloadTableElem,
     applySavedQueryParamsIfMissing,
     saveCurrentQueryParams,
-    copyShareLink,
     resetQueryParams,
     formatDatasetProvenance,
     formatAllianceName,
@@ -553,12 +552,8 @@
   });
 
   // Handle the layout button clicks
-  function handleClick(event: MouseEvent): void {
-    _layoutData.layout = parseInt(
-      (event.target as HTMLButtonElement).getAttribute(
-        "data-bs-layout",
-      ) as string,
-    );
+  function handleClick(layout: number): void {
+    _layoutData.layout = layout;
     setQueryParam("layout", _layoutData.layout);
     setQueryParam("sort", null);
     setQueryParam("columns", null);
@@ -680,9 +675,7 @@
     on:load={onScriptLoad}
   ></script>
 </svelte:head>
-<Navbar />
-<!-- <Sidebar /> -->
-<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid p-2 ux-page-body">
   <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
     <a href="conflicts" aria-label="Back to conflicts"
       ><i class="bi bi-arrow-left"></i></a
@@ -697,47 +690,13 @@
     {/if}
   </h1>
   <hr class="mt-2 mb-2" />
-  <div class="row p-0 m-0 ux-tabstrip fw-bold">
-    <button
-      class="col-2 ps-0 pe-0 btn {_layoutData.layout == Layout.COALITION
-        ? 'is-active'
-        : ''}"
-      id="profile-pill"
-      data-bs-layout={Layout.COALITION}
-      on:click={handleClick}
-    >
-      ◑&nbsp;Coalition
-    </button>
-    <button
-      class="col-2 btn ps-0 pe-0 {_layoutData.layout == Layout.ALLIANCE
-        ? 'is-active'
-        : ''}"
-      id="alliance-pill"
-      data-bs-layout={Layout.ALLIANCE}
-      on:click={handleClick}
-    >
-      𖣯&nbsp;Alliance
-    </button>
-    <button
-      class="col-2 ps-0 pe-0 btn {_layoutData.layout == Layout.NATION
-        ? 'is-active'
-        : ''}"
-      id="nation-pill"
-      data-bs-layout={Layout.NATION}
-      on:click={handleClick}
-    >
-      ♟&nbsp;Nation
-    </button>
-    <a class="col-2 ps-0 pe-0 btn" href="tiering?id={conflictId}">
-      📊&nbsp;Tier/Time
-    </a>
-    <a class="col-2 ps-0 pe-0 btn" href="bubble?id={conflictId}">
-      📈&nbsp;Bubble/Time
-    </a>
-    <a class="col-2 ps-0 pe-0 btn" href="chord?id={conflictId}">
-      🌐&nbsp;Web
-    </a>
-  </div>
+  <ConflictRouteTabs
+    {conflictId}
+    mode="layout-picker"
+    currentLayout={_layoutData.layout}
+    active="coalition"
+    onLayoutSelect={handleClick}
+  />
   <ul class="nav fw-bold nav-pills nav-fill m-0 p-2 ux-surface mb-3">
     <li>Layout Picker:</li>
     {#each Object.keys(layouts) as key}
@@ -760,12 +719,7 @@
       </li>
     {/each}
     <li class="ms-auto d-flex gap-1 justify-content-end">
-      <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}
-        >Copy share link</button
-      >
-      <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}
-        >Reset</button
-      >
+      <ShareResetBar onReset={resetFilters} />
     </li>
   </ul>
   {#if !_loaded}
@@ -823,4 +777,3 @@
     <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
   {/if}
 </div>
-<Footer />

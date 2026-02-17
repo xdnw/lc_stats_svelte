@@ -1,15 +1,14 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
     import Select from "svelte-select";
-    import Navbar from "../../components/Navbar.svelte";
-    import Footer from "../../components/Footer.svelte";
+    import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
+    import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import noUiSlider from "nouislider";
     import * as d3 from "d3";
     import {
         decompressBson,
         type GraphData,
-        UNITS_PER_CITY,
         formatTurnsToDate,
         formatDaysToDate,
         Palette,
@@ -17,10 +16,11 @@
         setQueryParam,
         arrayEquals,
         type TierMetric,
+        resolveMetricAccessors,
+        getConflictGraphDataUrl,
         ensureScriptsLoaded,
         applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
-        copyShareLink,
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
@@ -259,7 +259,7 @@
 
     function fetchConflictGraphData(conflictId: string) {
         let start = Date.now();
-        let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
+        let url = getConflictGraphDataUrl(conflictId, config.version.graph_data);
         decompressBson(url)
             .then((data) => {
                 console.log(`Loaded ${url} in ${Date.now() - start}ms`);
@@ -345,38 +345,12 @@
         ) as (keyof typeof ranges)[];
 
         let metrics = [x_axis, y_axis, size];
-        let metric_ids: number[] = [];
-        let metric_indexes: number[] = [];
-        let metric_is_turn: boolean[] = [];
-        let metric_normalize: number[] = [];
-        for (let i = 0; i < metrics.length; i++) {
-            let metric = metrics[i];
-            let metric_id = data.metric_names.indexOf(metric.name);
-            if (metric_id == -1) {
-                console.error(`Metric ${metric.name} not found`);
-                return null;
-            }
-            metric_ids.push(metric_id);
-            let is_turn = data.metrics_turn.includes(metric_id);
-            metric_is_turn.push(is_turn);
-            metric_indexes.push(
-                is_turn
-                    ? data.metrics_turn.indexOf(metric_id)
-                    : data.metrics_day.indexOf(metric_id),
-            );
-            if (metric_indexes[i] == -1) {
-                console.error(`Metric ${metric.name} not found ${metric_id}`);
-                return null;
-            }
-            if (metric.normalize) {
-                let perCity = UNITS_PER_CITY[metric.name];
-                metric_normalize.push(perCity | 0);
-            } else {
-                metric_normalize.push(-1);
-            }
-        }
-
-        let isAnyTurn = metric_is_turn.reduce((a, b) => a || b);
+        const metricAccessors = resolveMetricAccessors(data, metrics);
+        if (!metricAccessors) return null;
+        let metric_indexes = metricAccessors.metric_indexes;
+        let metric_is_turn = metricAccessors.metric_is_turn;
+        let metric_normalize = metricAccessors.metric_normalize;
+        let isAnyTurn = metricAccessors.isAnyTurn;
         let lookup: { [key: number]: { [key: number]: Trace } } = {}; // year -> coalitions
 
         for (let i = 0; i < data.coalitions.length; i++) {
@@ -949,15 +923,8 @@
         rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.css"
     />
-    <style>
-        .noUi-value {
-            color: #666; /* Change this to the color you want */
-        }
-    </style>
 </svelte:head>
-<Navbar />
-<!-- <Sidebar /> -->
-<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
         <a href="conflicts" aria-label="Back to conflicts"
             ><i class="bi bi-arrow-left"></i></a
@@ -974,35 +941,7 @@
         {/if}
     </h1>
     <hr class="mt-2 mb-2" />
-    <div class="row p-0 m-0 ux-tabstrip fw-bold">
-        <a
-            href="conflict?id={conflictId}&layout=coalition"
-            class="col-2 ps-0 pe-0 btn"
-        >
-            ◑&nbsp;Coalition
-        </a>
-        <a
-            href="conflict?id={conflictId}&layout=alliance"
-            class="col-2 btn ps-0 pe-0"
-        >
-            𖣯&nbsp;Alliance
-        </a>
-        <a
-            href="conflict?id={conflictId}&layout=nation"
-            class="col-2 ps-0 pe-0 btn"
-        >
-            ♟&nbsp;Nation
-        </a>
-        <a class="col-2 ps-0 pe-0 btn" href="tiering?id={conflictId}">
-            📊&nbsp;Tier/Time
-        </a>
-        <button class="col-2 ps-0 pe-0 btn is-active">
-            📈&nbsp;Bubble/Time
-        </button>
-        <a class="col-2 ps-0 pe-0 btn" href="chord?id={conflictId}">
-            🌐&nbsp;Web
-        </a>
-    </div>
+    <ConflictRouteTabs conflictId={conflictId} active="bubble" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"
@@ -1042,17 +981,7 @@
                             <i class="bi bi-info-circle"></i>
                         </button></span
                     >
-                    <div class="d-flex gap-1">
-                        <button
-                            class="btn ux-btn btn-sm fw-bold"
-                            on:click={() => copyShareLink()}
-                            >Copy share link</button
-                        >
-                        <button
-                            class="btn ux-btn btn-sm fw-bold"
-                            on:click={resetFilters}>Reset</button
-                        >
-                    </div>
+                    <ShareResetBar onReset={resetFilters} />
                 </div>
                 <div
                     class="select-compact mb-2"
@@ -1139,4 +1068,3 @@
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
 </div>
-<Footer />

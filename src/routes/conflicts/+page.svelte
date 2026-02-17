@@ -4,9 +4,8 @@
    * This page is for viewing the table of all conflicts
    */
   import { base } from "$app/paths";
-  import Navbar from "../../components/Navbar.svelte";
+  import ShareResetBar from "../../components/ShareResetBar.svelte";
   import Progress from "../../components/Progress.svelte";
-  import Footer from "../../components/Footer.svelte";
   import { onMount } from "svelte";
   import {
     decompressBson,
@@ -22,7 +21,6 @@
     setQueryParam,
     applySavedQueryParamsIfMissing,
     saveCurrentQueryParams,
-    copyShareLink,
     resetQueryParams,
     formatDatasetProvenance,
     formatAllianceName,
@@ -460,10 +458,7 @@
   ></script>
 </svelte:head>
 <!-- Add navbar component to page  -->
-<Navbar />
-<!-- Add sidebar component to page -->
-<!-- <Sidebar /> -->
-<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid p-2 ux-page-body">
   <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
     <a href="{base}/" aria-label="Back to home"
       ><i class="bi bi-arrow-left"></i></a
@@ -529,12 +524,7 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
           class:bi-chevron-up={showDiv}
         ></i>
       </button>
-      <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}
-        >Copy share link</button
-      >
-      <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}
-        >Reset</button
-      >
+      <ShareResetBar onReset={resetFilters} />
     </div>
     {#if showDiv}
       <input
@@ -584,5 +574,3 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
     <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
   {/if}
 </div>
-<!-- Add footer component to page -->
-<Footer />

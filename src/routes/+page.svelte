@@ -1,6 +1,4 @@
 <script lang="ts">
-  import Navbar from "../components/Navbar.svelte";
-  import Footer from "../components/Footer.svelte";
   import { onMount } from "svelte";
   import { config } from "./+layout";
 
@@ -188,9 +186,7 @@
   <title>Home</title>
 </svelte:head>
 <canvas id="c" class="bg-body"></canvas>
-<Navbar />
-<!-- <Sidebar /> -->
-<div class="container-fluid" style="min-height: calc(100vh - 203px); z">
+<div class="container-fluid ux-page-body">
   <section>
     <header class="welcome-text">
       <svg class="welcome" style="overflow: visible;">
@@ -234,7 +230,6 @@
     {/each}
   </div>
 </div>
-<Footer />
 
 <style lang="postcss">
   .card-img-top {

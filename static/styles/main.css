@@ -389,6 +389,10 @@ html[data-bs-theme="dark"] .ux-btn-primary {
     padding: 0.45rem 0.75rem !important;
 }
 
+.ux-page-body {
+    min-height: calc(100vh - 203px);
+}
+
 h1.ux-surface.ux-page-title {
     margin: 0 0 0.5rem 0 !important;
     padding: 0.45rem 0.75rem !important;
@@ -542,6 +546,10 @@ html[data-bs-theme="dark"] .app-shell a:focus-visible {
 .vis-item-content {
     padding: 2px 0 2px 0 !important;
     font-size: 10px;
+}
+
+.noUi-value {
+    color: var(--ux-text-muted);
 }
 
 

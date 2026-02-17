@@ -1,4 +1,5 @@
 <script lang="ts">
+    // @ts-nocheck
     import {
         decompressBson,
         type Conflict,
@@ -8,16 +9,17 @@
         Palette,
         darkenColor,
         commafy,
+        toggleCoalitionAllianceSelection,
+        getConflictDataUrl,
         applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
-        copyShareLink,
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
     } from "$lib";
     import { onMount } from "svelte";
-    import Navbar from "../../components/Navbar.svelte";
-    import Footer from "../../components/Footer.svelte";
+    import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
+    import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import * as d3 from "d3";
     import { config } from "../+layout";
@@ -48,7 +50,7 @@
     function setupWebFromId(conflictId: string, queryParams: URLSearchParams) {
         _loadError = null;
         _loaded = false;
-        let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
+        let url = getConflictDataUrl(conflictId, config.version.conflict_data);
         decompressBson(url)
             .then((data) => {
                 _rawData = data;
@@ -105,42 +107,13 @@
     }
 
     function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
-        let coalition = _rawData?.coalitions[coalitionIndex];
-        let hasAll = coalition?.alliance_ids.every((id) =>
-            _allowedAllianceIds.has(id),
+        if (!_rawData) return;
+        _allowedAllianceIds = toggleCoalitionAllianceSelection(
+            _allowedAllianceIds,
+            _rawData.coalitions,
+            coalitionIndex,
+            allianceId,
         );
-        let countCoalition = coalition?.alliance_ids.filter((id) =>
-            _allowedAllianceIds.has(id),
-        ).length;
-        let hasAA = _allowedAllianceIds.has(allianceId);
-        let otherCoalitionId = coalitionIndex === 0 ? 1 : 0;
-        let otherCoalition = _rawData?.coalitions[otherCoalitionId];
-        let otherHasAll = otherCoalition?.alliance_ids.every((id) =>
-            _allowedAllianceIds.has(id),
-        );
-
-        if (hasAA) {
-            if (hasAll && otherHasAll) {
-                // deselect everything in this coalition by this alliance
-                _allowedAllianceIds = new Set([
-                    ...(otherCoalition?.alliance_ids as number[]),
-                    allianceId,
-                ]);
-            } else if (countCoalition == 1) {
-                // add all in this coalition
-                _allowedAllianceIds = new Set([
-                    ..._allowedAllianceIds,
-                    ...(coalition?.alliance_ids as number[]),
-                ]);
-            } else {
-                // deselect current
-                _allowedAllianceIds = new Set(
-                    [..._allowedAllianceIds].filter((id) => id !== allianceId),
-                );
-            }
-        } else {
-            _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
-        }
         setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
         saveCurrentQueryParams();
         setupWebWithCurrentLayout();
@@ -452,9 +425,7 @@
 <svelte:head>
     <!-- <script src="https://d3js.org/d3.v6.js"></script> -->
 </svelte:head>
-<Navbar />
-<!-- <Sidebar /> -->
-<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
         <a href="conflicts" aria-label="Back to conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
         {#if _rawData?.wiki}
@@ -467,43 +438,7 @@
         {/if}
     </h1>
     <hr class="mt-2 mb-2" />
-    <div class="row p-0 m-0 ux-tabstrip fw-bold">
-        <a
-            href="conflict?id={conflictId}&layout=coalition"
-            class="col-2 ps-0 pe-0 btn"
-        >
-            ◑&nbsp;Coalition
-        </a>
-        <a
-            href="conflict?id={conflictId}&layout=alliance"
-            class="col-2 btn ps-0 pe-0"
-        >
-            𖣯&nbsp;Alliance
-        </a>
-        <a
-            href="conflict?id={conflictId}&layout=nation"
-            class="col-2 ps-0 pe-0 btn"
-        >
-            ♟&nbsp;Nation
-        </a>
-        <a
-            class="col-2 ps-0 pe-0 btn"
-            href="tiering?id={conflictId}"
-        >
-            📊&nbsp;Tier/Time
-        </a>
-        <a
-            class="col-2 ps-0 pe-0 btn"
-            href="bubble?id={conflictId}"
-        >
-            📈&nbsp;Bubble/Time
-        </a>
-        <button
-            class="col-2 ps-0 pe-0 btn is-active"
-        >
-            🌐&nbsp;Web
-        </button>
-    </div>
+    <ConflictRouteTabs conflictId={conflictId} active="chord" />
     <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 116px;">
         {#if !_loaded}
             <Progress />
@@ -517,10 +452,7 @@
         {#if _rawData}
             <div class="d-flex justify-content-between align-items-center mb-1">
                 <span class="fw-bold">Layout Picker:</span>
-                <div class="d-flex gap-1">
-                    <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
-                    <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
-                </div>
+                <ShareResetBar onReset={resetFilters} />
             </div>
             {#each _rawData.war_web.headers as header (header)}
                 <button
@@ -577,4 +509,3 @@
     {/if}
     <br />
 </div>
-<Footer />

@@ -2,8 +2,8 @@
     /**
      * This page is for viewing tiering charts for a conflict
      */
-    import Navbar from "../../components/Navbar.svelte";
-    import Footer from "../../components/Footer.svelte";
+    import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
+    import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import type { API, Options } from "nouislider";
     import { Chart, registerables, type ChartConfiguration } from "chart.js";
@@ -16,14 +16,15 @@
         type TierMetric,
         arrayEquals,
         setQueryParam,
-        UNITS_PER_CITY,
+        resolveMetricAccessors,
+        toggleCoalitionAllianceSelection,
+        getConflictGraphDataUrl,
         formatDaysToDate,
         Palette,
         palettePrimary,
         generateColors,
         applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
-        copyShareLink,
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
@@ -122,42 +123,13 @@
     }
 
     function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
-        let coalition = _rawData?.coalitions[coalitionIndex];
-        let hasAll = coalition?.alliance_ids.every((id) =>
-            _allowedAllianceIds.has(id),
+        if (!_rawData) return;
+        _allowedAllianceIds = toggleCoalitionAllianceSelection(
+            _allowedAllianceIds,
+            _rawData.coalitions,
+            coalitionIndex,
+            allianceId,
         );
-        let countCoalition = coalition?.alliance_ids.filter((id) =>
-            _allowedAllianceIds.has(id),
-        ).length;
-        let hasAA = _allowedAllianceIds.has(allianceId);
-        let otherCoalitionId = coalitionIndex === 0 ? 1 : 0;
-        let otherCoalition = _rawData?.coalitions[otherCoalitionId];
-        let otherHasAll = otherCoalition?.alliance_ids.every((id) =>
-            _allowedAllianceIds.has(id),
-        );
-
-        if (hasAA) {
-            if (hasAll && otherHasAll) {
-                // deselect everything in this coalition by this alliance
-                _allowedAllianceIds = new Set([
-                    ...(otherCoalition?.alliance_ids as number[]),
-                    allianceId,
-                ]);
-            } else if (countCoalition == 1) {
-                // add all in this coalition
-                _allowedAllianceIds = new Set([
-                    ..._allowedAllianceIds,
-                    ...(coalition?.alliance_ids as number[]),
-                ]);
-            } else {
-                // deselect current
-                _allowedAllianceIds = new Set(
-                    [..._allowedAllianceIds].filter((id) => id !== allianceId),
-                );
-            }
-        } else {
-            _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
-        }
         if (_rawData) {
             setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
                 replace: true,
@@ -216,7 +188,7 @@
     function setupChartData(conflictId: string) {
         _loadError = null;
         _loaded = false;
-        let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
+        let url = getConflictGraphDataUrl(conflictId, config.version.graph_data);
         decompressBson(url)
             .then((data) => {
                 _rawData = data;
@@ -528,38 +500,13 @@
 
         let normalizeAny = metrics.reduce((a, b) => a || b.normalize, false);
         let stackByAlliance = !normalizeAny && metrics.length == 1;
-        let metric_ids: number[] = [];
-        let metric_indexes: number[] = [];
-        let metric_is_turn: boolean[] = [];
-        let metric_normalize: number[] = [];
-        for (let i = 0; i < metrics.length; i++) {
-            let metric = metrics[i];
-            let metric_id = data.metric_names.indexOf(metric.name);
-            if (metric_id == -1) {
-                console.error(`Metric ${metric.name} not found`);
-                return null;
-            }
-            metric_ids.push(metric_id);
-            let is_turn = data.metrics_turn.includes(metric_id);
-            metric_is_turn.push(is_turn);
-            metric_indexes.push(
-                is_turn
-                    ? data.metrics_turn.indexOf(metric_id)
-                    : data.metrics_day.indexOf(metric_id),
-            );
-            if (metric_indexes[i] == -1) {
-                console.error(`Metric ${metric.name} not found ${metric_id}`);
-                return null;
-            }
-            if (metric.normalize) {
-                let perCity = UNITS_PER_CITY[metric.name];
-                metric_normalize.push(perCity | 0);
-            } else {
-                metric_normalize.push(-1);
-            }
-        }
+        const metricAccessors = resolveMetricAccessors(data, metrics);
+        if (!metricAccessors) return null;
 
-        let isAnyTurn = metric_is_turn.reduce((a, b) => a || b);
+        let metric_indexes = metricAccessors.metric_indexes;
+        let metric_is_turn = metricAccessors.metric_is_turn;
+        let metric_normalize = metricAccessors.metric_normalize;
+        let isAnyTurn = metricAccessors.isAnyTurn;
         let len =
             metrics.length == 1
                 ? alliance_ids.length
@@ -793,7 +740,8 @@
                 if (dataK && dataK.length > 0 && counts) {
                     let countsK = counts[k];
                     for (let j = 0; j < dataK.length; j++) {
-                        dataK[j] = dataK[j] / countsK[j];
+                        let divisor = countsK[j];
+                        dataK[j] = divisor ? dataK[j] / divisor : 0;
                     }
                 }
                 normalized[k] = dataK;
@@ -820,51 +768,15 @@
         rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.css"
     />
-    <style>
-        .noUi-value {
-            color: #666; /* Change this to the color you want */
-        }
-    </style>
 </svelte:head>
-<Navbar />
-<!-- <Sidebar /> -->
-<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
         <a href="conflicts" aria-label="Back to conflicts"
             ><i class="bi bi-arrow-left"></i></a
         >&nbsp;Conflict Tiering: {conflictName}
     </h1>
     <hr class="mt-2 mb-2" />
-    <!-- The tabs -->
-    <div class="row p-0 m-0 ux-tabstrip fw-bold">
-        <a
-            href="conflict?id={conflictId}&layout=coalition"
-            class="col-2 ps-0 pe-0 btn"
-        >
-            ◑&nbsp;Coalition
-        </a>
-        <a
-            href="conflict?id={conflictId}&layout=alliance"
-            class="col-2 btn ps-0 pe-0"
-        >
-            𖣯&nbsp;Alliance
-        </a>
-        <a
-            href="conflict?id={conflictId}&layout=nation"
-            class="col-2 ps-0 pe-0 btn"
-        >
-            ♟&nbsp;Nation
-        </a>
-        <button class="col-2 ps-0 pe-0 btn is-active">
-            📊&nbsp;Tier/Time
-        </button>
-        <a class="col-2 ps-0 pe-0 btn" href="bubble?id={conflictId}">
-            📈&nbsp;Bubble/Time
-        </a>
-        <a class="col-2 ps-0 pe-0 btn" href="chord?id={conflictId}">
-            🌐&nbsp;Web
-        </a>
-    </div>
+    <ConflictRouteTabs conflictId={conflictId} active="tiering" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"
@@ -951,14 +863,7 @@
                 class="ux-control-strip mb-1"
                 style="position: relative; z-index: 2;"
             >
-                <button
-                    class="btn ux-btn btn-sm fw-bold"
-                    on:click={() => copyShareLink()}>Copy share link</button
-                >
-                <button
-                    class="btn ux-btn btn-sm fw-bold"
-                    on:click={resetFilters}>Reset</button
-                >
+                <ShareResetBar onReset={resetFilters} />
                 <label for="inlineCheckbox1" class="ux-toggle-chip">
                     <span>Use Percent</span>
                     <input
@@ -1018,4 +923,3 @@
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
 </div>
-<Footer />

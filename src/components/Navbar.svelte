@@ -40,15 +40,6 @@
       <div class="col-auto">
         <div class="btn-group ux-surface p-1">
           <button
-            type="button"
-            data-bs-toggle="offcanvas"
-            data-bs-target="#sidebar"
-            class="btn ux-btn d-md-none"
-            aria-label="Open sidebar"
-          >
-            <i class="bi bi-layout-sidebar"></i>
-          </button>
-          <button
             class="btn ux-btn d-md-block"
             aria-label="Toggle dark mode"
             on:click={() => toggleDarkMode()}
