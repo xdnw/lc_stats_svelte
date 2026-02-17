@@ -916,25 +916,12 @@
               <option value={id} selected={id == currSource[1]}>{name}</option>
             {/each}
           </select>
-          <button
+          <a
             class="btn ux-btn fw-bold"
-            on:click={() =>
-              modalStrWithCloseButton(
-                "Create Info",
-                `<p>Use the discord bot to run the following command</p>
-<p><code>/conflict create_temp</code></p>
-<p>Create a temporary conflict between two coalitions
-Conflict is not auto updated</p>
-<p><b>Arguments:</b><br/>
-<code>&lt;col1&gt;</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#setdballiance">Set</a>
-A comma separated list of alliances<br/>
-<code>&lt;col2&gt;</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#setdballiance">Set</a><br/>
-<code>&lt;start&gt;</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#longtimestamp">long[Timestamp]</a>
-A unix timestamp, a DMY date or a time difference that will resolve to a timestamp from the current date<br/>
-<code>[end]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#longtimestamp">Long[Timestamp]</a><br/>
-<code>[-g includeGraphs]</code> - <a href="https://github.com/xdnw/locutus/wiki/arguments#boolean">boolean</a></p>
-<a class="btn btn-outline-info" href="https://github.com/xdnw/locutus/wiki/conflict_webpage">More info</a>`,
-              )}>Create Conflict</button
+            href="http://locutus.link/#/command/conflict%20create_temp"
+            target="_blank"
+            rel="noopener noreferrer">Create Conflict</a
+          >
           >
         </div>
       </div>
