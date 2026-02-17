@@ -16,6 +16,8 @@
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
+        getDefaultWarWebHeader,
+        resolveWarWebMetricMeta,
     } from "$lib";
     import { onMount } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
@@ -65,6 +67,7 @@
                     ...data.coalitions[1].alliance_ids,
                 ]);
 
+                _currentHeaderName = getDefaultWarWebHeader(data);
                 let header = queryParams.get("header");
                 if (header && _rawData?.war_web.headers.includes(header)) {
                     _currentHeaderName = header;
@@ -121,7 +124,7 @@
 
     function resetFilters() {
         if (!_rawData) return;
-        _currentHeaderName = "wars";
+        _currentHeaderName = getDefaultWarWebHeader(_rawData);
         _allowedAllianceIds = new Set([
             ..._rawData.coalitions[0].alliance_ids,
             ..._rawData.coalitions[1].alliance_ids,
@@ -224,6 +227,7 @@
         alliance_ids: number[],
         coalition_ids: number[],
     ) {
+        const metricMeta = resolveWarWebMetricMeta(_currentHeaderName);
         // clear my_dataviz
         d3.select("#my_dataviz").selectAll("*").remove();
 
@@ -358,7 +362,7 @@
             data = indices.map((i) => data[i]);
             secondArray = indices.map((i) => secondArray[i]);
 
-            let table = `<h5>${alliance_names[showIndex]} - ${_currentHeaderName}</h5><table class='table fw-bold w-auto'><tr><th></th><th>${alliance_names[showIndex]}</th><th>Other</th><th>Net</th></tr>`;
+            let table = `<h5>Selected alliance: ${alliance_names[showIndex]} (${_currentHeaderName})</h5><div class='small text-muted mb-1'>${metricMeta.directionNote(_currentHeaderName)} Net = Selected value minus Compared value.</div><table class='table fw-bold w-auto'><tr><th>Compared alliance</th><th>${metricMeta.primaryToRowLabel(_currentHeaderName)}</th><th>${metricMeta.rowToPrimaryLabel(_currentHeaderName)}</th><th>Net</th></tr>`;
             labels.forEach((label, index) => {
                 table += `<tr><td style='background-color:${darkenColor(colorSlice[index], 50)};color:white'>${label}</td>`;
                 table += `<td>${commafy(data[index])}</td>`;
@@ -489,6 +493,13 @@
                         )}</button
                     >
                 {/each}
+            </div>
+            <div class="small text-muted mt-2">
+                {resolveWarWebMetricMeta(_currentHeaderName).directionNote(
+                    _currentHeaderName,
+                )}
+                Hover a chord to inspect one Selected alliance versus Compared
+                alliances. "Net" = Selected value minus Compared value.
             </div>
         {/if}
     </div>

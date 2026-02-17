@@ -11,8 +11,11 @@
         ExportTypes,
         formatAllianceName,
         formatDatasetProvenance,
+        getDefaultWarWebHeader,
         getConflictDataUrl,
+        normalizeAllianceIds,
         resetQueryParams,
+        resolveWarWebMetricMeta,
         saveCurrentQueryParams,
         setQueryParam,
         setupContainer,
@@ -41,115 +44,6 @@
         "row_share_pct",
         "abs_net",
     ];
-
-    type MetricMeta = {
-        primaryToRowLabel: (h: string) => string;
-        rowToPrimaryLabel: (h: string) => string;
-        directionNote: (h: string) => string;
-    };
-
-    const LOSS_HEADERS = new Set([
-        "loss_value",
-        "soldier_loss",
-        "soldier_loss_value",
-        "tank_loss",
-        "tank_loss_value",
-        "aircraft_loss",
-        "aircraft_loss_value",
-        "ship_loss",
-        "ship_loss_value",
-        "missile_loss_value",
-        "nuke_loss_value",
-        "unit_loss_value",
-        "building_loss",
-        "building_loss_value",
-        "infra_loss",
-    ]);
-
-    const CONSUME_HEADERS = new Set([
-        "consume_gas",
-        "consume_mun",
-        "consume_value",
-    ]);
-
-    const ATTACK_HEADERS = new Set([
-        "attacks",
-        "ground_attacks",
-        "fortify_attacks",
-        "airstrike_infra_attacks",
-        "airstrike_soldier_attacks",
-        "airstrike_tank_attacks",
-        "airstrike_money_attacks",
-        "airstrike_ship_attacks",
-        "airstrike_aircraft_attacks",
-        "naval_attacks",
-        "missile_attacks",
-        "nuke_attacks",
-        "naval_infra_attacks",
-        "naval_air_attacks",
-        "naval_ground_attacks",
-    ]);
-
-    const WAR_HEADERS = new Set([
-        "wars",
-        "wars_won",
-        "wars_lost",
-        "wars_expired",
-        "wars_peaced",
-        "raid_wars",
-        "ord_wars",
-        "att_wars",
-    ]);
-
-    function resolveMetricMeta(header: string): MetricMeta {
-        if (LOSS_HEADERS.has(header)) {
-            return {
-                primaryToRowLabel: (h) => `${h} inflicted by Compared`,
-                rowToPrimaryLabel: (h) => `${h} inflicted by Selected`,
-                directionNote: (h) =>
-                    `${h} counts losses inflicted by each side in battles against the other.`,
-            };
-        }
-        if (CONSUME_HEADERS.has(header)) {
-            return {
-                primaryToRowLabel: (h) => `${h} consumed by Compared`,
-                rowToPrimaryLabel: (h) => `${h} consumed by Selected`,
-                directionNote: (h) =>
-                    `${h} is the resources consumed by each side during battles against the other.`,
-            };
-        }
-        if (header === "loot_value") {
-            return {
-                primaryToRowLabel: () => `Loot taken by Compared`,
-                rowToPrimaryLabel: () => `Loot taken by Selected`,
-                directionNote: () =>
-                    `loot_value is the loot taken by each side from the other.`,
-            };
-        }
-        if (ATTACK_HEADERS.has(header)) {
-            return {
-                primaryToRowLabel: (h) => `${h} by Compared`,
-                rowToPrimaryLabel: (h) => `${h} by Selected`,
-                directionNote: (h) =>
-                    `${h} counts attacks launched by each side against the other.`,
-            };
-        }
-        if (WAR_HEADERS.has(header)) {
-            return {
-                primaryToRowLabel: (h) => `${h} as attacker: Compared`,
-                rowToPrimaryLabel: (h) => `${h} as attacker: Selected`,
-                directionNote: (h) =>
-                    `${h} counts wars where each side was the attacker/initiator.`,
-            };
-        }
-        // Fallback for unknown headers
-        return {
-            primaryToRowLabel: (h) => `${h} (Compared \u2192 Selected)`,
-            rowToPrimaryLabel: (h) => `${h} (Selected \u2192 Compared)`,
-            directionNote: (h) =>
-                `${h}: "Selected" is the value attributed to Compared coalition, "Compared" to the Selected coalition.`,
-        };
-    }
 
     const DEFAULT_VISIBLE_COLUMN_KEYS: ColumnKey[] = [
         "name",
@@ -192,16 +86,8 @@
         return getCoalition(primaryCoalitionIndex === 0 ? 1 : 0);
     }
 
-    function normalizeAllianceIds(
-        ids: Array<number | string | null | undefined>,
-    ): number[] {
-        return ids
-            .map((id) => Number(id))
-            .filter((id) => Number.isFinite(id) && id > 0);
-    }
-
     function getColumnLabels(header: string): Record<ColumnKey, string> {
-        const meta = resolveMetricMeta(header);
+        const meta = resolveWarWebMetricMeta(header);
         return {
             name: "Alliance",
             primary_to_row: meta.primaryToRowLabel(header),
@@ -294,11 +180,6 @@
 
     function parseCoalitionIndex(raw: string | null): number {
         return raw === "1" ? 1 : 0;
-    }
-
-    function getDefaultHeader(data: Conflict): string {
-        if (data.war_web.headers.includes("wars")) return "wars";
-        return data.war_web.headers[0] ?? "wars";
     }
 
     function defaultSelectionsByCoalition(
@@ -642,7 +523,7 @@
     function resetFilters() {
         if (!_rawData) return;
         primaryCoalitionIndex = 0;
-        currentHeader = getDefaultHeader(_rawData);
+        currentHeader = getDefaultWarWebHeader(_rawData);
         selectedByCoalition = defaultSelectionsByCoalition(_rawData);
         selectedColumns = [...DEFAULT_VISIBLE_COLUMN_KEYS];
         resetQueryParams(
@@ -676,9 +557,9 @@
         );
 
         primaryCoalitionIndex = parseCoalitionIndex(query.get("pc"));
-        currentHeader = query.get("header") ?? getDefaultHeader(data);
+        currentHeader = query.get("header") ?? getDefaultWarWebHeader(data);
         if (!data.war_web.headers.includes(currentHeader))
-            currentHeader = getDefaultHeader(data);
+            currentHeader = getDefaultWarWebHeader(data);
         selectedByCoalition = resolveSelectionFromQuery(data, query);
         if (
             !hasExplicitSelectionParams &&
@@ -916,7 +797,9 @@
             </div>
 
             <div class="small text-muted mt-2">
-                {resolveMetricMeta(currentHeader).directionNote(currentHeader)}
+                {resolveWarWebMetricMeta(currentHeader).directionNote(
+                    currentHeader,
+                )}
                 Each row is one alliance from the Compared coalition. "Net" = Selected
                 value minus Compared value (positive favours Selected).
             </div>
