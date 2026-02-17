@@ -104,50 +104,50 @@
     function resolveMetricMeta(header: string): MetricMeta {
         if (LOSS_HEADERS.has(header)) {
             return {
-                primaryToRowLabel: (h) => `${h} inflicted by Selected`,
-                rowToPrimaryLabel: (h) => `${h} inflicted by Compared`,
+                primaryToRowLabel: (h) => `${h} inflicted by Compared`,
+                rowToPrimaryLabel: (h) => `${h} inflicted by Selected`,
                 directionNote: (h) =>
                     `${h} counts losses inflicted by each side in battles against the other.`,
             };
         }
         if (CONSUME_HEADERS.has(header)) {
             return {
-                primaryToRowLabel: (h) => `${h} consumed by Selected`,
-                rowToPrimaryLabel: (h) => `${h} consumed by Compared`,
+                primaryToRowLabel: (h) => `${h} consumed by Compared`,
+                rowToPrimaryLabel: (h) => `${h} consumed by Selected`,
                 directionNote: (h) =>
                     `${h} is the resources consumed by each side during battles against the other.`,
             };
         }
         if (header === "loot_value") {
             return {
-                primaryToRowLabel: () => `Loot taken by Selected`,
-                rowToPrimaryLabel: () => `Loot taken by Compared`,
+                primaryToRowLabel: () => `Loot taken by Compared`,
+                rowToPrimaryLabel: () => `Loot taken by Selected`,
                 directionNote: () =>
                     `loot_value is the loot taken by each side from the other.`,
             };
         }
         if (ATTACK_HEADERS.has(header)) {
             return {
-                primaryToRowLabel: (h) => `${h} by Selected`,
-                rowToPrimaryLabel: (h) => `${h} by Compared`,
+                primaryToRowLabel: (h) => `${h} by Compared`,
+                rowToPrimaryLabel: (h) => `${h} by Selected`,
                 directionNote: (h) =>
                     `${h} counts attacks launched by each side against the other.`,
             };
         }
         if (WAR_HEADERS.has(header)) {
             return {
-                primaryToRowLabel: (h) => `${h} as attacker: Selected`,
-                rowToPrimaryLabel: (h) => `${h} as attacker: Compared`,
+                primaryToRowLabel: (h) => `${h} as attacker: Compared`,
+                rowToPrimaryLabel: (h) => `${h} as attacker: Selected`,
                 directionNote: (h) =>
                     `${h} counts wars where each side was the attacker/initiator.`,
             };
         }
         // Fallback for unknown headers
         return {
-            primaryToRowLabel: (h) => `${h} (Selected \u2192 Compared)`,
-            rowToPrimaryLabel: (h) => `${h} (Compared \u2192 Selected)`,
+            primaryToRowLabel: (h) => `${h} (Compared \u2192 Selected)`,
+            rowToPrimaryLabel: (h) => `${h} (Selected \u2192 Compared)`,
             directionNote: (h) =>
-                `${h}: "Selected" is the value attributed to Selected coalition, "Compared" to the Compared coalition.`,
+                `${h}: "Selected" is the value attributed to Compared coalition, "Compared" to the Selected coalition.`,
         };
     }
 
@@ -208,8 +208,8 @@
             row_to_primary: meta.rowToPrimaryLabel(header),
             net: "Net",
             total: "Total",
-            primary_share_pct: "Selected share %",
-            row_share_pct: "Compared share %",
+            primary_share_pct: "Compared share %",
+            row_share_pct: "Selected share %",
             abs_net: "Abs Net",
         };
     }
