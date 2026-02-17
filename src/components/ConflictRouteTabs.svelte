@@ -62,7 +62,7 @@
         class="col ps-0 pe-0 btn {active === 'aava' ? 'is-active' : ''}"
         href="aava?id={conflictId}"
     >
-        ⚔️&nbsp;AAvA
+        ⚔️&nbsp;AA vs AA
     </a>
 
     <a
