@@ -2,6 +2,7 @@
     type ConflictTab =
         | "coalition"
         | "alliance"
+        | "aava"
         | "nation"
         | "tiering"
         | "bubble"
@@ -17,19 +18,19 @@
 <div class="row p-0 m-0 ux-tabstrip fw-bold">
     {#if mode === "layout-picker"}
         <button
-            class="col-2 ps-0 pe-0 btn {currentLayout === 0 ? 'is-active' : ''}"
+            class="col ps-0 pe-0 btn {currentLayout === 0 ? 'is-active' : ''}"
             on:click={() => onLayoutSelect?.(0)}
         >
             ◑&nbsp;Coalition
         </button>
         <button
-            class="col-2 ps-0 pe-0 btn {currentLayout === 1 ? 'is-active' : ''}"
+            class="col ps-0 pe-0 btn {currentLayout === 1 ? 'is-active' : ''}"
             on:click={() => onLayoutSelect?.(1)}
         >
             𖣯&nbsp;Alliance
         </button>
         <button
-            class="col-2 ps-0 pe-0 btn {currentLayout === 2 ? 'is-active' : ''}"
+            class="col ps-0 pe-0 btn {currentLayout === 2 ? 'is-active' : ''}"
             on:click={() => onLayoutSelect?.(2)}
         >
             ♟&nbsp;Nation
@@ -37,7 +38,7 @@
     {:else}
         <a
             href="conflict?id={conflictId}&layout=coalition"
-            class="col-2 ps-0 pe-0 btn {active === 'coalition'
+            class="col ps-0 pe-0 btn {active === 'coalition'
                 ? 'is-active'
                 : ''}"
         >
@@ -45,34 +46,39 @@
         </a>
         <a
             href="conflict?id={conflictId}&layout=alliance"
-            class="col-2 btn ps-0 pe-0 {active === 'alliance'
-                ? 'is-active'
-                : ''}"
+            class="col btn ps-0 pe-0 {active === 'alliance' ? 'is-active' : ''}"
         >
             𖣯&nbsp;Alliance
         </a>
         <a
             href="conflict?id={conflictId}&layout=nation"
-            class="col-2 ps-0 pe-0 btn {active === 'nation' ? 'is-active' : ''}"
+            class="col ps-0 pe-0 btn {active === 'nation' ? 'is-active' : ''}"
         >
             ♟&nbsp;Nation
         </a>
     {/if}
 
     <a
-        class="col-2 ps-0 pe-0 btn {active === 'tiering' ? 'is-active' : ''}"
+        class="col ps-0 pe-0 btn {active === 'aava' ? 'is-active' : ''}"
+        href="aava?id={conflictId}"
+    >
+        ⚔️&nbsp;AAvA
+    </a>
+
+    <a
+        class="col ps-0 pe-0 btn {active === 'tiering' ? 'is-active' : ''}"
         href="tiering?id={conflictId}"
     >
         📊&nbsp;Tier/Time
     </a>
     <a
-        class="col-2 ps-0 pe-0 btn {active === 'bubble' ? 'is-active' : ''}"
+        class="col ps-0 pe-0 btn {active === 'bubble' ? 'is-active' : ''}"
         href="bubble?id={conflictId}"
     >
         📈&nbsp;Bubble/Time
     </a>
     <a
-        class="col-2 ps-0 pe-0 btn {active === 'chord' ? 'is-active' : ''}"
+        class="col ps-0 pe-0 btn {active === 'chord' ? 'is-active' : ''}"
         href="chord?id={conflictId}"
     >
         🌐&nbsp;Web

@@ -1199,9 +1199,18 @@ function setupTable(containerElem: HTMLElement,
 
             // Prevent the search input from triggering the row details toggle
             function preventButtonPropagation() {
-                const buttons = document.querySelectorAll("button");
-                buttons.forEach(button => {
+                const localButtons = containerElem.querySelectorAll(
+                    '.table-toggles button, .dataTables_wrapper button',
+                );
+                localButtons.forEach((button) => {
                     button.addEventListener('click', stopPropagation);
+                });
+
+                const localInputs = containerElem.querySelectorAll(
+                    '.table-toggles input, thead input, tfoot input',
+                );
+                localInputs.forEach((input) => {
+                    input.addEventListener('click', stopPropagation);
                 });
             }
 
