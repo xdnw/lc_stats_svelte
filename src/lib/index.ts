@@ -1,6 +1,7 @@
 // import msgpack from 'msgpack-lite';
 import { Unpackr } from 'msgpackr';
-import { render } from 'svelte/server';
+declare const $: any;
+declare const jQuery: any;
 const extUnpackr = new Unpackr({ largeBigIntToFloat: true, mapsAsObjects: true, bundleStrings: true, int64AsType: "number" });
 /*
 Shared typescript for all pages
@@ -26,18 +27,18 @@ export enum ConflictIndex {
     C2_NAME = 3,
     START = 4,
     END = 5,
-    WARS = 6,
-    ACTIVE_WARS = 7,
-    C1_DEALT = 8,
-    C2_DEALT = 9,
-    C1_ID = 10,
-    C2_ID = 11,
-    WIKI = 12,
-    STATUS = 13,
-    CB = 14,
-    POSTS = 15,
-    SOURCE = 16,
-    CATEGORY = 17,
+    C1_ID = 6,
+    C2_ID = 7,
+    WIKI = 8,
+    STATUS = 9,
+    CB = 10,
+    POSTS = 11,
+    SOURCE = 12,
+    CATEGORY = 13,
+    WARS = 14,
+    ACTIVE_WARS = 15,
+    C1_DEALT = 16,
+    C2_DEALT = 17,
     TOTAL = 18
 }
 
@@ -156,7 +157,7 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
     const data2dInclHeaderNames: any[][] = [visibleColumnNames];
 
     // Add row data to the data array
-    table.rows({ search: 'applied' }).every(function (_: number) {
+    table.rows({ search: 'applied' }).every(function (this: any, _: number) {
         const rowData: any[] = [];
         this.data().forEach((cellData: any, cellIdx: number) => {
             if (visibleColumnIds.has(cellIdx + 1)) {
@@ -398,19 +399,19 @@ export function commafy(num: number): string {
  * - formatDate
  */
 export function addFormatters() {
-    (window as any).formatNumber = (data: number, type: any, row: any, meta: any): string => {
+    (window as any).formatNumber = (data: number, _type: any, _row: any, _meta: any): string => {
         if (data == 0) return '0';
         if (data < 1000 && data > -1000) return data.toString();
         return commafy(data);
     }
 
-    (window as any).formatMoney = (data: number, type: any, row: any, meta: any): string => {
+    (window as any).formatMoney = (data: number, _type: any, _row: any, _meta: any): string => {
         if (data == 0) return '$0';
         if (data < 1000 && data > -1000) return '$' + data.toString();
         return '$' + commafy(data);
     }
 
-    (window as any).formatDate = (data: number, type: any, row: any, meta: any): string => {
+    (window as any).formatDate = (data: number, _type: any, _row: any, _meta: any): string => {
         return formatDate(data);
     }
 
@@ -490,6 +491,9 @@ const decompress = async (url: string) => {
     const ds = new DecompressionStream('gzip');
     const response = await fetch(url);
     console.log("Fetch time: " + (Date.now() - start) + "ms"); start = Date.now();
+    if (!response.body) {
+        throw new Error('Response body is null');
+    }
     const stream_in = response.body.pipeThrough(ds);
     const blob_out = await new Response(stream_in).blob();
     console.log("Decompress blob time: " + (Date.now() - start) + "ms");
@@ -629,40 +633,44 @@ export function setupContainer(container: HTMLElement, data: TableData) {
  * @param id the id to give the table (i.e. the uuid v4 string)
  */
 function addTable(container: HTMLElement, id: string) {
-    container.appendChild(htmlToElement(`<button class="ms-1 btn mb-1 btn-secondary btn-info opacity-80 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#tblCol" aria-expanded="false" aria-controls="tblCol">
-    <i class="bi bi-table"></i>&nbsp;Add Column&nbsp;<i class="bi bi-chevron-down"></i></button>`));
-    container.appendChild(htmlToElement(`<div class="dropdown d-inline">
-    <button class="btn btn mb-1 btn-secondary btn-info fw-bold opacity-80" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+    const collapseId = `tblCol-${id}`;
+    const dropdownId = `dropdownMenuButton-${id}`;
+    const searchId = `table-search-${id}`;
+
+    container.appendChild(htmlToElement(`<div class="ux-toolbar">
+    <button class="btn ux-btn" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+    <i class="bi bi-layout-three-columns"></i>&nbsp;Customize Columns&nbsp;<i class="bi bi-chevron-down"></i></button>
+    <div class="dropdown d-inline">
+    <button class="btn ux-btn" type="button" id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
     Export&nbsp;<i class="bi bi-chevron-down"></i>
     </button>
-    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, 'CSV')"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, 'CSV')"><kbd><i class="bi bi-copy"></i> ,</kbd> Copy CSV</button></li>
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(false, 'TSV')"><kbd><i class="bi bi-download"></i><i class="bi bi-indent"></i></kbd> Download TSV</button></li>
-    <li><button class="dropdown-item btn btn-sm m-0 btn-secondary btn-outline-secondary fw-bold" type="button" onclick="download(true, 'TSV')"><kbd><i class="bi bi-copy"></i><i class="bi bi-indent"></i></kbd> Copy TSV</button></li>
+    <ul class="dropdown-menu" aria-labelledby="${dropdownId}">
+    <li><button class="dropdown-item fw-bold" type="button" onclick="download(false, 'CSV')"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
+    <li><button class="dropdown-item fw-bold" type="button" onclick="download(true, 'CSV')"><kbd><i class="bi bi-copy"></i> ,</kbd> Copy CSV</button></li>
+    <li><button class="dropdown-item fw-bold" type="button" onclick="download(false, 'TSV')"><kbd><i class="bi bi-download"></i><i class="bi bi-indent"></i></kbd> Download TSV</button></li>
+    <li><button class="dropdown-item fw-bold" type="button" onclick="download(true, 'TSV')"><kbd><i class="bi bi-copy"></i><i class="bi bi-indent"></i></kbd> Copy TSV</button></li>
     </ul>
-    </div>`));
-    container.appendChild(htmlToElement(`<div class="bg-body border rounded collapse table-toggles" id="tblCol">
-    <input id="table-search" class="form-control-sm w-100 mb-1" type="search" placeholder="Search" aria-label="Search">
-    <div class="d-flex justify-content-left align-items-center ms-1">
-        <div class="d-flex justify-content-center align-items-center alert alert-danger text-center mb-1 py-1 text-danger">
-            Use the buttons at the bottom of the table to remove a column. Click and drag the column header to rearrange.
-        </div>
     </div>
     </div>`));
-    container.appendChild(htmlToElement(`<table id="${id}" class="bg-body-secondary border table compact table-bordered table-striped d-none" style="width:100%">
+    container.appendChild(htmlToElement(`<div class="collapse table-toggles mb-2" id="${collapseId}">
+    <input id="${searchId}" class="form-control-sm w-100 mb-2" type="search" placeholder="Search columns" aria-label="Search columns">
+    <div class="ux-callout mb-2">
+            Use the buttons at the bottom of the table to hide/show columns. Drag the header to reorder columns.
+    </div>
+    </div>`));
+    container.appendChild(htmlToElement(`<div class="ux-table-wrap"><table id="${id}" class="bg-body-secondary border table compact table-bordered table-striped d-none" style="width:100%">
         <thead class="table-info"><tr></tr></thead>
         <tbody></tbody>
         <tfoot><tr></tr></tfoot>
-    </table>`));
+    </table></div>`));
 
     let input = container.getElementsByTagName("input")[0];
     input.addEventListener('input', function () {
-        let tableToggles = document.getElementsByClassName('table-toggles');
+        let tableToggles = container.getElementsByClassName('table-toggles');
         for (let i = 0; i < tableToggles.length; i++) {
             let buttons = tableToggles[i].getElementsByTagName('button');
             for (let j = 0; j < buttons.length; j++) {
-                if (buttons[j].textContent?.includes(this.value)) {
+                if (buttons[j].textContent?.toLowerCase().includes(this.value.toLowerCase())) {
                     buttons[j].classList.remove('d-none');
                 } else {
                     buttons[j].classList.add('d-none');
@@ -674,7 +682,11 @@ function addTable(container: HTMLElement, id: string) {
 
 // Set the query param
 // Called during a layout button click (handleClick)
-export function setQueryParam(param: string, value: any) {
+export function setQueryParam(
+    param: string,
+    value: any,
+    options?: { replace?: boolean }
+) {
     let url = new URL(window.location.href);
     let oldUrl = url.toString();
     if (value == null) {
@@ -684,7 +696,11 @@ export function setQueryParam(param: string, value: any) {
     }
     let newUrl = url.toString();
     if (oldUrl !== newUrl) {
-        window.history.pushState({}, '', newUrl);
+        if (options?.replace) {
+            window.history.replaceState({}, '', newUrl);
+        } else {
+            window.history.pushState({}, '', newUrl);
+        }
     }
 }
 
@@ -693,6 +709,7 @@ function ensureJqueryLoaded(): Promise<void> {
         if (typeof jQuery === 'undefined') {
             return Promise.reject(new Error('jQuery did not load correctly'));
         }
+        return;
     });
 }
 
@@ -765,7 +782,6 @@ function setupTable(containerElem: HTMLElement,
         let dataColumns = dataSetRoot.columns;
         let dataList = dataSetRoot.data;
         let searchableColumns = dataSetRoot.searchable;
-        let searchSet = new Set<number>(searchableColumns); // faster
         let cell_format = dataSetRoot.cell_format;
         let row_format = dataSetRoot.row_format;
         let sort = dataSetRoot.sort;
@@ -801,14 +817,16 @@ function setupTable(containerElem: HTMLElement,
                 columnsInfo.push(columnInfo);
             }
         }
-        const tableArr = [null];
+        const tableArr: any[] = [null];
 
         // Set column visibility and add the search input to the header
-        const thead = document.querySelector("thead tr");
-        const tfoot = document.querySelector("tfoot tr");
-        const tableToggles = document.querySelector(".table-toggles");
-        function handleSearch(input: HTMLInputElement, event: Event) {
-            const column = tableArr[0].column(input.closest('th').cellIndex);
+        const thead = containerElem.querySelector("thead tr");
+        const tfoot = containerElem.querySelector("tfoot tr");
+        const tableToggles = containerElem.querySelector(".table-toggles");
+        function handleSearch(input: HTMLInputElement, _event: Event) {
+            const th = input.closest('th');
+            if (!th || tableArr[0] == null) return;
+            const column = tableArr[0].column((th as HTMLTableCellElement).cellIndex);
             if (column.search() !== input.value) {
                 column.search(input.value).draw();
             }
@@ -853,14 +871,14 @@ function setupTable(containerElem: HTMLElement,
                     }
 
                     if (i != 0) {
-                        let color = columnInfo.visible ? "btn-outline-danger" : "btn-outline-info";
                         const button = document.createElement('button');
-                        button.className = `toggle-vis btn btn-sm opacity-75 fw-bold ms-1 mb-1 ${color}`;
+                        button.className = 'toggle-vis ux-toggle-btn btn btn-sm fw-bold';
                         button.dataset.column = (i + 1).toString();
                         button.textContent = title;
                         tf.appendChild(button);
 
                         if (!columnInfo.visible) {
+                            button.classList.add('is-hidden');
                             (button as any).oldParent = tf;
                             tableToggles.appendChild(button);
                         }
@@ -876,7 +894,7 @@ function setupTable(containerElem: HTMLElement,
         }
 
         ensureDTLoaded().then(() => {
-            $.fn.dataTableExt.oStdClasses.sWrapper = "mt-3 py-1 border px-1 dataTables_wrapper";
+            $.fn.dataTableExt.oStdClasses.sWrapper = "mt-2 py-2 px-2 dataTables_wrapper";
             let table = tableArr[0] = (jqTable as any).DataTable({
                 // the array of column info
                 columns: [
@@ -903,7 +921,7 @@ function setupTable(containerElem: HTMLElement,
                 stateSave: false,
                 scrollX: false,
                 // // createdRow: row_format,
-                rowCallback: function (row, data, displayIndex, displayIndexFull) {
+                rowCallback: function (row: any, data: any, _displayIndex: any, displayIndexFull: any) {
                     $('td:eq(0)', row).html(displayIndexFull + 1);
                     if (row_format) {
                         row_format(row, data, displayIndexFull);
@@ -944,14 +962,14 @@ function setupTable(containerElem: HTMLElement,
                 //     });
                 // }
             });
-            table.on('column-reorder', function (e, settings, details) {
+            table.on('column-reorder', function (_e: any, _settings: any, _details: any) {
                 const pageInfo = table.page.info();
                 const currentPage = pageInfo.page;
                 const rowsPerPage = pageInfo.length;
                 let startI = currentPage * rowsPerPage;
                 // iterate over all the `tr` in table and set td 0 to the correct index, use jquery/html, not datatables
                 // Iterate over all the `tr` elements in the table
-                jqTable.find('tbody tr').each(function (index) {
+                jqTable.find('tbody tr').each(function (this: any, index: number) {
                     // Set the textContent of the first `td` element to the correct index
                     $(this).find('td:eq(0)').text(startI + index + 1);
                 });
@@ -977,7 +995,7 @@ function setupTable(containerElem: HTMLElement,
             // Handle clicking the show/hide column buttons
             function handleToggleVis(jqContainer: any, table: any) {
                 const toggles = jqContainer.querySelectorAll('.toggle-vis');
-                toggles.forEach(toggle => {
+                toggles.forEach((toggle: any) => {
                     toggle.addEventListener('click', function (e: Event) {
                         e.preventDefault();
                         const target = e.target as HTMLElement;
@@ -985,6 +1003,7 @@ function setupTable(containerElem: HTMLElement,
 
                         // Toggle the visibility
                         column.visible(!column.visible());
+                        target.classList.toggle('is-hidden', !column.visible());
 
                         // Move element
                         if (target.parentElement && target.parentElement.tagName === "TH") {
@@ -1016,12 +1035,12 @@ function setupTable(containerElem: HTMLElement,
                 let rows = "";
                 table.columns().every(function (index: any) {
                     if (index === 0) return;
-                    let numFormat = [];
+                    let numFormat: number[] = [];
                     if (cell_format.formatNumber != null) {
-                        numFormat.push(cell_format.formatNumber);
+                        numFormat.push(...cell_format.formatNumber);
                     }
                     if (cell_format.formatMoney != null) {
-                        numFormat.push(cell_format.formatMoney);
+                        numFormat.push(...cell_format.formatMoney);
                     }
                     let title = dataColumns[index - 1];
                     console.log("TITLE ")
@@ -1048,6 +1067,7 @@ function setupTable(containerElem: HTMLElement,
                     const target = event.target as HTMLElement;
                     if (target.classList.contains('details-control')) {
                         const tr = target.closest('tr');
+                        if (!tr) return;
                         const row = table.row(tr);
 
                         if (row.child.isShown()) {

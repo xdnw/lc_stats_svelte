@@ -15,10 +15,8 @@
     setQueryParam,
     trimHeader,
     type TableData,
-    downloadTableData,
     ExportTypes,
     formatDuration,
-    downloadCells,
     downloadTableElem,
   } from "$lib";
   import { config } from "../+layout";
@@ -147,6 +145,7 @@
   };
 
   let _currentRowData: TableData;
+  const getVis = (): any => (window as any).vis;
 
   /**
    * Big function for loading the conflict table for a provided layout
@@ -161,7 +160,7 @@
    */
   function loadLayout(
     _rawData: Conflict,
-    type: Layout,
+    type: number,
     layout: string[],
     sortBy: string,
     sortDir: string,
@@ -177,7 +176,7 @@
     let visible: number[] = [];
     let cell_format: { [key: string]: number[] } = {};
     let row_format:
-      | ((row: HTMLElement, data: (number | number[])[], index: number) => void)
+      | ((row: HTMLElement, data: any, index: number) => void)
       | null = null;
 
     // Alliance ids (set)
@@ -187,11 +186,7 @@
     // Set the row format based on the layout
     switch (type) {
       case Layout.COALITION:
-        row_format = (
-          row: HTMLElement,
-          data: (number | number[])[],
-          index: number,
-        ) => {
+        row_format = (row: HTMLElement, data: any, _index: number) => {
           let name = data[0] as number;
           if (name == 0) {
             row.classList.add("bg-danger-subtle");
@@ -201,11 +196,7 @@
         };
         break;
       case Layout.ALLIANCE:
-        row_format = (
-          row: HTMLElement,
-          data: (number | number[])[],
-          index: number,
-        ) => {
+        row_format = (row: HTMLElement, data: any, _index: number) => {
           let id = (data[0] as number[])[1];
           if (col1.has(id)) {
             row.classList.add("bg-danger-subtle");
@@ -215,11 +206,7 @@
         };
         break;
       case Layout.NATION:
-        row_format = (
-          row: HTMLElement,
-          data: (number | number[])[],
-          index: number,
-        ) => {
+        row_format = (row: HTMLElement, data: any, _index: number) => {
           let id = (data[0] as number[])[2] as number;
           if (col1.has(id)) {
             row.classList.add("bg-danger-subtle");
@@ -297,7 +284,6 @@
 
     // Helper function for adding a row to the `rows` 2d array
     let addRow = (colEntry: any, index: number) => {
-      let colName = colEntry.name;
       let alliance_ids = colEntry.alliance_ids;
       let alliance_names = colEntry.alliance_names;
       let nation_ids = colEntry.nation_ids;
@@ -392,6 +378,7 @@
 
   // Create (or recreate) the table based on the current layout (_layoutData)
   function loadCurrentLayout() {
+    if (!_rawData) return;
     loadLayout(
       _rawData,
       _layoutData.layout,
@@ -407,19 +394,20 @@
   // If there are posts, load the posts into the timeline
   function setupConflictTables(conflictId: string) {
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
-    decompressBson(url).then((data) => {
-      _rawData = data;
+    decompressBson(url).then((data: Conflict) => {
+      const loadedData = data;
+      _rawData = loadedData;
       setColNames(
-        _rawData.coalitions[0].alliance_ids,
-        _rawData.coalitions[0].alliance_names,
+        loadedData.coalitions[0].alliance_ids,
+        loadedData.coalitions[0].alliance_names,
       );
       setColNames(
-        _rawData.coalitions[1].alliance_ids,
-        _rawData.coalitions[1].alliance_names,
+        loadedData.coalitions[1].alliance_ids,
+        loadedData.coalitions[1].alliance_names,
       );
       loadCurrentLayout();
-      if (_rawData.posts && Object.keys(_rawData.posts).length) {
-        loadPosts(_rawData.posts);
+      if (loadedData.posts && Object.keys(loadedData.posts).length) {
+        loadPosts(loadedData.posts);
       }
       _loaded = true;
     });
@@ -441,7 +429,7 @@
     // Add the cell format functions to the window object
     addFormatters();
     (window as any).getIds = (
-      coalitionName: string,
+      _coalitionName: string,
       index: number,
     ): { alliance_ids: number[]; alliance_names: string[] } => {
       return _rawData?.coalitions[index] as {
@@ -453,9 +441,9 @@
     // Cell format function for a nation
     (window as any).formatNation = (
       data: any,
-      type: any,
-      row: any,
-      meta: any,
+      _type: any,
+      _row: any,
+      _meta: any,
     ) => {
       let aaId = data[2] as number;
       let aaName = namesByAllianceId[aaId];
@@ -473,7 +461,12 @@
     };
 
     // Cell format function for a nation
-    (window as any).formatAA = (data: any, type: any, row: any, meta: any) => {
+    (window as any).formatAA = (
+      data: any,
+      _type: any,
+      _row: any,
+      _meta: any,
+    ) => {
       return (
         '<a href="https://politicsandwar.com/alliance/id=' +
         data[1] +
@@ -484,15 +477,18 @@
     };
 
     // Cell format function for a coalition
-    (window as any).formatCol = (data: any, type: any, row: any, meta: any) => {
+    (window as any).formatCol = (
+      data: any,
+      _type: any,
+      _row: any,
+      _meta: any,
+    ) => {
       let index = data; //row.name;
       let button = document.createElement("button");
+      if (!_rawData) return "";
 
       button.setAttribute("type", "button");
-      button.setAttribute(
-        "class",
-        "ms-1 btn btn-info btn-sm fw-bold opacity-75",
-      );
+      button.setAttribute("class", "ms-1 btn ux-btn btn-sm fw-bold");
       button.setAttribute(
         "onclick",
         `showNames('${_rawData.coalitions[index].name}',${index})`,
@@ -547,8 +543,9 @@
       dataLoaded &&
       postsData &&
       ((script && script.getAttribute("data-loaded")) ||
-        typeof vis !== "undefined")
+        typeof getVis() !== "undefined")
     ) {
+      if (!_rawData) return;
       console.log("Initializing timeline");
       // DOM element where the Timeline will be attached
       const container = document.getElementById("visualization");
@@ -556,6 +553,7 @@
       if (!container) return;
 
       // Create a DataSet (allows two way data-binding)
+      const vis = getVis();
       const items = new vis.DataSet();
 
       // Loop through the posts and add them to the DataSet
@@ -630,20 +628,22 @@
 </svelte:head>
 <Navbar />
 <!-- <Sidebar /> -->
-<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
-  <h1>
-    <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
+<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+  <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
+    <a href="conflicts" aria-label="Back to conflicts"
+      ><i class="bi bi-arrow-left"></i></a
+    >&nbsp;Conflict: {conflictName}
     <!-- Link the wiki (if it exists) -->
     {#if _rawData?.wiki}
       <a
-        class="btn btn btn-info opacity-75 fw-bold"
+        class="btn ux-btn fw-bold"
         href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}"
         >Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a
       >
     {/if}
   </h1>
-  <hr class="mt-1" />
-  <div class="row p-0 m-0">
+  <hr class="mt-2 mb-2" />
+  <div class="row p-0 m-0 ux-tabstrip">
     <button
       class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold {_layoutData.layout ==
       Layout.COALITION
@@ -660,7 +660,7 @@
       Layout.ALLIANCE
         ? 'bg-light-subtle border border-bottom-0'
         : 'border-0 border-bottom'}"
-      id="billing-pill"
+      id="alliance-pill"
       data-bs-layout={Layout.ALLIANCE}
       on:click={handleClick}
     >
@@ -671,7 +671,7 @@
       Layout.NATION
         ? 'bg-light-subtle border border-bottom-0'
         : 'border-0 border-bottom'}"
-      id="billing-pill"
+      id="nation-pill"
       data-bs-layout={Layout.NATION}
       on:click={handleClick}
     >
@@ -696,14 +696,12 @@
       🌐&nbsp;Web
     </a>
   </div>
-  <ul
-    class="nav fw-bold nav-pills nav-fill m-0 p-0 bg-light-subtle border-bottom border-3 p-1 mb-3"
-  >
+  <ul class="nav fw-bold nav-pills nav-fill m-0 p-2 ux-surface mb-3">
     <li>Layout Picker:</li>
     {#each Object.keys(layouts) as key}
       <li>
         <button
-          class="btn btn-sm ms-1 btn-secondary btn-outline-info opacity-75 fw-bold {_layoutData.columns ===
+          class="btn ux-btn btn-sm ms-1 fw-bold {_layoutData.columns ===
           layouts[key].columns
             ? 'active'
             : ''}"
@@ -722,14 +720,14 @@
   {#if !_loaded}
     <Progress />
   {/if}
-  <div class="" id="conflict-table-1"></div>
+  <div id="conflict-table-1"></div>
   <!-- If coalition layout, then display the CB and Status -->
   {#if _layoutData.layout == Layout.COALITION}
     <hr />
     <div class="row m-0">
       {#if _rawData?.cb}
         <div class="col-md-6 col-sm-12">
-          <div class="col-md-12 ms-2 p-2 rounded border">
+          <div class="col-md-12 ms-2 p-2 rounded border ux-surface">
             <h3>Casus Belli</h3>
             <pre>
                 {_rawData?.cb}
@@ -739,7 +737,7 @@
       {/if}
       {#if _rawData?.status}
         <div class="col-md-6 col-sm-12">
-          <div class="col-md-12 ms-2 p-2 rounded border bg-body">
+          <div class="col-md-12 ms-2 p-2 rounded border ux-surface">
             <h3>Status</h3>
             <pre>
                 {_rawData?.status}
@@ -751,14 +749,20 @@
   {/if}
   <hr />
   <!-- The date range title -->
-  <h4>{formatDate(_rawData?.start)} - {formatDate(_rawData?.end)}</h4>
-  <!-- Empty div used for the timeline (vis.js) -->
-  <div class="m-0" id="visualization"></div>
+  <div class="ux-surface p-2">
+    <h4>
+      {formatDate(_rawData?.start ?? null)} - {formatDate(
+        _rawData?.end ?? null,
+      )}
+    </h4>
+    <!-- Empty div used for the timeline (vis.js) -->
+    <div class="m-0" id="visualization"></div>
+  </div>
 </div>
-{#if _rawData && _rawData.update_ms}
+{#if _rawData && (_rawData as any).update_ms}
   <p>
     Last updated {formatDuration(
-      Math.round((Date.now() - _rawData.update_ms) / 1000),
+      Math.round((Date.now() - (_rawData as any).update_ms) / 1000),
     )} ago
   </p>
 {/if}

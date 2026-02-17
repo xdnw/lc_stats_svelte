@@ -1,6 +1,5 @@
 <script lang="ts">
   import Navbar from "../components/Navbar.svelte";
-  import Sidebar from "../components/Sidebar.svelte";
   import Footer from "../components/Footer.svelte";
   import { onMount } from "svelte";
   import { config } from "./+layout";
@@ -94,7 +93,7 @@
   // The matrix background animation
   onMount(() => {
     let queryParams = new URLSearchParams(window.location.search);
-    let setGuild = queryParams.get("guild");
+    let setGuild = queryParams.get("guild") || queryParams.get("guild_id");
     if (setGuild) {
       _guildId = setGuild;
     }
@@ -210,7 +209,7 @@
             src={adTemplate.img}
             style="background:{adTemplate.bg}"
             class="card-img-top img-fluid object-fit-fill"
-            alt="..."
+            alt={adTemplate.subtitle + " card"}
           />
           <div class="card-body" style="height: 9rem;">
             <h5 class="card-title">
@@ -224,7 +223,7 @@
           <div class="card-footer">
             <a
               href={adTemplate.invite === "conflicts" && _guildId
-                ? "conflicts?guild_id=" + _guildId
+                ? "conflicts?guild=" + _guildId
                 : adTemplate.invite}
               class="btn btn-lg btn-secondary btn-outline-info border-3"
               >{adTemplate.label}</a

@@ -1,22 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-
-  // Function to read cookie
-  function readCookie(name: string) {
-    var nameEQ = name + "=";
-    var ca = document.cookie.split(";");
-    for (var i = 0; i < ca.length; i++) {
-      var c = ca[i];
-      while (c.charAt(0) === " ") {
-        c = c.substring(1, c.length);
-      }
-      if (c.indexOf(nameEQ) === 0) {
-        return c.substring(nameEQ.length, c.length);
-      }
-    }
-    return null;
-  }
-
   // Function to set cookie
   function setCookie(name: string, value: string, days: number) {
     var expires = "";
@@ -44,32 +26,36 @@
 
   function handleSearch(event: Event) {
     event.preventDefault();
-    const query = (document.getElementById('navbar-search') as HTMLInputElement).value;
+    const query = (document.getElementById("navbar-search") as HTMLInputElement)
+      .value;
     window.location.href = `${searchUrl}${encodeURIComponent(query)}`;
   }
 </script>
 
-<nav class="navbar navbar-expand-md border-bottom bg-body">
-  <div class="container-fluid p-0 m-0">
-    <div class="row d-flex w-100 p-0 m-0">
-      <div class="col-auto p-0 pe-1">
-        <div class="btn-group">
+<nav
+  class="navbar navbar-expand-md border-bottom bg-body-subtle shadow-sm sticky-top"
+>
+  <div class="container-fluid py-2">
+    <div class="row d-flex w-100 g-2 align-items-center">
+      <div class="col-auto">
+        <div class="btn-group ux-surface p-1">
           <button
             type="button"
             data-bs-toggle="offcanvas"
             data-bs-target="#sidebar"
-            class="btn btn btn-secondary d-md-none"
+            class="btn ux-btn d-md-none"
+            aria-label="Open sidebar"
           >
             <i class="bi bi-layout-sidebar"></i>
           </button>
           <button
-            class="btn btn btn-secondary d-md-block"
+            class="btn ux-btn d-md-block"
             aria-label="Toggle dark mode"
             on:click={() => toggleDarkMode()}
           >
-            <i class="bi bi-moon-stars-fill" style="color:gray"></i>
+            <i class="bi bi-moon-stars-fill"></i>
           </button>
-          <div class="d-inline text-truncate mt-1">
+          <div class="d-inline text-truncate mt-1 ux-muted">
             <!-- @for (Map.Entry<String, String> entry : ws.getPathLinks().entrySet())
                             <span class="mx-1">/</span>
                             <a href="${entry.getValue()}/" class="simple-link fw-bold">${entry.getKey()}</a>
@@ -77,24 +63,30 @@
           </div>
         </div>
       </div>
-      <div class="col p-0">
-        <form class="d-flex" role="search" id="navbar-search-form" on:submit={handleSearch}>
+      <div class="col">
+        <form
+          class="d-flex ux-surface p-1"
+          role="search"
+          id="navbar-search-form"
+          on:submit={handleSearch}
+        >
           <input
             id="navbar-search"
-            class="form-control rounded-end-0"
+            class="form-control border-0"
             type="search"
             placeholder="Search pages..."
             aria-label="Search"
           />
           <button
             type="submit"
-            class="btn btn-light text-nowrap rounded-start-0"
+            class="btn ux-btn ux-btn-primary text-nowrap"
+            aria-label="Search"
           >
             <i class="bi bi-search"></i>
           </button>
         </form>
       </div>
-      <div class="col-auto p-0 ps-1">
+      <div class="col-auto">
         <!-- @template.dropdown(ws = ws) -->
       </div>
     </div>

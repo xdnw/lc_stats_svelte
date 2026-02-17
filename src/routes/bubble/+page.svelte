@@ -1,340 +1,568 @@
-<script lang='ts'>
-import { onMount, tick } from 'svelte';
-import Select from 'svelte-select';
-import Navbar from '../../components/Navbar.svelte';
-import Sidebar from '../../components/Sidebar.svelte';
-import Footer from '../../components/Footer.svelte';
-import Progress from '../../components/Progress.svelte';
-import noUiSlider from 'nouislider';
-import * as d3 from 'd3';
-import { decompressBson, type GraphData, UNITS_PER_CITY, formatTurnsToDate, formatDaysToDate, Palette, generateColors, setQueryParam, arrayEquals, type TierMetric, ensureScriptsLoaded } from '$lib';
-  import { config } from '../+layout';
+<script lang="ts">
+    import { onMount, onDestroy, tick } from "svelte";
+    import Select from "svelte-select";
+    import Navbar from "../../components/Navbar.svelte";
+    import Footer from "../../components/Footer.svelte";
+    import Progress from "../../components/Progress.svelte";
+    import noUiSlider from "nouislider";
+    import * as d3 from "d3";
+    import {
+        decompressBson,
+        type GraphData,
+        UNITS_PER_CITY,
+        formatTurnsToDate,
+        formatDaysToDate,
+        Palette,
+        generateColors,
+        setQueryParam,
+        arrayEquals,
+        type TierMetric,
+        ensureScriptsLoaded,
+    } from "$lib";
+    import { config } from "../+layout";
 
-let _rawData: GraphData;
-let conflictId: string | null = null;
-let conflictName: string;
-let _loaded = false;
-
-let normalize_x: boolean = false;
-let normalize_y: boolean = false;
-let normalize_z: boolean = false;
-let previous_normalize: number = 0;
-
-let sliderElement: HTMLDivElement;
-let cityValues: number[] = [0, 70];
-let graphSliderIndex: number = 0;
-
-let selected_metrics: { value: string, label: string }[] = ["dealt:loss_value", "loss:loss_value", "off:wars"].map((name) => {return {value: name, label: name}});
-$: maxItems = selected_metrics?.length === 3;
-$: items = maxItems || !_rawData ? [] : [..._rawData.metric_names.map((name) => {return {value: name, label: name}})];
-
-let previous_selected: { value: string, label: string }[] = [];
-function handleMetricsChange() {
-    if (selected_metrics.length != 3 || arrayEquals(previous_selected,selected_metrics)) return;
-    maxItems = selected_metrics?.length === 3;
-    previous_selected = selected_metrics.slice();
-    setQueryParam('selected', selected_metrics.map((metric) => metric.value).join('.'));
-    setupGraphData(_rawData);
-}
-
-async function handleCheckbox(): Promise<boolean> {
-    await tick();
-    let normalizeBits = (normalize_x ? 1 : 0) + (normalize_y ? 2 : 0) + (normalize_z ? 4 : 0);
-    if (previous_normalize == normalizeBits) return false;
-    previous_normalize = normalizeBits | 0;
-    setQueryParam('normalize', normalizeBits == 0 ? null : normalizeBits);
-    setupGraphData(_rawData);
-    return true;
-}
-
-function loadQueryParams(params: URLSearchParams) {
-    let time = params.get('time');
-    if (time && !isNaN(+time) && Number.isInteger(+time)) {
-        graphSliderIndex = +time;
+    function getPlotly(): any {
+        return (window as any).Plotly;
     }
-    let cityMin = params.get('city_min');
-    let cityMax = params.get('city_max');
-    if (cityMin && !isNaN(+cityMin) && Number.isInteger(+cityMin)) {
-        cityValues[0] = +cityMin;
-    }
-    if (cityMax && !isNaN(+cityMax) && Number.isInteger(+cityMax)) {
-        cityValues[1] = +cityMax;
-    }
-    let selected = params.get('selected');
-    if (selected) {
-        selected_metrics = selected.split('.').map((name) => {return {value: name, label: name}});
-    }
-    previous_selected = selected_metrics.slice();
-    maxItems = selected_metrics?.length === 3;
-    let normalizeBits = params.get('normalize');
-    if (normalizeBits && !isNaN(+normalizeBits) && Number.isInteger(+normalizeBits)) {
-        let bits = +normalizeBits;
-        normalize_x = (bits & 1) != 0;
-        normalize_y = (bits & 2) != 0;
-        normalize_z = (bits & 4) != 0;
-        previous_normalize = bits;
-    }
-}
-let graphDiv: HTMLDivElement;
-onMount(async () => {
-    let queryParams = new URLSearchParams(window.location.search);
-    loadQueryParams(queryParams);
 
-    const id = queryParams.get('id');
-    if (id) {
-        conflictId = id;
-        fetchConflictGraphData(conflictId);
+    let _rawData: GraphData;
+    let conflictId: string | null = null;
+    let conflictName: string;
+    let _loaded = false;
+    let _loadError: string | null = null;
+
+    let normalize_x: boolean = false;
+    let normalize_y: boolean = false;
+    let normalize_z: boolean = false;
+    let previous_normalize: number = 0;
+
+    let sliderElement: HTMLDivElement;
+    let cityValues: number[] = [0, 70];
+    let graphSliderIndex: number = 0;
+    let sliderSetListener: ((values: string[]) => void) | null = null;
+    let plotlyAnimatedListener: (() => void) | null = null;
+    let plotlySliderChangeListener: ((sliderData: any) => void) | null = null;
+
+    let selected_metrics: { value: string; label: string }[] = [
+        "dealt:loss_value",
+        "loss:loss_value",
+        "off:wars",
+    ].map((name) => {
+        return { value: name, label: name };
+    });
+    $: maxItems = selected_metrics?.length === 3;
+    $: items =
+        maxItems || !_rawData
+            ? []
+            : [
+                  ..._rawData.metric_names.map((name) => {
+                      return { value: name, label: name };
+                  }),
+              ];
+
+    let previous_selected: { value: string; label: string }[] = [];
+
+    function getSliderApi(): any {
+        return (sliderElement as any)?.noUiSlider;
     }
-    noUiSlider.create(sliderElement, {
-        start: cityValues,
-        connect: true,
-        step: 1,
-        tooltips: [
-        { to: value => `City ${Math.round(value)}` },
-        { to: value => `City ${Math.round(value)}` }
-        ],
-        range: {
-            'min': 0,
-            'max': 70
-        },
-        pips: {
-            mode: 'steps',
-            density: 5,
-            filter: (value, type) => {
-                return value % 5 ? 0 : 2;
+
+    function handleMetricsChange() {
+        if (
+            selected_metrics.length != 3 ||
+            arrayEquals(previous_selected, selected_metrics)
+        )
+            return;
+        maxItems = selected_metrics?.length === 3;
+        previous_selected = selected_metrics.slice();
+        setQueryParam(
+            "selected",
+            selected_metrics.map((metric) => metric.value).join("."),
+        );
+        setupGraphData(_rawData);
+    }
+
+    async function handleCheckbox(): Promise<boolean> {
+        await tick();
+        let normalizeBits =
+            (normalize_x ? 1 : 0) +
+            (normalize_y ? 2 : 0) +
+            (normalize_z ? 4 : 0);
+        if (previous_normalize == normalizeBits) return false;
+        previous_normalize = normalizeBits | 0;
+        setQueryParam("normalize", normalizeBits == 0 ? null : normalizeBits, {
+            replace: true,
+        });
+        setupGraphData(_rawData);
+        return true;
+    }
+
+    function resetFilters() {
+        cityValues = [0, 70];
+        graphSliderIndex = 0;
+        normalize_x = false;
+        normalize_y = false;
+        normalize_z = false;
+        previous_normalize = 0;
+        selected_metrics = [
+            "dealt:loss_value",
+            "loss:loss_value",
+            "off:wars",
+        ].map((name) => ({ value: name, label: name }));
+        previous_selected = selected_metrics.slice();
+
+        setQueryParam("city_min", null, { replace: true });
+        setQueryParam("city_max", null, { replace: true });
+        setQueryParam("time", null, { replace: true });
+        setQueryParam("normalize", null, { replace: true });
+        setQueryParam(
+            "selected",
+            selected_metrics.map((metric) => metric.value).join("."),
+        );
+
+        const sliderApi = getSliderApi();
+        if (sliderApi) {
+            sliderApi.set([cityValues[0], cityValues[1]]);
+        }
+
+        if (_rawData) {
+            setupGraphData(_rawData);
+        }
+    }
+
+    function loadQueryParams(params: URLSearchParams) {
+        let time = params.get("time");
+        if (time && !isNaN(+time) && Number.isInteger(+time)) {
+            graphSliderIndex = +time;
+        }
+        let cityMin = params.get("city_min");
+        let cityMax = params.get("city_max");
+        if (cityMin && !isNaN(+cityMin) && Number.isInteger(+cityMin)) {
+            cityValues[0] = +cityMin;
+        }
+        if (cityMax && !isNaN(+cityMax) && Number.isInteger(+cityMax)) {
+            cityValues[1] = +cityMax;
+        }
+        let selected = params.get("selected");
+        if (selected) {
+            selected_metrics = selected.split(".").map((name) => {
+                return { value: name, label: name };
+            });
+        }
+        previous_selected = selected_metrics.slice();
+        maxItems = selected_metrics?.length === 3;
+        let normalizeBits = params.get("normalize");
+        if (
+            normalizeBits &&
+            !isNaN(+normalizeBits) &&
+            Number.isInteger(+normalizeBits)
+        ) {
+            let bits = +normalizeBits;
+            normalize_x = (bits & 1) != 0;
+            normalize_y = (bits & 2) != 0;
+            normalize_z = (bits & 4) != 0;
+            previous_normalize = bits;
+        }
+    }
+    let graphDiv: HTMLDivElement;
+    onMount(async () => {
+        let queryParams = new URLSearchParams(window.location.search);
+        loadQueryParams(queryParams);
+
+        const id = queryParams.get("id");
+        if (id) {
+            conflictId = id;
+            fetchConflictGraphData(conflictId);
+        } else {
+            _loadError = "Missing conflict id in URL";
+        }
+        noUiSlider.create(sliderElement, {
+            start: cityValues,
+            connect: true,
+            step: 1,
+            tooltips: [
+                { to: (value) => `City ${Math.round(value)}` },
+                { to: (value) => `City ${Math.round(value)}` },
+            ],
+            range: {
+                min: 0,
+                max: 70,
+            },
+            pips: {
+                mode: "steps" as any,
+                density: 5,
+                filter: (value, _type) => {
+                    return value % 5 ? 0 : 2;
+                },
+            },
+        });
+
+        sliderSetListener = (values: string[]) => {
+            cityValues = values.map((value) => parseInt(value));
+            setQueryParam(
+                "city_min",
+                cityValues[0] == 0 ? null : cityValues[0],
+                { replace: true },
+            );
+            setQueryParam(
+                "city_max",
+                cityValues[1] == 70 ? null : cityValues[1],
+                { replace: true },
+            );
+            setupGraphData(_rawData);
+        };
+        getSliderApi()?.on("set", sliderSetListener);
+    });
+
+    onDestroy(() => {
+        const sliderApi = getSliderApi();
+        if (sliderApi) {
+            if (sliderSetListener) {
+                sliderApi.off("set", sliderSetListener);
             }
+            sliderApi.destroy();
+        }
+        if (graphDiv) {
+            const graphDivAny = graphDiv as any;
+            if (plotlyAnimatedListener) {
+                graphDivAny.removeListener?.(
+                    "plotly_animated",
+                    plotlyAnimatedListener,
+                );
+            }
+            if (plotlySliderChangeListener) {
+                graphDivAny.removeListener?.(
+                    "plotly_sliderchange",
+                    plotlySliderChangeListener,
+                );
+            }
+            getPlotly()?.purge(graphDiv);
         }
     });
 
-    sliderElement.noUiSlider.on('set', (values: string[]) => {
-        cityValues = values.map(value => parseInt(value));
-        setQueryParam('city_min', cityValues[0] == 0 ? null : cityValues[0]);
-        setQueryParam('city_max', cityValues[1] == 70 ? null : cityValues[1]);
-        setupGraphData(_rawData);
-    });
-    
-});
-
-function fetchConflictGraphData(conflictId: string) {
-    let start = Date.now();
-    let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
-    decompressBson(url).then((data) => {
-        console.log(`Loaded ${url} in ${Date.now() - start}ms`);start = Date.now();
-        conflictName = data.name;
-        _rawData = data;
-        setupGraphData(_rawData);
-        _loaded = true;
-    });
-}
-
-interface Trace {
-    x: number[],
-    y: number[],
-    customdata: number[],
-    id: number[],
-    text: string[]
-}
-interface Range {
-    x: number[],
-    y: number[],
-    z: number[]
-}
-
-interface Timeframe {
-    start: number,
-    end: number,
-    is_turn: boolean
-}
-
-function getFullName(metric: TierMetric): string {
-    let fullName = metric.name;
-    if (metric.cumulative) {
-        fullName += ' (sum)';
+    function fetchConflictGraphData(conflictId: string) {
+        let start = Date.now();
+        let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
+        decompressBson(url)
+            .then((data) => {
+                console.log(`Loaded ${url} in ${Date.now() - start}ms`);
+                start = Date.now();
+                conflictName = data.name;
+                _rawData = data;
+                _loadError = null;
+                setupGraphData(_rawData);
+                _loaded = true;
+            })
+            .catch((error) => {
+                console.error("Failed to load bubble graph data", error);
+                _loadError =
+                    "Could not load conflict graph data. Please try again later.";
+                _loaded = true;
+            });
     }
-    if (metric.normalize) {
-        fullName += ' (avg)';
+
+    interface Trace {
+        x: number[];
+        y: number[];
+        customdata: number[];
+        id: number[];
+        text: string[];
+        marker: { size: number[] };
     }
-    return fullName;
-}
+    interface Range {
+        x: number[];
+        y: number[];
+        z: number[];
+    }
 
-function generateTraces(data: GraphData, x_axis: TierMetric, y_axis: TierMetric, size: TierMetric, min_city: number, max_city: number): {
-        traces: {[key: number]: {[key: number]: Trace}},
-        times: Timeframe, 
-        ranges: Range} {
-    // trim metric names using trimHeader(name)
-            
-    let ranges: Range = {x: [0, Number.MIN_SAFE_INTEGER], y: [0, Number.MIN_SAFE_INTEGER], z: [0, Number.MIN_SAFE_INTEGER]};
-    let rangesKeys: (keyof typeof ranges)[] = Object.keys(ranges) as (keyof typeof ranges)[];  
+    interface Timeframe {
+        start: number;
+        end: number;
+        is_turn: boolean;
+    }
 
-    let metrics = [x_axis, y_axis, size];
-    let metric_ids: number[] = [];
-    let metric_indexes: number[] = [];
-    let metric_is_turn: boolean[] = [];
-    let metric_normalize: number[] = [];
-    for (let i = 0; i < metrics.length; i++) {
-        let metric = metrics[i];
-        let metric_id = data.metric_names.indexOf(metric.name);
-        if (metric_id == -1) {
-            console.error(`Metric ${metric.name} not found`);
-            return null;
-        }
-        metric_ids.push(metric_id);
-        let is_turn = data.metrics_turn.includes(metric_id);
-        metric_is_turn.push(is_turn);
-        metric_indexes.push(is_turn ? data.metrics_turn.indexOf(metric_id) : data.metrics_day.indexOf(metric_id));
-        if (metric_indexes[i] == -1) {
-            console.error(`Metric ${metric.name} not found ${metric_id}`);
-            return null;
+    function getFullName(metric: TierMetric): string {
+        let fullName = metric.name;
+        if (metric.cumulative) {
+            fullName += " (sum)";
         }
         if (metric.normalize) {
-            let perCity = UNITS_PER_CITY[metric.name];
-            metric_normalize.push(perCity | 0);
-        } else {
-            metric_normalize.push(-1);
+            fullName += " (avg)";
         }
+        return fullName;
     }
 
-    let isAnyTurn = metric_is_turn.reduce((a, b) => a || b);
-    let lookup: {[key: number]: {[key: number]: Trace}} = {};// year -> coalitions
+    function generateTraces(
+        data: GraphData,
+        x_axis: TierMetric,
+        y_axis: TierMetric,
+        size: TierMetric,
+        min_city: number,
+        max_city: number,
+    ): {
+        traces: { [key: number]: { [key: number]: Trace } };
+        times: Timeframe;
+        ranges: Range;
+    } | null {
+        // trim metric names using trimHeader(name)
 
-    for (let i = 0; i < data.coalitions.length; i++) {
-        let coalition = data.coalitions[i];
-        let minCityIndex = coalition.cities.findIndex(city => city >= min_city);
-        let maxCityIndex = coalition.cities.slice().reverse().findIndex(city => city <= max_city);
-        if (maxCityIndex !== -1) maxCityIndex = coalition.cities.length - 1 - maxCityIndex;
-        if (minCityIndex == -1) minCityIndex = 0;
-        if (maxCityIndex == -1) maxCityIndex = coalition.cities.length
+        let ranges: Range = {
+            x: [0, Number.MIN_SAFE_INTEGER],
+            y: [0, Number.MIN_SAFE_INTEGER],
+            z: [0, Number.MIN_SAFE_INTEGER],
+        };
+        let rangesKeys: (keyof typeof ranges)[] = Object.keys(
+            ranges,
+        ) as (keyof typeof ranges)[];
 
-        let turn_start = coalition.turn.range[0];
-        let day_start = coalition.day.range[0];
-        let start = isAnyTurn ? turn_start : day_start;
-        let end = isAnyTurn ? coalition.turn.range[1] : coalition.day.range[1];
-
-        for (let j = 0; j < coalition.alliance_ids.length; j++) {
-            let alliance_id = coalition.alliance_ids[j];
-            let name = coalition.alliance_names[j];
-
-            let buffer: number[] = [0, 0, 0];
-            let lastDay = -1;
-            for (let turnOrDay = start; turnOrDay <= end; turnOrDay++) {
-                let traceByCol = lookup[turnOrDay];
-                if (!traceByCol) {
-                    traceByCol = {};
-                    lookup[turnOrDay] = traceByCol;
-                }
-                let trace = traceByCol[i];
-                if (!trace) {
-                    trace = {
-                        x: [],
-                        y: [],
-                        id: [],
-                        text: [],
-                        customdata: [],
-                    };
-                    traceByCol[i] = trace;
-                }
-                trace.id.push(alliance_id);
-                trace.text.push(name);
-
-                let turn = isAnyTurn ? turnOrDay : Math.floor(turnOrDay * 12);
-                let day = isAnyTurn ? Math.floor(turnOrDay / 12) : turnOrDay;
-                for (let k = 0; k < metrics.length; k++) {
-                    let is_turn = metric_is_turn[k];
-                    if (!is_turn && lastDay == day) continue;
-                    let isCumulative = metrics[k].cumulative;
-
-                    let metric_id = metric_ids[k];
-                    let metric_index = metric_indexes[k];
-                    
-
-                    let value_by_day = (is_turn ? coalition.turn.data[metric_index][j] : coalition.day.data[metric_index][j]);
-                    if (!value_by_day) {
-                        continue;
-                    }
-                    let value_by_city = value_by_day[is_turn ? turn - turn_start : day - day_start];
-                    if (!value_by_city || Object.keys(value_by_city).length == 0) {
-                        continue;
-                    }
-                    let total = 0.0;
-                    for (let l = minCityIndex; l <= maxCityIndex; l++) {
-                        total += value_by_city[l];
-                    }
-                    let normalize = metric_normalize[k];
-                    if (normalize != -1) {
-                        let nations = 0.0;
-                        let nation_counts_by_day = coalition.day.data[0][j];
-                        if (!nation_counts_by_day) continue;
-                        let nation_counts = nation_counts_by_day[day - day_start];
-                        if (!nation_counts || nation_counts.length == 0) continue;
-                        if (normalize == 0) {
-                            for (let l = minCityIndex; l <= maxCityIndex; l++) {
-                                nations += nation_counts[l];
-                            }
-                        } else {
-                            for (let l = minCityIndex; l <= maxCityIndex; l++) {
-                                let cities = coalition.cities[l];
-                                nations += nation_counts[l] * cities * normalize;
-                            }
-                        }
-                        if (nations != 0) {
-                            total /= nations;
-                        }
-                    }
-                    if (isCumulative) {
-                        buffer[k] += total;
-                    } else {
-                        buffer[k] = total;
-                    }
-                }
-                trace.x.push(buffer[0]);
-                trace.y.push(buffer[1]);
-                trace.customdata.push(buffer[2]);
-
-                for (let k = 0; k < 3; k++) {
-                    let ri = rangesKeys[k];
-                    if (buffer[k] < ranges[ri][0]) ranges[ri][0] = buffer[k];
-                    if (buffer[k] > ranges[ri][1]) ranges[ri][1] = buffer[k];
-                }
-
-                lastDay = day;
+        let metrics = [x_axis, y_axis, size];
+        let metric_ids: number[] = [];
+        let metric_indexes: number[] = [];
+        let metric_is_turn: boolean[] = [];
+        let metric_normalize: number[] = [];
+        for (let i = 0; i < metrics.length; i++) {
+            let metric = metrics[i];
+            let metric_id = data.metric_names.indexOf(metric.name);
+            if (metric_id == -1) {
+                console.error(`Metric ${metric.name} not found`);
+                return null;
             }
-            // print buffer values
-            // console.log("# " + name + " " + alliance_id);
-            // console.log("- " + metrics[0].name + ": " + buffer[0]);
-            // console.log("- " + metrics[1].name + ": " + buffer[1]);
-            // console.log("- " + metrics[2].name + ": " + buffer[2]);
+            metric_ids.push(metric_id);
+            let is_turn = data.metrics_turn.includes(metric_id);
+            metric_is_turn.push(is_turn);
+            metric_indexes.push(
+                is_turn
+                    ? data.metrics_turn.indexOf(metric_id)
+                    : data.metrics_day.indexOf(metric_id),
+            );
+            if (metric_indexes[i] == -1) {
+                console.error(`Metric ${metric.name} not found ${metric_id}`);
+                return null;
+            }
+            if (metric.normalize) {
+                let perCity = UNITS_PER_CITY[metric.name];
+                metric_normalize.push(perCity | 0);
+            } else {
+                metric_normalize.push(-1);
+            }
         }
+
+        let isAnyTurn = metric_is_turn.reduce((a, b) => a || b);
+        let lookup: { [key: number]: { [key: number]: Trace } } = {}; // year -> coalitions
+
+        for (let i = 0; i < data.coalitions.length; i++) {
+            let coalition = data.coalitions[i];
+            let minCityIndex = coalition.cities.findIndex(
+                (city) => city >= min_city,
+            );
+            let maxCityIndex = coalition.cities
+                .slice()
+                .reverse()
+                .findIndex((city) => city <= max_city);
+            if (maxCityIndex !== -1)
+                maxCityIndex = coalition.cities.length - 1 - maxCityIndex;
+            if (minCityIndex == -1) minCityIndex = 0;
+            if (maxCityIndex == -1) maxCityIndex = coalition.cities.length;
+
+            let turn_start = coalition.turn.range[0];
+            let day_start = coalition.day.range[0];
+            let start = isAnyTurn ? turn_start : day_start;
+            let end = isAnyTurn
+                ? coalition.turn.range[1]
+                : coalition.day.range[1];
+
+            for (let j = 0; j < coalition.alliance_ids.length; j++) {
+                let alliance_id = coalition.alliance_ids[j];
+                let name = coalition.alliance_names[j];
+
+                let buffer: number[] = [0, 0, 0];
+                let lastDay = -1;
+                for (let turnOrDay = start; turnOrDay <= end; turnOrDay++) {
+                    let traceByCol = lookup[turnOrDay];
+                    if (!traceByCol) {
+                        traceByCol = {};
+                        lookup[turnOrDay] = traceByCol;
+                    }
+                    let trace = traceByCol[i];
+                    if (!trace) {
+                        trace = {
+                            x: [],
+                            y: [],
+                            id: [],
+                            text: [],
+                            customdata: [],
+                            marker: { size: [] },
+                        };
+                        traceByCol[i] = trace;
+                    }
+                    trace.id.push(alliance_id);
+                    trace.text.push(name);
+
+                    let turn = isAnyTurn
+                        ? turnOrDay
+                        : Math.floor(turnOrDay * 12);
+                    let day = isAnyTurn
+                        ? Math.floor(turnOrDay / 12)
+                        : turnOrDay;
+                    for (let k = 0; k < metrics.length; k++) {
+                        let is_turn = metric_is_turn[k];
+                        if (!is_turn && lastDay == day) continue;
+                        let isCumulative = metrics[k].cumulative;
+
+                        let metric_index = metric_indexes[k];
+
+                        let value_by_day = is_turn
+                            ? coalition.turn.data[metric_index][j]
+                            : coalition.day.data[metric_index][j];
+                        if (!value_by_day) {
+                            continue;
+                        }
+                        let value_by_city =
+                            value_by_day[
+                                is_turn ? turn - turn_start : day - day_start
+                            ];
+                        if (
+                            !value_by_city ||
+                            Object.keys(value_by_city).length == 0
+                        ) {
+                            continue;
+                        }
+                        let total = 0.0;
+                        for (let l = minCityIndex; l <= maxCityIndex; l++) {
+                            total += value_by_city[l];
+                        }
+                        let normalize = metric_normalize[k];
+                        if (normalize != -1) {
+                            let nations = 0.0;
+                            let nation_counts_by_day = coalition.day.data[0][j];
+                            if (!nation_counts_by_day) continue;
+                            let nation_counts =
+                                nation_counts_by_day[day - day_start];
+                            if (!nation_counts || nation_counts.length == 0)
+                                continue;
+                            if (normalize == 0) {
+                                for (
+                                    let l = minCityIndex;
+                                    l <= maxCityIndex;
+                                    l++
+                                ) {
+                                    nations += nation_counts[l];
+                                }
+                            } else {
+                                for (
+                                    let l = minCityIndex;
+                                    l <= maxCityIndex;
+                                    l++
+                                ) {
+                                    let cities = coalition.cities[l];
+                                    nations +=
+                                        nation_counts[l] * cities * normalize;
+                                }
+                            }
+                            if (nations != 0) {
+                                total /= nations;
+                            }
+                        }
+                        if (isCumulative) {
+                            buffer[k] += total;
+                        } else {
+                            buffer[k] = total;
+                        }
+                    }
+                    trace.x.push(buffer[0]);
+                    trace.y.push(buffer[1]);
+                    trace.customdata.push(buffer[2]);
+
+                    for (let k = 0; k < 3; k++) {
+                        let ri = rangesKeys[k];
+                        if (buffer[k] < ranges[ri][0])
+                            ranges[ri][0] = buffer[k];
+                        if (buffer[k] > ranges[ri][1])
+                            ranges[ri][1] = buffer[k];
+                    }
+
+                    lastDay = day;
+                }
+                // print buffer values
+                // console.log("# " + name + " " + alliance_id);
+                // console.log("- " + metrics[0].name + ": " + buffer[0]);
+                // console.log("- " + metrics[1].name + ": " + buffer[1]);
+                // console.log("- " + metrics[2].name + ": " + buffer[2]);
+            }
+        }
+        // min value from lookup keys
+        let start = Math.min(...Object.keys(lookup).map(Number));
+        let end = Math.max(...Object.keys(lookup).map(Number));
+        let times: Timeframe = { start: start, end: end, is_turn: isAnyTurn };
+        return { traces: lookup, times, ranges };
     }
-    // min value from lookup keys
-    let start = Math.min(...Object.keys(lookup).map(Number));
-    let end = Math.max(...Object.keys(lookup).map(Number));
-    let times: Timeframe = {start: start, end: end, is_turn: isAnyTurn};
-    return {traces:lookup, times, ranges};
-}
 
-function setupGraphData(data: GraphData) {
-    if (!data) return;
-    let metrics_copy = selected_metrics.map((metric) => metric.value);
-    if (metrics_copy.length != 3) return;
-    let start = Date.now();
-    let metric_x: TierMetric = {name: metrics_copy[0], cumulative: metrics_copy[0].includes(":"), normalize: normalize_x};
-    let metric_y: TierMetric = {name: metrics_copy[1], cumulative: metrics_copy[1].includes(":"), normalize: normalize_y};
-    let metric_size: TierMetric = {name: metrics_copy[2], cumulative: metrics_copy[2].includes(":"), normalize: normalize_z};
-    let tracesTime = generateTraces(data, metric_x, metric_y, metric_size, cityValues[0], cityValues[1]);
-    let coalition_names = data.coalitions.map((coalition) => coalition.name);
-    let metrics: [TierMetric,TierMetric,TierMetric] = [metric_x, metric_y, metric_size];
-    console.log(`Generated traces in ${Date.now() - start}ms`);
-    createGraph(tracesTime.traces, tracesTime.times, tracesTime.ranges, coalition_names, metrics);
-}
+    function setupGraphData(data: GraphData) {
+        if (!data) return;
+        let metrics_copy = selected_metrics.map((metric) => metric.value);
+        if (metrics_copy.length != 3) return;
+        let start = Date.now();
+        let metric_x: TierMetric = {
+            name: metrics_copy[0],
+            cumulative: metrics_copy[0].includes(":"),
+            normalize: normalize_x,
+        };
+        let metric_y: TierMetric = {
+            name: metrics_copy[1],
+            cumulative: metrics_copy[1].includes(":"),
+            normalize: normalize_y,
+        };
+        let metric_size: TierMetric = {
+            name: metrics_copy[2],
+            cumulative: metrics_copy[2].includes(":"),
+            normalize: normalize_z,
+        };
+        let tracesTime = generateTraces(
+            data,
+            metric_x,
+            metric_y,
+            metric_size,
+            cityValues[0],
+            cityValues[1],
+        );
+        if (!tracesTime) return;
+        let coalition_names = data.coalitions.map(
+            (coalition) => coalition.name,
+        );
+        let metrics: [TierMetric, TierMetric, TierMetric] = [
+            metric_x,
+            metric_y,
+            metric_size,
+        ];
+        console.log(`Generated traces in ${Date.now() - start}ms`);
+        createGraph(
+            tracesTime.traces,
+            tracesTime.times,
+            tracesTime.ranges,
+            coalition_names,
+            metrics,
+        );
+    }
 
-function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {start: number, end: number, is_turn: boolean}, ranges: {x: number[], y: number[], z: number[]}, coalition_names: string[], metrics: [TierMetric,TierMetric,TierMetric]) {
+    function createGraph(
+        lookup: { [key: number]: { [key: number]: Trace } },
+        time: { start: number; end: number; is_turn: boolean },
+        _ranges: { x: number[]; y: number[]; z: number[] },
+        coalition_names: string[],
+        metrics: [TierMetric, TierMetric, TierMetric],
+    ) {
         let start = Date.now();
 
         // Get the group names:
         var years: number[] = Object.keys(lookup).map(Number);
+        if (years.length === 0) return;
         // In this case, every year includes every continent, so we
         // can just infer the continents from the *first* year:
+        graphSliderIndex = Math.min(
+            Math.max(graphSliderIndex, 0),
+            Math.max(years.length - 1, 0),
+        );
         var firstYear = lookup[time.start + graphSliderIndex];
+        if (!firstYear) return;
         var coalitions: number[] = Object.keys(firstYear).map(Number);
 
         let maxZbyTime: number[] = [];
@@ -353,10 +581,11 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             for (let j = 0; j < coalition_names.length; j++) {
                 let data = lookupByTime[j];
                 if (!data) continue;
-                data.marker = {};
-                data.marker.size = data.customdata.map((size) => {
-                    return size / maxZ;
-                });
+                data.marker = {
+                    size: data.customdata.map((size) => {
+                        return maxZ > 0 ? size / maxZ : 1;
+                    }),
+                };
             }
         }
 
@@ -375,27 +604,36 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                     customdata: [],
                     id: [],
                     text: [],
-                    marker: {size: []}
+                    marker: { size: [] },
                 };
             }
             return trace;
         }
 
-
         // Create the main traces, one for each continent:
-        let previousPositions: {[key: number]: {x: {[key: number]: number[]}, y: {[key: number]: number[]}, z: {[key: number]: number[]}}} = {};
+        let previousPositions: {
+            [key: number]: {
+                x: { [key: number]: number[] };
+                y: { [key: number]: number[] };
+                z: { [key: number]: number[] };
+            };
+        } = {};
         // Create a frame for each year. Frames are effectively just
         // traces, except they don't need to contain the *full* trace
         // definition (for example, appearance). The frames just need
         // the parts the traces that change (here, the data).
-        var frames = [];
+        var frames: any[] = [];
         for (let i = 0; i < years.length; i++) {
             let frameData = [];
             for (let j = 0; j < coalitions.length; j++) {
                 let colId = coalitions[j];
                 let previousLines = previousPositions[colId];
                 if (!previousLines) {
-                    previousLines = previousPositions[colId] = {x: {}, y: {}, z: {}};
+                    previousLines = previousPositions[colId] = {
+                        x: {},
+                        y: {},
+                        z: {},
+                    };
                 }
                 let data = getData(years[i], colId);
                 for (let k = 0; k < data.id.length; k++) {
@@ -415,28 +653,34 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                         x: prevX.slice(),
                         y: prevY.slice(),
                         customdata: prevZ.slice(),
-                        mode: 'lines',
+                        mode: "lines",
                     });
-                } 
+                }
                 frameData.push(data);
             }
             frames.push({
                 name: years[i],
-                data: frameData
+                data: frameData,
             });
         }
 
-        var traces = [];
+        var traces: any[] = [];
         for (let i = 0; i < coalitions.length; i++) {
             let colId = coalitions[i];
             var data = firstYear[colId];
 
-            let palette: Palette = Object.keys(Palette).map(Number).indexOf(colId);
-            let colors = generateColors(d3, data.id.length, palette)
-            
+            let palette: Palette = Object.keys(Palette)
+                .map(Number)
+                .indexOf(colId);
+            let colors = generateColors(d3, data.id.length, palette);
+
             let previousLines = previousPositions[colId];
             if (!previousLines) {
-                previousLines = previousPositions[colId] = {x: {}, y: {}, z: {}};
+                previousLines = previousPositions[colId] = {
+                    x: {},
+                    y: {},
+                    z: {},
+                };
             }
 
             // Update the previous positions of the bubbles by alliance id
@@ -453,15 +697,15 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                 traces.push({
                     x: prevX.slice(0, graphSliderIndex + 1),
                     y: prevY.slice(0, graphSliderIndex + 1),
-                    customedata: prevZ.slice(0, graphSliderIndex + 1),
-                    mode: 'lines',
+                    customdata: prevZ.slice(0, graphSliderIndex + 1),
+                    mode: "lines",
                     line: {
                         width: 0.3,
-                        color: colors[j]
+                        color: colors[j],
                     },
-                    hoverinfo: 'all',
+                    hoverinfo: "all",
                     showlegend: false,
-                    hovertemplate: `${data.text[j]}<br>${metrics[0].name}: %{x}<br>${metrics[1].name}: %{y}<br>${metrics[2].name}: %{customdata}<extra></extra>`
+                    hovertemplate: `${data.text[j]}<br>${metrics[0].name}: %{x}<br>${metrics[1].name}: %{y}<br>${metrics[2].name}: %{customdata}<extra></extra>`,
                 });
             }
 
@@ -472,18 +716,18 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                 customdata: data.customdata.slice(),
                 id: data.id.slice(),
                 text: data.text.slice(),
-                mode: 'markers+text',
-                textposition: 'middle center',
+                mode: "markers+text",
+                textposition: "middle center",
                 textfont: {
                     size: 7,
-                    color: 'rgba(0, 0, 0, 0.75)' // black with 50% opacity
+                    color: "rgba(0, 0, 0, 0.75)", // black with 50% opacity
                 },
                 marker: {
                     size: data.marker.size,
-                    sizemode: 'area',
+                    sizemode: "area",
                     sizeref: 0.001,
                     sizemin: 1,
-                    color: colors
+                    color: colors,
                 },
                 hovertemplate: `%{text}<br>${metrics[0].name}: %{x}<br>${metrics[1].name}: %{y}<br>${metrics[2].name}: %{customdata}<extra></extra>`,
             });
@@ -498,17 +742,20 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
         var sliderSteps = [];
         for (let i = 0; i < years.length; i++) {
             sliderSteps.push({
-                method: 'animate',
+                method: "animate",
                 label: timeFormat(years[i]),
-                args: [[years[i]], {
-                    mode: 'immediate',
-                    transition: {duration: 200},
-                    frame: {duration: 200, redraw: true},
-                }]
+                args: [
+                    [years[i]],
+                    {
+                        mode: "immediate",
+                        transition: { duration: 200 },
+                        frame: { duration: 200, redraw: true },
+                    },
+                ],
             });
         }
 
-        var layout = {
+        var layout: any = {
             height: window.innerHeight * 0.8,
             xaxis: {
                 title: getFullName(metrics[0]),
@@ -516,13 +763,13 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             yaxis: {
                 title: getFullName(metrics[1]),
             },
-            hovermode: 'closest',
+            hovermode: "closest",
             legend: {
                 x: 0.5,
                 y: 1.1,
-                itemsizing: 'constant',
-                xanchor: 'center',
-                yanchor: 'top'
+                itemsizing: "constant",
+                xanchor: "center",
+                yanchor: "top",
             },
             // We'll use updatemenus (whose functionality includes menus as
             // well as buttons) to create a play button and a pause button.
@@ -531,55 +778,72 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
             // passing `[null]`, which indicates we'd like to interrupt any
             // currently running animations with a new list of frames. Here
             // The new list of frames is empty, so it halts the animation.
-            updatemenus: [{
-            x: 0,
-            y: 0,
-            yanchor: 'top',
-            xanchor: 'left',
-            showactive: false,
-            direction: 'left',
-            type: 'buttons',
-            pad: {t: 87, r: 10},
-            buttons: [{
-                method: 'animate',
-                args: [null, {
-                mode: 'immediate',
-                fromcurrent: true,
-                transition: {duration: 200},
-                frame: {duration: 200, redraw: true}
-                }],
-                label: 'Play'
-            }, {
-                method: 'animate',
-                args: [[null], {
-                mode: 'immediate',
-                transition: {duration: 0},
-                frame: {duration: 0, redraw: true}
-                }],
-                label: 'Pause'
-            }]
-            }],
+            updatemenus: [
+                {
+                    x: 0,
+                    y: 0,
+                    yanchor: "top",
+                    xanchor: "left",
+                    showactive: false,
+                    direction: "left",
+                    type: "buttons",
+                    pad: { t: 87, r: 10 },
+                    buttons: [
+                        {
+                            method: "animate",
+                            args: [
+                                null,
+                                {
+                                    mode: "immediate",
+                                    fromcurrent: true,
+                                    transition: { duration: 200 },
+                                    frame: { duration: 200, redraw: true },
+                                },
+                            ],
+                            label: "Play",
+                        },
+                        {
+                            method: "animate",
+                            args: [
+                                [null],
+                                {
+                                    mode: "immediate",
+                                    transition: { duration: 0 },
+                                    frame: { duration: 0, redraw: true },
+                                },
+                            ],
+                            label: "Pause",
+                        },
+                    ],
+                },
+            ],
             // Finally, add the slider and use `pad` to position it
             // nicely next to the buttons.
-            sliders: [{
-                active: graphSliderIndex,
-                pad: {l: 130, t: 55},
-                currentvalue: {
-                visible: true,
-                prefix: '',
-                xanchor: 'right',
-                font: {size: 20, color: '#666'}
-            },
-            steps: sliderSteps
-            }],
+            sliders: [
+                {
+                    active: graphSliderIndex,
+                    pad: { l: 130, t: 55 },
+                    currentvalue: {
+                        visible: true,
+                        prefix: "",
+                        xanchor: "right",
+                        font: { size: 20, color: "#666" },
+                    },
+                    steps: sliderSteps,
+                },
+            ],
         };
 
         // is either dark, light, or empty (light)
         let theme = document.documentElement.getAttribute("data-bs-theme");
         if (theme === "dark") {
             console.log("Dark theme");
-            let bodyBg = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-bg');
-            let bodyColor = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-color');
+            let bodyBg = getComputedStyle(
+                document.documentElement,
+            ).getPropertyValue("--bs-body-bg");
+            let bodyColor = getComputedStyle(
+                document.documentElement,
+            ).getPropertyValue("--bs-body-color");
             layout.plot_bgcolor = bodyBg;
             layout.paper_bgcolor = bodyBg;
             layout.font = { color: bodyColor };
@@ -588,128 +852,236 @@ function createGraph(lookup: {[key: number]: {[key: number]: Trace}}, time: {sta
                 gridcolor: bodyColor,
                 zerolinecolor: bodyColor,
                 tickfont: { color: bodyColor },
-                titlefont: { color: bodyColor }
+                titlefont: { color: bodyColor },
             };
             layout.yaxis = {
                 ...layout.yaxis,
                 gridcolor: bodyColor,
                 zerolinecolor: bodyColor,
                 tickfont: { color: bodyColor },
-                titlefont: { color: bodyColor }
+                titlefont: { color: bodyColor },
             };
             layout.legend = {
                 ...layout.legend,
-                font: { color: bodyColor }
+                font: { color: bodyColor },
             };
         }
 
-        console.log(`Generated graph data in ${Date.now() - start}ms`);start = Date.now();
+        console.log(`Generated graph data in ${Date.now() - start}ms`);
+        start = Date.now();
 
-        ensureScriptsLoaded(['plotjs']).then(() => {
-            Plotly.purge(graphDiv);
-            Plotly.react(graphDiv, {
+        ensureScriptsLoaded(["plotjs"]).then(() => {
+            const plotly = getPlotly();
+            if (!plotly) return;
+            const graphDivAny = graphDiv as any;
+            plotly.purge(graphDiv);
+            plotly.react(graphDiv, {
                 data: traces,
                 layout: layout,
-                frames: frames
+                frames: frames,
             });
-            graphDiv.on('plotly_animated', function() {
-                Plotly.relayout(graphDiv, { 'xaxis.autorange': true, 'yaxis.autorange': true });
-            });
-            graphDiv.on('plotly_sliderchange', function(sliderData){
+            if (plotlyAnimatedListener) {
+                graphDivAny.removeListener?.(
+                    "plotly_animated",
+                    plotlyAnimatedListener,
+                );
+            }
+            if (plotlySliderChangeListener) {
+                graphDivAny.removeListener?.(
+                    "plotly_sliderchange",
+                    plotlySliderChangeListener,
+                );
+            }
+            plotlyAnimatedListener = function () {
+                plotly.relayout(graphDiv, {
+                    "xaxis.autorange": true,
+                    "yaxis.autorange": true,
+                });
+            };
+            plotlySliderChangeListener = function (sliderData: any) {
                 graphSliderIndex = sliderData.slider.active;
-                setQueryParam('time', graphSliderIndex);
-
-            });
-            console.log(`Setup reactive plot in ${Date.now() - start}ms`);start = Date.now();
+                setQueryParam("time", graphSliderIndex, { replace: true });
+            };
+            graphDivAny.on?.("plotly_animated", plotlyAnimatedListener);
+            graphDivAny.on?.("plotly_sliderchange", plotlySliderChangeListener);
+            console.log(`Setup reactive plot in ${Date.now() - start}ms`);
+            start = Date.now();
         });
-};
+    }
 </script>
+
 <svelte:head>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.css" />
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.css"
+    />
     <style>
         .noUi-value {
             color: #666; /* Change this to the color you want */
-        }
-        /* Override the item styles */
-        .select-compact {
-            --border-radius: 0px;
-            --height:24px;
-            --chevron-height: 0px;
-            --multi-item-height: 20px;
-            --value-container-padding: 0px;
-            --multi-select-input-margin: 0px;
-            --multi-select-padding: 0px 4px 0px 4px;
-            --item-padding: 0px 4px 0px 4px;
-
         }
     </style>
 </svelte:head>
 <Navbar />
 <!-- <Sidebar /> -->
-<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
+<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
     <div class="row m-0 p-0">
         <div class="col-12 m-0 p-0">
-    <h1>
-        <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
-        {#if _rawData?.wiki}
-            <a class="btn btn btn-info opacity-75 fw-bold" href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}">Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"></i></a>
-        {/if}
-    </h1>
-    <hr class="mt-1">
-    <div class="row p-0 m-0">
-        <a href="conflict?id={conflictId}&layout=coalition" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
-            ◑&nbsp;Coalition
-        </a>
-        <a href="conflict?id={conflictId}&layout=alliance" class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
-            𖣯&nbsp;Alliance
-        </a>
-        <a href="conflict?id={conflictId}&layout=nation" class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom">
-            ♟&nbsp;Nation
-        </a>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="tiering?id={conflictId}">
-            📊&nbsp;Tier/Time
-        </a>
-        <button class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0">
-            📈&nbsp;Bubble/Time
-        </button>
-        <a class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom" href="chord?id={conflictId}">
-            🌐&nbsp;Web
-        </a>
-    </div>
-    </div>
+            <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
+                <a href="conflicts" aria-label="Back to conflicts"
+                    ><i class="bi bi-arrow-left"></i></a
+                >&nbsp;Conflict: {conflictName}
+                {#if (_rawData as any)?.wiki}
+                    <a
+                        class="btn ux-btn fw-bold"
+                        href="https://politicsandwar.fandom.com/wiki/{(
+                            _rawData as any
+                        ).wiki}"
+                        >Wiki:{(_rawData as any)?.wiki}&nbsp;<i
+                            class="bi bi-box-arrow-up-right"
+                        ></i></a
+                    >
+                {/if}
+            </h1>
+            <hr class="mt-2 mb-2" />
+            <div class="row p-0 m-0 ux-tabstrip">
+                <a
+                    href="conflict?id={conflictId}&layout=coalition"
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                >
+                    ◑&nbsp;Coalition
+                </a>
+                <a
+                    href="conflict?id={conflictId}&layout=alliance"
+                    class="col-2 btn ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                >
+                    𖣯&nbsp;Alliance
+                </a>
+                <a
+                    href="conflict?id={conflictId}&layout=nation"
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                >
+                    ♟&nbsp;Nation
+                </a>
+                <a
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                    href="tiering?id={conflictId}"
+                >
+                    📊&nbsp;Tier/Time
+                </a>
+                <button
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary fw-bold bg-light-subtle border-0 border-bottom-0"
+                >
+                    📈&nbsp;Bubble/Time
+                </button>
+                <a
+                    class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
+                    href="chord?id={conflictId}"
+                >
+                    🌐&nbsp;Web
+                </a>
+            </div>
+        </div>
     </div>
     {#if !_loaded}
         <Progress />
     {/if}
-    <div class="row m-0 p-0 bg-light-subtle border-bottom border-3" style="min-height: 116px">
-        <div class="col-12">
-    <div style="width: calc(100% - 30px);margin-left:15px;" >
-        <div class="mt-3 mb-5" style="position: relative; z-index: 1;" bind:this={sliderElement}></div>
-    </div>
-    {#if _rawData}
-    <span class="fw-bold">Select 3:</span>
-    <div class="select-compact mb-2" style="position: relative; z-index: 3;">
-        <Select multiple items={items} on:change={handleMetricsChange} bind:value={selected_metrics} showChevron={true}>
-            <div class="empty" slot="empty">{maxItems ? 'Max 3 items' : 'No options'}</div>
-        </Select>
-    </div>
-    <span class="fw-bold">Per Unit or Nation:</span>
-    <div class="form-check form-check-inline" style="position: relative; z-index: 2;">
-        <label class="form-check-label" for="inlineCheckbox1">X</label>
-        <input class="form-check-input" type="checkbox" id="inlineCheckbox1" value="option1" bind:checked={normalize_x} on:change={handleCheckbox}>
-    </div>
-    <div class="form-check form-check-inline" style="position: relative; z-index: 2;">
-        <label class="form-check-label" for="inlineCheckbox2">Y</label>
-        <input class="form-check-input" type="checkbox" id="inlineCheckbox2" value="option2" bind:checked={normalize_y} on:change={handleCheckbox}>
-    </div>
-    <div class="form-check form-check-inline" style="position: relative; z-index: 2;">
-        <label class="form-check-label" for="inlineCheckbox3">Z</label>
-        <input class="form-check-input" type="checkbox" id="inlineCheckbox3" value="option3" bind:checked={normalize_z} on:change={handleCheckbox}>
-    </div>
+    {#if _loadError}
+        <div class="alert alert-danger m-2">{_loadError}</div>
     {/if}
+    <div
+        class="row m-0 p-0 ux-surface ux-tab-panel"
+        style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"
+    >
+        <div class="col-12">
+            <div style="width: calc(100% - 30px);margin-left:15px;">
+                <div
+                    class="mt-3 mb-5"
+                    style="position: relative; z-index: 1;"
+                    bind:this={sliderElement}
+                ></div>
+            </div>
+            {#if _rawData}
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">Select 3:</span>
+                    <button
+                        class="btn ux-btn btn-sm fw-bold"
+                        on:click={resetFilters}>Reset Filters</button
+                    >
+                </div>
+                <div
+                    class="select-compact mb-2"
+                    style="position: relative; z-index: 3;"
+                >
+                    <Select
+                        multiple
+                        {items}
+                        on:change={handleMetricsChange}
+                        bind:value={selected_metrics}
+                        showChevron={true}
+                    >
+                        <div class="empty" slot="empty">
+                            {maxItems ? "Max 3 items" : "No options"}
+                        </div>
+                    </Select>
+                </div>
+                <div class="small text-muted mb-2">
+                    Metrics: {selected_metrics
+                        .map((item) => item.label)
+                        .join(" / ")} • Cities {cityValues[0]}-{cityValues[1]}
+                </div>
+                <span class="fw-bold">Per Unit or Nation:</span>
+                <div
+                    class="form-check form-check-inline"
+                    style="position: relative; z-index: 2;"
+                >
+                    <label class="form-check-label" for="inlineCheckbox1"
+                        >X</label
+                    >
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="inlineCheckbox1"
+                        value="option1"
+                        bind:checked={normalize_x}
+                        on:change={handleCheckbox}
+                    />
+                </div>
+                <div
+                    class="form-check form-check-inline"
+                    style="position: relative; z-index: 2;"
+                >
+                    <label class="form-check-label" for="inlineCheckbox2"
+                        >Y</label
+                    >
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="inlineCheckbox2"
+                        value="option2"
+                        bind:checked={normalize_y}
+                        on:change={handleCheckbox}
+                    />
+                </div>
+                <div
+                    class="form-check form-check-inline"
+                    style="position: relative; z-index: 2;"
+                >
+                    <label class="form-check-label" for="inlineCheckbox3"
+                        >Z</label
+                    >
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="inlineCheckbox3"
+                        value="option3"
+                        bind:checked={normalize_z}
+                        on:change={handleCheckbox}
+                    />
+                </div>
+            {/if}
+        </div>
     </div>
-    </div>
-    <div class="row m-0 p-0" style="overflow-x: hidden;">
+    <div class="row m-0 p-0 mt-2 ux-surface" style="overflow-x: hidden; position: relative; z-index: 1;">
         <div class="col-12 m-0 p-0">
             <div class="m-0 p-0" bind:this={graphDiv}></div>
         </div>

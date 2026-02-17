@@ -405,20 +405,20 @@
 </svelte:head>
 <Navbar />
 <!-- <Sidebar /> -->
-<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
-    <h1>
-        <a href="conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
+<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+    <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
+        <a href="conflicts" aria-label="Back to conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
         {#if _rawData?.wiki}
             <a
-                class="btn btn btn-info opacity-75 fw-bold"
+                class="btn ux-btn fw-bold"
                 href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}"
                 >Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"
                 ></i></a
             >
         {/if}
     </h1>
-    <hr class="mt-1" />
-    <div class="row p-0 m-0">
+    <hr class="mt-2 mb-2" />
+    <div class="row p-0 m-0 ux-tabstrip">
         <a
             href="conflict?id={conflictId}&layout=coalition"
             class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold border-0 border-bottom"
@@ -450,15 +450,12 @@
             📈&nbsp;Bubble/Time
         </a>
         <button
-            class="col-2 ps-0 pe-0 btn border rounded-bottom-0 fw-bold bg-light-subtle border-bottom-0"
+            class="col-2 ps-0 pe-0 btn btn-outline-secondary rounded-bottom-0 fw-bold bg-light-subtle border border-bottom-0"
         >
             🌐&nbsp;Web
         </button>
     </div>
-    <div
-        class="bg-light-subtle p-1 fw-bold border-bottom border-3 pb-0"
-        style="min-height: 119px;"
-    >
+    <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 119px;">
         {#if !_loaded}
             <Progress />
         {/if}
@@ -466,28 +463,28 @@
             <span class="fw-bold">Layout Picker:</span>
             {#each _rawData.war_web.headers as header (header)}
                 <button
-                    class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-info opacity-75 fw-bold"
+                    class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
                     class:active={_currentHeaderName === header}
                     on:click={() => setLayoutHeader(header)}>{header}</button
                 >
             {/each}
             <hr class="m-1" />
-            <div class="bg-danger-subtle p-1 pb-0 mb-1">
+            <div class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red">
                 {_rawData?.coalitions[0].name}:
                 {#each _rawData.coalitions[0].alliance_ids as id, index}
                     <button
-                        class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-danger opacity-75 fw-bold"
+                        class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
                         class:active={_allowedAllianceIds.has(id)}
                         on:click={() => setLayoutAlliance(0, id)}
                         >{_rawData.coalitions[0].alliance_names[index]}</button
                     >
                 {/each}
             </div>
-            <div class="bg-info-subtle p-1 pb-0">
+            <div class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue">
                 {_rawData?.coalitions[1].name}:
                 {#each _rawData.coalitions[1].alliance_ids as id, index}
                     <button
-                        class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-info opacity-75 fw-bold"
+                        class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
                         class:active={_allowedAllianceIds.has(id)}
                         on:click={() => setLayoutAlliance(1, id)}
                         >{_rawData.coalitions[1].alliance_names[index]}</button
@@ -504,7 +501,7 @@
             the table.
         </div>
     </div>
-    <div class="container bg-light-subtle border">
+    <div class="container bg-light-subtle">
         <div id="my_dataviz"></div>
         <div class="mt-1" id="myTooltip" style="min-height:15em"></div>
     </div>

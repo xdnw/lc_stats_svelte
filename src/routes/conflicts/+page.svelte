@@ -35,6 +35,8 @@
   let showDiv = false; // State to toggle visibility
   let searchQuery = ""; // State for search input
 
+  const getVis = (): any => (window as any).vis;
+
   // onMount runs when this component (i.e. the page) is loaded
   // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
   onMount(() => {
@@ -61,9 +63,9 @@
       // + the name of the conflict (linking to the conflict page)
       (window as any).formatUrl = (
         data: string,
-        type: any,
+        _type: any,
         row: any,
-        meta: any,
+        _meta: any,
       ) => {
         let id = row[0];
         let result = `<span class='text-nowrap'>`;
@@ -144,7 +146,7 @@
           }
         }
 
-        guildParam = queryParams.get("guild");
+        guildParam = queryParams.get("guild") || queryParams.get("guild_id");
 
         setupConflicts(result, guildParam);
         _loaded = true;
@@ -260,7 +262,7 @@
       visible: visible,
       searchable: searchable,
       cell_format: cell_format,
-      row_format: (row: HTMLElement, data: number[], index: number) => {
+      row_format: (row: HTMLElement, data: any, _index: number) => {
         // Highlight rows based on the end date (ongoing = warning, ended <5d ago = light, ended = no color)
         let end = data[5];
         if (end == -1) {
@@ -283,6 +285,8 @@
     const id = target.value;
     const name = _rawData!.source_names![id];
     currSource = [name, id];
+    guildParam = id === "0" ? null : id;
+    setQueryParam("guild", id === "0" ? null : id);
     setupConflicts(_rawData!, id);
   }
 
@@ -309,7 +313,9 @@
 
   function recalcAlliances() {
     _allowedAllianceIds = _allowedAllianceIds;
-    setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
+    setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
+      replace: true,
+    });
 
     setupConflicts(_rawData!, guildParam);
     initializeTimeline(true);
@@ -321,7 +327,7 @@
       _loaded &&
       _rawData &&
       ((script && script.getAttribute("data-loaded")) ||
-        typeof vis !== "undefined")
+        typeof getVis() !== "undefined")
     ) {
       // DOM element where the Timeline will be attached
       const container = document.getElementById("visualization");
@@ -332,6 +338,7 @@
       }
 
       // Create a DataSet (allows two way data-binding)
+      const vis = getVis();
       const items = new vis.DataSet();
 
       let minStart = Date.now();
@@ -416,20 +423,18 @@
 <Navbar />
 <!-- Add sidebar component to page -->
 <!-- <Sidebar /> -->
-<div class="container-fluid m-0 p-0" style="min-height: calc(100vh - 203px);">
-  <h1 class="m-1">
-    <a href="{base}/"><i class="bi bi-arrow-left"></i></a>
-    <div class="d-inline-block" style="position: relative; bottom: -0.1em;">
-      &nbsp;Conflict
-    </div>
+<div class="container-fluid p-2" style="min-height: calc(100vh - 203px);">
+  <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
+    <a href="{base}/" aria-label="Back to home"
+      ><i class="bi bi-arrow-left"></i></a
+    >
+    &nbsp;Conflict
     {#if _rawData && _rawData.source_names}
-      <div class="d-inline-block">
-        <div class="input-group">
-          <label for="source" class="fw-bold input-group-text border-3"
-            >Source:</label
-          >
+      <div class="d-inline-block ms-2">
+        <div class="input-group ux-inputbar">
+          <label for="source" class="fw-bold input-group-text">Source:</label>
           <select
-            class="p-0 btn btn-sm border-border border-3 border-light bg-light-subtle text-info fw-bold"
+            class="form-select form-select-sm fw-bold"
             on:change={selectSource}
           >
             <option selected={currSource[1] == 0} value="0">All</option>
@@ -438,7 +443,7 @@
             {/each}
           </select>
           <button
-            class="btn btn-outline-light border-3 fw-bold text-info"
+            class="btn ux-btn fw-bold"
             on:click={() =>
               modalStrWithCloseButton(
                 "Create Info",
@@ -461,16 +466,13 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
       </div>
     {/if}
   </h1>
-  <hr class="mt-1" />
+  <hr class="mt-2 mb-2" />
   {#if !_loaded}
     <Progress />
   {/if}
   {#if _rawData}
     <!-- Toggle visibility button -->
-    <button
-      class="ms-1 btn mb-1 btn-secondary btn-info opacity-80 fw-bold inline-block"
-      on:click={() => (showDiv = !showDiv)}
-    >
+    <button class="btn ux-btn mb-2" on:click={() => (showDiv = !showDiv)}>
       Filter Alliances&nbsp;<i
         class="bi"
         class:bi-chevron-down={!showDiv}
@@ -485,17 +487,15 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
         bind:value={searchQuery}
       />
       <div class="d-flex justify-content-left align-items-center ms-1">
-        <div
-          class="d-flex justify-content-center align-items-center alert alert-danger text-center mb-1 py-1 text-danger"
-        >
+        <div class="ux-callout mb-2">
           These will toggle the visiblity of conflicts which contain the
           selected alliances. It does NOT affect the individual conflict stats.
         </div>
       </div>
-      <div class="bg-danger-subtle p-1 pb-0 mb-1">
+      <div class="ux-surface p-2 mb-2">
         <!-- Toggle all button -->
         <button
-          class="btn btn-sm ms-1 mb-1 btn-secondary btn-danger opacity-75 fw-bold"
+          class="btn ux-btn btn-sm ms-1 mb-1"
           on:click={() => toggleAlliances()}
         >
           Toggle All
@@ -506,7 +506,7 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
               .toLowerCase()
               .includes(searchQuery.toLowerCase())}
             <button
-              class="btn btn-sm ms-1 mb-1 btn-secondary btn-outline-info opacity-75 fw-bold"
+              class="btn ux-btn btn-sm ms-1 mb-1"
               class:active={_allowedAllianceIds.has(id)}
               on:click={() => setLayoutAlliance(id)}
             >
@@ -518,9 +518,11 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
     {/if}
   {/if}
   <div id="conflictTable" class="inline-block"></div>
-  <h4 class="m-1">Timeline</h4>
-  <p class="ps-1">Use ctrl+mousewheel to zoom on PC</p>
-  <div class="m-0" id="visualization"></div>
+  <div class="ux-surface p-2 mt-2">
+    <h4 class="m-1">Timeline</h4>
+    <p class="ps-1 ux-muted">Use ctrl+mousewheel to zoom on PC</p>
+    <div class="m-0" id="visualization"></div>
+  </div>
 </div>
 <!-- Add footer component to page -->
 <Footer />
