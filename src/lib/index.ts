@@ -1,5 +1,4 @@
 // import msgpack from 'msgpack-lite';
-import { page } from '$app/stores';
 import { Unpackr } from 'msgpackr';
 declare const $: any;
 declare const jQuery: any;
@@ -704,6 +703,118 @@ export function setQueryParam(
             window.history.pushState({}, '', newUrl);
         }
     }
+}
+
+export function getPageStorageKey(pathname?: string): string {
+    const path = pathname ?? window.location.pathname;
+    return `lc_stats:view:${path}`;
+}
+
+export function saveCurrentQueryParams(storageKey?: string, includeEmpty: boolean = false): void {
+    try {
+        const key = storageKey ?? getPageStorageKey();
+        const params = new URLSearchParams(window.location.search);
+        const data: Record<string, string> = {};
+        params.forEach((value, k) => {
+            if (includeEmpty || value !== '') {
+                data[k] = value;
+            }
+        });
+        localStorage.setItem(key, JSON.stringify(data));
+    } catch (error) {
+        console.warn('Failed to save view preset', error);
+    }
+}
+
+export function readSavedQueryParams(storageKey?: string): Record<string, string> {
+    try {
+        const key = storageKey ?? getPageStorageKey();
+        const value = localStorage.getItem(key);
+        if (!value) return {};
+        const parsed = JSON.parse(value);
+        if (!parsed || typeof parsed !== 'object') return {};
+        return parsed as Record<string, string>;
+    } catch (error) {
+        console.warn('Failed to read view preset', error);
+        return {};
+    }
+}
+
+export function applySavedQueryParamsIfMissing(
+    keys: string[],
+    requiredKeys: string[] = [],
+    storageKey?: string
+): boolean {
+    const saved = readSavedQueryParams(storageKey);
+    if (!saved || Object.keys(saved).length === 0) return false;
+    const url = new URL(window.location.href);
+    for (const required of requiredKeys) {
+        if (!url.searchParams.get(required)) {
+            return false;
+        }
+    }
+    let changed = false;
+    for (const key of keys) {
+        const hasInUrl = url.searchParams.has(key);
+        const hasSaved = Object.prototype.hasOwnProperty.call(saved, key);
+        if (!hasInUrl && hasSaved) {
+            const value = saved[key];
+            if (value == null || value === '') {
+                url.searchParams.delete(key);
+            } else {
+                url.searchParams.set(key, value);
+            }
+            changed = true;
+        }
+    }
+    if (changed) {
+        window.history.replaceState({}, '', url.toString());
+    }
+    return changed;
+}
+
+export function resetQueryParams(keysToClear: string[], requiredKeys: string[] = []): void {
+    const url = new URL(window.location.href);
+    for (const key of keysToClear) {
+        url.searchParams.delete(key);
+    }
+    const requiredSnapshot: Record<string, string> = {};
+    for (const required of requiredKeys) {
+        const value = url.searchParams.get(required);
+        if (value != null) {
+            requiredSnapshot[required] = value;
+        }
+    }
+    window.history.replaceState({}, '', url.toString());
+    saveCurrentQueryParams();
+    // Re-apply required key snapshot if any logic removed them accidentally
+    for (const required of requiredKeys) {
+        if (requiredSnapshot[required] != null) {
+            setQueryParam(required, requiredSnapshot[required], { replace: true });
+        }
+    }
+}
+
+export async function copyShareLink(): Promise<boolean> {
+    const href = window.location.href;
+    try {
+        await navigator.clipboard.writeText(href);
+        modalStrWithCloseButton('Share link copied', 'The current page link has been copied to your clipboard.');
+        return true;
+    } catch (error) {
+        console.error('Failed to copy share link', error);
+        modalStrWithCloseButton('Copy failed', 'Could not copy the share link. Please copy the URL from your browser address bar.');
+        return false;
+    }
+}
+
+export function formatDatasetProvenance(version: number | string, updateMs?: number): string {
+    let text = `Version: ${version}`;
+    if (updateMs != null && !isNaN(updateMs)) {
+        const secondsAgo = Math.max(0, Math.round((Date.now() - updateMs) / 1000));
+        text += ` • Last updated ${formatDuration(secondsAgo)} ago`;
+    }
+    return text;
 }
 
 function ensureJqueryLoaded(): Promise<void> {

@@ -21,6 +21,11 @@
         Palette,
         palettePrimary,
         generateColors,
+        applySavedQueryParamsIfMissing,
+        saveCurrentQueryParams,
+        copyShareLink,
+        resetQueryParams,
+        formatDatasetProvenance,
     } from "$lib";
     import { config } from "../+layout";
     import Select from "svelte-select";
@@ -28,8 +33,10 @@
     import noUiSlider from "nouislider";
 
     let _loaded = false;
+    let _loadError: string | null = null;
     let conflictName = "";
     let conflictId: string | null = null;
+    let datasetProvenance = "";
 
     let normalize: boolean = false;
     let previous_normalize: boolean = false;
@@ -82,6 +89,7 @@
                 "selected",
                 selected_metrics.map((metric) => metric.value).join("."),
             );
+            saveCurrentQueryParams();
             setupCharts(_rawData);
         }
     }
@@ -92,6 +100,7 @@
         previous_normalize = normalize;
         if (_rawData) {
             setQueryParam("normalize", normalize ? 1 : null, { replace: true });
+            saveCurrentQueryParams();
             setupCharts(_rawData);
         }
         return true;
@@ -105,6 +114,7 @@
             setQueryParam("unicolor", useSingleColor ? 1 : null, {
                 replace: true,
             });
+            saveCurrentQueryParams();
             setupCharts(_rawData);
         }
         return true;
@@ -151,6 +161,7 @@
             setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
                 replace: true,
             });
+            saveCurrentQueryParams();
             setupCharts(_rawData);
         }
     }
@@ -177,6 +188,10 @@
     // onMount runs when this component (i.e. the page) is loaded
     // This gets the conflict id from the url query string, fetches the data from s3 and creates the charts
     onMount(() => {
+        applySavedQueryParamsIfMissing(
+            ["selected", "normalize", "unicolor", "ids"],
+            ["id"],
+        );
         // Get the conflict id from the url query string
         let queryParams = new URLSearchParams(window.location.search);
         loadQueryParams(queryParams);
@@ -185,6 +200,8 @@
         if (id) {
             conflictId = id;
             setupChartData(conflictId);
+        } else {
+            _loadError = "Missing conflict id in URL";
             _loaded = true;
         }
     });
@@ -196,12 +213,32 @@
      * @param conflictId The id of the conflict
      */
     function setupChartData(conflictId: string) {
+        _loadError = null;
+        _loaded = false;
         let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${config.version.graph_data}`;
-        decompressBson(url).then((data) => {
-            _rawData = data;
-            conflictName = _rawData.name;
-            setupCharts(_rawData);
-        });
+        decompressBson(url)
+            .then((data) => {
+                _rawData = data;
+                conflictName = _rawData.name;
+                datasetProvenance = formatDatasetProvenance(
+                    config.version.graph_data,
+                    (data as any).update_ms,
+                );
+                setupCharts(_rawData);
+                _loaded = true;
+                saveCurrentQueryParams();
+            })
+            .catch((error) => {
+                console.error("Failed to load tiering graph data", error);
+                _loadError =
+                    "Could not load conflict graph data. Please try again later.";
+                _loaded = true;
+            });
+    }
+
+    function retryLoad() {
+        if (!conflictId) return;
+        setupChartData(conflictId);
     }
 
     // The layout of the charts (the key is id of the html element that'll be created)
@@ -253,6 +290,22 @@
                 selected_metrics.map((metric) => metric.value).join("."),
             );
             setQueryParam("normalize", normalize ? 1 : null);
+            saveCurrentQueryParams();
+            setupCharts(_rawData);
+        }
+    }
+
+    function resetFilters() {
+        normalize = false;
+        previous_normalize = false;
+        useSingleColor = false;
+        previous_useSingleColor = false;
+        selected_metrics = ["nation"].map((name) => ({ value: name, label: name }));
+        previous_selected = selected_metrics.slice();
+        _allowedAllianceIds = new Set();
+        resetQueryParams(["selected", "normalize", "unicolor", "ids"], ["id"]);
+        saveCurrentQueryParams();
+        if (_rawData) {
             setupCharts(_rawData);
         }
     }
@@ -812,6 +865,12 @@
         {#if !_loaded}
             <Progress />
         {/if}
+        {#if _loadError}
+            <div class="alert alert-danger m-2 d-flex justify-content-between align-items-center">
+                <span>{_loadError}</span>
+                <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}>Retry</button>
+            </div>
+        {/if}
         <div class="col-12">
             <div
                 class="p-1 fw-bold border-bottom border-3 pb-0"
@@ -874,6 +933,8 @@
                 class="ux-control-strip mb-1"
                 style="position: relative; z-index: 2;"
             >
+                <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
+                <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
                 <label for="inlineCheckbox1" class="ux-toggle-chip">
                     <span>Use Percent</span>
                     <input
@@ -896,6 +957,9 @@
                         on:change={handleColorCheck}
                     />
                 </label>
+                <span class="small text-muted" title="Metrics with ':' are cumulative sums across time ranges. Without ':', values represent the selected point in time.">
+                    ℹ cumulative vs point-in-time
+                </span>
                 {#if _rawData}
                     <div class="ux-quick-layouts">
                         <span class="fw-bold">Quick Layouts:</span>
@@ -910,6 +974,9 @@
                     </div>
                 {/if}
             </div>
+            {#if datasetProvenance}
+                <div class="small text-muted mb-1">{datasetProvenance}</div>
+            {/if}
         </div>
     </div>
     <div class="container-fluid m-0 p-0 mt-2 ux-surface p-2">

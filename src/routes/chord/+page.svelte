@@ -8,6 +8,11 @@
         Palette,
         darkenColor,
         commafy,
+        applySavedQueryParamsIfMissing,
+        saveCurrentQueryParams,
+        copyShareLink,
+        resetQueryParams,
+        formatDatasetProvenance,
     } from "$lib";
     import { onMount } from "svelte";
     import Navbar from "../../components/Navbar.svelte";
@@ -23,57 +28,78 @@
     let _allowedAllianceIds: Set<number> = new Set();
     let _currentHeaderName: string = "wars";
     let _loaded = false;
+    let _loadError: string | null = null;
+    let datasetProvenance = "";
 
     onMount(() => {
+        applySavedQueryParamsIfMissing(["header", "ids"], ["id"]);
         let queryParams = new URLSearchParams(window.location.search);
         const id = queryParams.get("id");
         if (id) {
             conflictId = id;
             setupWebFromId(conflictId, queryParams);
+        } else {
+            _loadError = "Missing conflict id in URL";
             _loaded = true;
         }
     });
 
     function setupWebFromId(conflictId: string, queryParams: URLSearchParams) {
+        _loadError = null;
+        _loaded = false;
         let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
-        decompressBson(url).then((data) => {
-            _rawData = data;
-            console.log(data);
-            conflictName = data.name;
-            _allowedAllianceIds = new Set([
-                ...data.coalitions[0].alliance_ids,
-                ...data.coalitions[1].alliance_ids,
-            ]);
+        decompressBson(url)
+            .then((data) => {
+                _rawData = data;
+                console.log(data);
+                conflictName = data.name;
+                datasetProvenance = formatDatasetProvenance(
+                    config.version.conflict_data,
+                    (data as any).update_ms,
+                );
+                _allowedAllianceIds = new Set([
+                    ...data.coalitions[0].alliance_ids,
+                    ...data.coalitions[1].alliance_ids,
+                ]);
 
-            let header = queryParams.get("header");
-            if (header && _rawData?.war_web.headers.includes(header)) {
-                _currentHeaderName = header;
-            }
-            let idStr = queryParams.get("ids");
-            if (idStr) {
-                let ids = idStr.split(".").map((id) => +id);
-                _allowedAllianceIds = new Set(ids);
-                if (
-                    !_rawData?.coalitions[0].alliance_ids.some((id) =>
-                        _allowedAllianceIds.has(id),
-                    ) ||
-                    !_rawData?.coalitions[1].alliance_ids.some((id) =>
-                        _allowedAllianceIds.has(id),
-                    )
-                ) {
-                    _allowedAllianceIds = new Set([
-                        ...data.coalitions[0].alliance_ids,
-                        ...data.coalitions[1].alliance_ids,
-                    ]);
+                let header = queryParams.get("header");
+                if (header && _rawData?.war_web.headers.includes(header)) {
+                    _currentHeaderName = header;
                 }
-            }
-            setupWebWithCurrentLayout();
-        });
+                let idStr = queryParams.get("ids");
+                if (idStr) {
+                    let ids = idStr.split(".").map((id) => +id);
+                    _allowedAllianceIds = new Set(ids);
+                    if (
+                        !_rawData?.coalitions[0].alliance_ids.some((id) =>
+                            _allowedAllianceIds.has(id),
+                        ) ||
+                        !_rawData?.coalitions[1].alliance_ids.some((id) =>
+                            _allowedAllianceIds.has(id),
+                        )
+                    ) {
+                        _allowedAllianceIds = new Set([
+                            ...data.coalitions[0].alliance_ids,
+                            ...data.coalitions[1].alliance_ids,
+                        ]);
+                    }
+                }
+                setupWebWithCurrentLayout();
+                _loaded = true;
+                saveCurrentQueryParams();
+            })
+            .catch((error) => {
+                console.error("Failed to load chord web data", error);
+                _loadError =
+                    "Could not load conflict web data. Please try again later.";
+                _loaded = true;
+            });
     }
 
     function setLayoutHeader(headerName: string) {
         _currentHeaderName = headerName;
         setQueryParam("header", headerName);
+        saveCurrentQueryParams();
         setupWebWithCurrentLayout();
     }
 
@@ -115,7 +141,26 @@
             _allowedAllianceIds = new Set([..._allowedAllianceIds, allianceId]);
         }
         setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
+        saveCurrentQueryParams();
         setupWebWithCurrentLayout();
+    }
+
+    function resetFilters() {
+        if (!_rawData) return;
+        _currentHeaderName = "wars";
+        _allowedAllianceIds = new Set([
+            ..._rawData.coalitions[0].alliance_ids,
+            ..._rawData.coalitions[1].alliance_ids,
+        ]);
+        resetQueryParams(["header", "ids"], ["id"]);
+        saveCurrentQueryParams();
+        setupWebWithCurrentLayout();
+    }
+
+    function retryLoad() {
+        if (!conflictId) return;
+        const queryParams = new URLSearchParams(window.location.search);
+        setupWebFromId(conflictId, queryParams);
     }
 
     function setupWebWithCurrentLayout() {
@@ -459,6 +504,16 @@
         {#if !_loaded}
             <Progress />
         {/if}
+        {#if _loadError}
+            <div class="alert alert-danger m-2 d-flex justify-content-between align-items-center">
+                <span>{_loadError}</span>
+                <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}>Retry</button>
+            </div>
+        {/if}
+        <div class="d-flex gap-1 mb-2">
+            <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
+            <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
+        </div>
         {#if _rawData}
             <span class="fw-bold">Layout Picker:</span>
             {#each _rawData.war_web.headers as header (header)}
@@ -505,6 +560,9 @@
         <div id="my_dataviz"></div>
         <div class="mt-1" id="myTooltip" style="min-height:15em"></div>
     </div>
+    {#if datasetProvenance}
+        <div class="small text-muted mt-1">{datasetProvenance}</div>
+    {/if}
     <br />
 </div>
 <Footer />

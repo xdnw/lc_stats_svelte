@@ -18,6 +18,11 @@
         arrayEquals,
         type TierMetric,
         ensureScriptsLoaded,
+        applySavedQueryParamsIfMissing,
+        saveCurrentQueryParams,
+        copyShareLink,
+        resetQueryParams,
+        formatDatasetProvenance,
     } from "$lib";
     import { config } from "../+layout";
 
@@ -30,6 +35,7 @@
     let conflictName: string;
     let _loaded = false;
     let _loadError: string | null = null;
+    let datasetProvenance = "";
 
     let normalize_x: boolean = false;
     let normalize_y: boolean = false;
@@ -78,6 +84,7 @@
             "selected",
             selected_metrics.map((metric) => metric.value).join("."),
         );
+        saveCurrentQueryParams();
         setupGraphData(_rawData);
     }
 
@@ -92,6 +99,7 @@
         setQueryParam("normalize", normalizeBits == 0 ? null : normalizeBits, {
             replace: true,
         });
+        saveCurrentQueryParams();
         setupGraphData(_rawData);
         return true;
     }
@@ -110,14 +118,13 @@
         ].map((name) => ({ value: name, label: name }));
         previous_selected = selected_metrics.slice();
 
-        setQueryParam("city_min", null, { replace: true });
-        setQueryParam("city_max", null, { replace: true });
-        setQueryParam("time", null, { replace: true });
-        setQueryParam("normalize", null, { replace: true });
+        resetQueryParams(["city_min", "city_max", "time", "normalize", "selected"], ["id"]);
         setQueryParam(
             "selected",
             selected_metrics.map((metric) => metric.value).join("."),
+            { replace: true },
         );
+        saveCurrentQueryParams();
 
         const sliderApi = getSliderApi();
         if (sliderApi) {
@@ -165,6 +172,10 @@
     }
     let graphDiv: HTMLDivElement;
     onMount(async () => {
+        applySavedQueryParamsIfMissing(
+            ["city_min", "city_max", "time", "normalize", "selected"],
+            ["id"],
+        );
         let queryParams = new URLSearchParams(window.location.search);
         loadQueryParams(queryParams);
 
@@ -208,6 +219,7 @@
                 cityValues[1] == 70 ? null : cityValues[1],
                 { replace: true },
             );
+            saveCurrentQueryParams();
             setupGraphData(_rawData);
         };
         getSliderApi()?.on("set", sliderSetListener);
@@ -248,9 +260,14 @@
                 start = Date.now();
                 conflictName = data.name;
                 _rawData = data;
+                datasetProvenance = formatDatasetProvenance(
+                    config.version.graph_data,
+                    (data as any).update_ms,
+                );
                 _loadError = null;
                 setupGraphData(_rawData);
                 _loaded = true;
+                saveCurrentQueryParams();
             })
             .catch((error) => {
                 console.error("Failed to load bubble graph data", error);
@@ -258,6 +275,13 @@
                     "Could not load conflict graph data. Please try again later.";
                 _loaded = true;
             });
+    }
+
+    function retryLoad() {
+        if (!conflictId) return;
+        _loaded = false;
+        _loadError = null;
+        fetchConflictGraphData(conflictId);
     }
 
     interface Trace {
@@ -986,7 +1010,10 @@
             <Progress />
         {/if}
         {#if _loadError}
-            <div class="alert alert-danger m-2">{_loadError}</div>
+            <div class="alert alert-danger m-2 d-flex justify-content-between align-items-center">
+                <span>{_loadError}</span>
+                <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}>Retry</button>
+            </div>
         {/if}
         <div class="col-12">
             <div style="width: calc(100% - 30px);margin-left:15px;">
@@ -999,10 +1026,13 @@
             {#if _rawData}
                 <div class="d-flex justify-content-between align-items-center">
                     <span class="fw-bold">Select 3:</span>
-                    <button
-                        class="btn ux-btn btn-sm fw-bold"
-                        on:click={resetFilters}>Reset Filters</button
-                    >
+                    <div class="d-flex gap-1">
+                        <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}>Copy share link</button>
+                        <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}>Reset</button>
+                    </div>
+                </div>
+                <div class="small text-muted mb-1" title="Metrics with ':' are cumulative sums over time. Metrics without ':' are point-in-time values for each frame.">
+                    ℹ Metric behavior: cumulative (sum over time) vs point-in-time.
                 </div>
                 <div
                     class="select-compact mb-2"
@@ -1025,6 +1055,9 @@
                         .map((item) => item.label)
                         .join(" / ")} • Cities {cityValues[0]}-{cityValues[1]}
                 </div>
+                {#if datasetProvenance}
+                    <div class="small text-muted mb-2">{datasetProvenance}</div>
+                {/if}
                 <span class="fw-bold">Per Unit or Nation:</span>
                 <div
                     class="form-check form-check-inline"

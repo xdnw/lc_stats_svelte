@@ -20,12 +20,19 @@
     ConflictIndex,
     type JSONValue,
     setQueryParam,
+    applySavedQueryParamsIfMissing,
+    saveCurrentQueryParams,
+    copyShareLink,
+    resetQueryParams,
+    formatDatasetProvenance,
   } from "$lib";
 
   let _currentRowData: TableData;
   let _rawData: RawData | null = null;
   let currSource = ["All", 0];
   let _loaded = false;
+  let _loadError: string | null = null;
+  let datasetProvenance = "";
   let allianceNameById: { [key: number]: string } = {};
   let allianceIdsByCoalition: { [key: string]: number[][] } = {};
   let colNames: { [key: string]: string[] } = {};
@@ -41,6 +48,7 @@
   // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
   onMount(() => {
     try {
+      applySavedQueryParamsIfMissing(["ids", "guild", "guild_id"]);
       // Add the cell format functions to the window
       addFormatters();
 
@@ -97,9 +105,15 @@
       // Url of s3 bucket
       let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
 
-      decompressBson(url).then((result: RawData) => {
-        _rawData = result;
-        /*
+      decompressBson(url)
+        .then((result: RawData) => {
+          _loadError = null;
+          _rawData = result;
+          datasetProvenance = formatDatasetProvenance(
+            config.version.conflicts,
+            (result as any).update_ms,
+          );
+          /*
         Result is an object with the following keys:
         alliance_ids: number[]; - array of alliance ids
         alliance_names: string[]; - array of alliance names (corresponding to the alliance_ids array)
@@ -124,33 +138,40 @@
         - 17:category - displayed
         conflicts: any[][]; - 2D array of the table cell data in the form [row index][column index]
         */
-        let alliance_ids = result.alliance_ids;
-        let alliance_names = result.alliance_names;
-        for (let i = 0; i < alliance_ids.length; i++) {
-          allianceNameById[alliance_ids[i]] = alliance_names[i];
-        }
-
-        let queryParams = new URLSearchParams(window.location.search);
-
-        const allianceIdsParam = queryParams.get("ids");
-        if (allianceIdsParam) {
-          for (const id of allianceIdsParam.split(".")) {
-            _allowedAllianceIds.add(parseInt(id));
-          }
-        } else {
+          let alliance_ids = result.alliance_ids;
+          let alliance_names = result.alliance_names;
           for (let i = 0; i < alliance_ids.length; i++) {
-            _allowedAllianceIds.add(alliance_ids[i]);
+            allianceNameById[alliance_ids[i]] = alliance_names[i];
           }
-        }
 
-        guildParam = queryParams.get("guild") || queryParams.get("guild_id");
+          let queryParams = new URLSearchParams(window.location.search);
 
-        setupConflicts(result, guildParam);
-        _loaded = true;
-        initializeTimeline(false);
-      });
+          const allianceIdsParam = queryParams.get("ids");
+          if (allianceIdsParam) {
+            for (const id of allianceIdsParam.split(".")) {
+              _allowedAllianceIds.add(parseInt(id));
+            }
+          } else {
+            for (let i = 0; i < alliance_ids.length; i++) {
+              _allowedAllianceIds.add(alliance_ids[i]);
+            }
+          }
+
+          guildParam = queryParams.get("guild") || queryParams.get("guild_id");
+
+          setupConflicts(result, guildParam);
+          _loaded = true;
+          saveCurrentQueryParams();
+          initializeTimeline(false);
+        })
+        .catch((error) => {
+          console.error("Failed to load conflicts data", error);
+          _loadError = "Could not load conflicts data. Please try again later.";
+          _loaded = true;
+        });
     } catch (error) {
       console.error("Error reading from S3 bucket:", error);
+      _loadError = "Could not load conflicts data. Please try again later.";
     }
   });
 
@@ -284,6 +305,7 @@
     currSource = [name, id];
     guildParam = id === "0" ? null : id;
     setQueryParam("guild", id === "0" ? null : id);
+    saveCurrentQueryParams();
     setupConflicts(_rawData!, id);
   }
 
@@ -313,9 +335,26 @@
     setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
       replace: true,
     });
+    saveCurrentQueryParams();
 
     setupConflicts(_rawData!, guildParam);
     initializeTimeline(true);
+  }
+
+  function resetFilters() {
+    if (!_rawData) return;
+    _allowedAllianceIds = new Set(_rawData.alliance_ids);
+    guildParam = null;
+    currSource = ["All", 0];
+    searchQuery = "";
+    resetQueryParams(["ids", "guild", "guild_id"]);
+    saveCurrentQueryParams();
+    setupConflicts(_rawData, null);
+    initializeTimeline(true);
+  }
+
+  function retryLoad() {
+    window.location.reload();
   }
 
   function initializeTimeline(force: boolean) {
@@ -467,7 +506,25 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
   {#if !_loaded}
     <Progress />
   {/if}
+  {#if _loadError}
+    <div
+      class="alert alert-danger m-2 d-flex justify-content-between align-items-center"
+    >
+      <span>{_loadError}</span>
+      <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}
+        >Retry</button
+      >
+    </div>
+  {/if}
   {#if _rawData}
+    <div class="d-flex gap-1 mb-2">
+      <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}
+        >Copy share link</button
+      >
+      <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}
+        >Reset</button
+      >
+    </div>
     <!-- Toggle visibility button -->
     <button class="btn ux-btn mb-2" on:click={() => (showDiv = !showDiv)}>
       Filter Alliances&nbsp;<i
@@ -515,6 +572,9 @@ A unix timestamp, a DMY date or a time difference that will resolve to a timesta
     {/if}
   {/if}
   <div id="conflictTable" class="inline-block"></div>
+  {#if datasetProvenance}
+    <div class="small text-muted mt-1">{datasetProvenance}</div>
+  {/if}
   <div class="ux-surface p-2 mt-2">
     <h4 class="m-1">Timeline</h4>
     <p class="ps-1 ux-muted">Use ctrl+mousewheel to zoom on PC</p>

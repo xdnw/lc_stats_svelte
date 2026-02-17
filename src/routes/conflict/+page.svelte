@@ -18,6 +18,11 @@
     ExportTypes,
     formatDuration,
     downloadTableElem,
+    applySavedQueryParamsIfMissing,
+    saveCurrentQueryParams,
+    copyShareLink,
+    resetQueryParams,
+    formatDatasetProvenance,
   } from "$lib";
   import { config } from "../+layout";
   // Layout tabs
@@ -31,6 +36,8 @@
   let conflictName = "";
   let conflictId: string | null = null;
   let _loaded = false;
+  let _loadError: string | null = null;
+  let datasetProvenance = "";
 
   // see loadLayout for the type
   let _rawData: Conflict | null = null;
@@ -393,24 +400,37 @@
   // Load the current layout (which will create the table)
   // If there are posts, load the posts into the timeline
   function setupConflictTables(conflictId: string) {
+    _loadError = null;
+    _loaded = false;
     let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
-    decompressBson(url).then((data: Conflict) => {
-      const loadedData = data;
-      _rawData = loadedData;
-      setColNames(
-        loadedData.coalitions[0].alliance_ids,
-        loadedData.coalitions[0].alliance_names,
-      );
-      setColNames(
-        loadedData.coalitions[1].alliance_ids,
-        loadedData.coalitions[1].alliance_names,
-      );
-      loadCurrentLayout();
-      if (loadedData.posts && Object.keys(loadedData.posts).length) {
-        loadPosts(loadedData.posts);
-      }
-      _loaded = true;
-    });
+    decompressBson(url)
+      .then((data: Conflict) => {
+        const loadedData = data;
+        _rawData = loadedData;
+        datasetProvenance = formatDatasetProvenance(
+          config.version.conflict_data,
+          (loadedData as any).update_ms,
+        );
+        setColNames(
+          loadedData.coalitions[0].alliance_ids,
+          loadedData.coalitions[0].alliance_names,
+        );
+        setColNames(
+          loadedData.coalitions[1].alliance_ids,
+          loadedData.coalitions[1].alliance_names,
+        );
+        loadCurrentLayout();
+        if (loadedData.posts && Object.keys(loadedData.posts).length) {
+          loadPosts(loadedData.posts);
+        }
+        _loaded = true;
+        saveCurrentQueryParams();
+      })
+      .catch((error) => {
+        console.error("Failed to load conflict data", error);
+        _loadError = "Could not load conflict data. Please try again later.";
+        _loaded = true;
+      });
   }
 
   // Global var for the alliance names (used for formatting the alliance names in the coalition modal)
@@ -426,6 +446,10 @@
   // - Read query string into layout (loadLayoutFromQuery)
   // - Create the conflict tables (setupConflictTables)
   onMount(() => {
+    applySavedQueryParamsIfMissing(
+      ["layout", "sort", "order", "columns"],
+      ["id"],
+    );
     // Add the cell format functions to the window object
     addFormatters();
     (window as any).getIds = (
@@ -518,6 +542,9 @@
       conflictId = id;
       // Create the table for the conflict id
       setupConflictTables(conflictId);
+    } else {
+      _loadError = "Missing conflict id in URL";
+      _loaded = true;
     }
   });
 
@@ -531,7 +558,27 @@
     setQueryParam("layout", _layoutData.layout);
     setQueryParam("sort", null);
     setQueryParam("columns", null);
+    saveCurrentQueryParams();
     loadCurrentLayout();
+  }
+
+  function resetFilters() {
+    _layoutData.layout = Layout.COALITION;
+    _layoutData.columns = layouts.Summary.columns;
+    _layoutData.sort = layouts.Summary.sort;
+    _layoutData.order = "desc";
+    resetQueryParams(["layout", "sort", "order", "columns"], ["id"]);
+    setQueryParam("layout", _layoutData.layout, { replace: true });
+    setQueryParam("sort", _layoutData.sort, { replace: true });
+    setQueryParam("order", _layoutData.order, { replace: true });
+    setQueryParam("columns", _layoutData.columns.join("."), { replace: true });
+    saveCurrentQueryParams();
+    loadCurrentLayout();
+  }
+
+  function retryLoad() {
+    if (!conflictId) return;
+    setupConflictTables(conflictId);
   }
 
   let dataLoaded = false;
@@ -702,6 +749,7 @@
             _layoutData.sort = layouts[key].sort;
             setQueryParam("sort", _layoutData.sort);
             setQueryParam("columns", _layoutData.columns.join("."));
+            saveCurrentQueryParams();
             loadCurrentLayout();
           }}>{key}</button
         >
@@ -711,6 +759,24 @@
   {#if !_loaded}
     <Progress />
   {/if}
+  {#if _loadError}
+    <div
+      class="alert alert-danger m-2 d-flex justify-content-between align-items-center"
+    >
+      <span>{_loadError}</span>
+      <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}
+        >Retry</button
+      >
+    </div>
+  {/if}
+  <div class="d-flex gap-1 mb-2">
+    <button class="btn ux-btn btn-sm fw-bold" on:click={() => copyShareLink()}
+      >Copy share link</button
+    >
+    <button class="btn ux-btn btn-sm fw-bold" on:click={resetFilters}
+      >Reset</button
+    >
+  </div>
   <div id="conflict-table-1"></div>
   <!-- If coalition layout, then display the CB and Status -->
   {#if _layoutData.layout == Layout.COALITION}
@@ -749,12 +815,8 @@
     <!-- Empty div used for the timeline (vis.js) -->
     <div class="m-0" id="visualization"></div>
   </div>
+  {#if datasetProvenance}
+    <div class="small text-muted mt-1">{datasetProvenance}</div>
+  {/if}
 </div>
-{#if _rawData && (_rawData as any).update_ms}
-  <p>
-    Last updated {formatDuration(
-      Math.round((Date.now() - (_rawData as any).update_ms) / 1000),
-    )} ago
-  </p>
-{/if}
 <Footer />
