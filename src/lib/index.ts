@@ -780,7 +780,7 @@ function addTable(container: HTMLElement, id: string) {
         <thead class="table-info"><tr></tr></thead>
         <tbody></tbody>
         <tfoot><tr></tr></tfoot>
-    </table></div>`));
+    </table></div><div class="ux-table-summary small mt-2"></div>`));
 
     let input = container.getElementsByTagName("input")[0];
     input.addEventListener('input', function () {
@@ -888,6 +888,217 @@ export function applySavedQueryParamsIfMissing(
         window.history.replaceState({}, '', url.toString());
     }
     return changed;
+}
+
+/**
+ * Column preset storage helpers (per-page)
+ * - Presets are stored under `${getPageStorageKey()}:presets` as an object { name: { columns, sort, order, createdAt } }
+ */
+export type ColumnPreset = {
+    columns: string[];
+    sort?: string;
+    order?: string;
+    kpis?: string[];
+    kpiConfig?: any;
+    createdAt?: number;
+};
+
+export function readColumnPresets(storageKey?: string): Record<string, ColumnPreset> {
+    const key = (storageKey ?? getPageStorageKey()) + ':presets';
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return {};
+        return parsed as Record<string, ColumnPreset>;
+    } catch (err) {
+        console.warn('Failed to read column presets', err);
+        return {};
+    }
+}
+
+export function saveColumnPreset(name: string, preset: ColumnPreset, storageKey?: string): void {
+    const key = (storageKey ?? getPageStorageKey()) + ':presets';
+    try {
+        const cur = readColumnPresets(storageKey);
+        cur[name] = { ...preset, createdAt: Date.now() };
+        localStorage.setItem(key, JSON.stringify(cur));
+    } catch (err) {
+        console.warn('Failed to save column preset', err);
+    }
+}
+
+export function deleteColumnPreset(name: string, storageKey?: string): void {
+    const key = (storageKey ?? getPageStorageKey()) + ':presets';
+    try {
+        const cur = readColumnPresets(storageKey);
+        if (Object.prototype.hasOwnProperty.call(cur, name)) {
+            delete cur[name];
+            localStorage.setItem(key, JSON.stringify(cur));
+        }
+    } catch (err) {
+        console.warn('Failed to delete column preset', err);
+    }
+}
+
+/**
+ * Compute table data (columns, rows, formats) for a conflict for a given layout type
+ * Used by the conflict page to render the table and to compute derived summaries (top movers, totals)
+ */
+export function computeLayoutTableData(
+    _rawData: Conflict,
+    type: number,
+    layout: string[],
+    sortBy: string,
+    sortDir: string,
+): TableData {
+    let coalitions = _rawData.coalitions;
+    let damage_header = _rawData.damage_header;
+    let header_types = _rawData.header_type;
+
+    let rows: any[][] = [];
+    let columns: string[] = [];
+    let searchable: number[] = [];
+    let visible: number[] = [];
+    let cell_format: { [key: string]: number[] } = {};
+    let row_format:
+        | ((row: HTMLElement, data: { [key: string]: any }, index: number) => void)
+        | null = null;
+
+    // Set the row format based on the layout (caller will apply colouring where required)
+    switch (type) {
+        case 0: // coalition
+            row_format = null; // consumer can set if needed
+            break;
+        case 1: // alliance
+            row_format = null;
+            break;
+        case 2: // nation
+            row_format = null;
+            break;
+    }
+
+    // Build columns from damage header
+    columns.push('name');
+    for (let i = 0; i < damage_header.length; i++) {
+        let header = trimHeader(damage_header[i]);
+        let t = header_types[i];
+        if (t == 0) {
+            columns.push('loss:' + header);
+            columns.push('dealt:' + header.replace('_loss', '').replace('loss_', ''));
+            columns.push('net:' + header.replace('_loss', '').replace('loss_', ''));
+        } else if (t == 1) {
+            columns.push('def:' + header);
+            columns.push('off:' + header);
+            columns.push('both:' + header);
+        }
+    }
+
+    searchable.push(0);
+    if (type === 0) {
+        cell_format['formatCol'] = [0];
+    } else if (type === 1) {
+        cell_format['formatAA'] = [0];
+    } else if (type === 2) {
+        cell_format['formatNation'] = [0];
+    }
+
+    const sortIndex = Math.max(0, columns.indexOf(sortBy));
+    let sort: [number, string] = [sortIndex, sortDir];
+
+    // Set cell formatting and visible columns
+    cell_format['formatNumber'] = [];
+    cell_format['formatMoney'] = [];
+    for (let i = 0; i < columns.length; i++) {
+        if (layout.includes(columns[i])) {
+            visible.push(i);
+        }
+        if (i > 0) {
+            if (
+                columns[i].includes('~') ||
+                columns[i].includes('damage') ||
+                (columns[i].includes('infra') && !columns[i].includes('attacks'))
+            ) {
+                cell_format['formatMoney'].push(i);
+            } else {
+                cell_format['formatNumber'].push(i);
+            }
+        }
+    }
+
+    // Helper to add three stats for each damage column into the row
+    let addStats2Row = (row: any[], damageTaken: any, damageDealt: any) => {
+        for (let i = 0; i < damageTaken.length; i++) {
+            let damageTakenStat = damageTaken[i];
+            let damageDealtStat = damageDealt[i];
+
+            let tt = header_types[i];
+            let total;
+            if (tt == 0) {
+                total = damageDealtStat - damageTakenStat;
+            } else {
+                total = damageDealtStat + damageTakenStat;
+            }
+            row.push(damageTakenStat);
+            row.push(damageDealtStat);
+            row.push(total);
+        }
+    };
+
+    // Helper for adding rows depending on layout
+    let addRow = (colEntry: any, index: number) => {
+        let alliance_ids = colEntry.alliance_ids;
+        let alliance_names = colEntry.alliance_names;
+        let nation_ids = colEntry.nation_ids;
+        let nation_names = colEntry.nation_names;
+        let nation_aas = colEntry.nation_aa;
+        let damage = colEntry.damage;
+        switch (type) {
+            case 0: // coalition
+                let row = [index];
+                addStats2Row(row, damage[0], damage[1]);
+                rows.push(row);
+                break;
+            case 1: // alliance
+                let o = 2;
+                for (let i = 0; i < alliance_ids.length; i++) {
+                    let row = [];
+                    let alliance_id = alliance_ids[i];
+                    let alliance_name = formatAllianceName(alliance_names[i], alliance_id);
+                    row.push([alliance_name, alliance_id]);
+                    addStats2Row(row, damage[i * 2 + o], damage[i * 2 + o + 1]);
+                    rows.push(row);
+                }
+                break;
+            case 2: // nation
+                let oo = 2 + alliance_ids.length * 2;
+                for (let i = 0; i < nation_ids.length; i++) {
+                    let row = [];
+                    let nation_id = nation_ids[i];
+                    let nation_name = nation_names[i];
+                    let nation_aa = nation_aas[i];
+                    row.push([nation_name, nation_id, nation_aa]);
+                    addStats2Row(row, damage[i * 2 + oo], damage[i * 2 + oo + 1]);
+                    rows.push(row);
+                }
+                break;
+        }
+    };
+
+    for (let i = 0; i < coalitions.length; i++) {
+        let colEntry = coalitions[i];
+        addRow(colEntry, i);
+    }
+
+    return {
+        columns,
+        data: rows,
+        visible,
+        searchable,
+        cell_format,
+        row_format,
+        sort,
+    } as TableData;
 }
 
 export function resetQueryParams(keysToClear: string[], requiredKeys: string[] = []): void {
@@ -1022,6 +1233,7 @@ function setupTable(containerElem: HTMLElement,
         let cell_format = dataSetRoot.cell_format;
         let row_format = dataSetRoot.row_format;
         let sort = dataSetRoot.sort;
+        const summaryElem = containerElem.querySelector('.ux-table-summary') as HTMLElement | null;
         if (sort == null) sort = [0, 'asc'];
 
         // Convert the cell format function names to their respective js functions
@@ -1137,6 +1349,66 @@ function setupTable(containerElem: HTMLElement,
         }
 
         ensureDTLoaded().then(() => {
+            const selectedRowIndexes = new Set<number>();
+            let lastSelectionVisibleIndex: number | null = null;
+
+            function getFilteredRowIndexes(tableApi: any): number[] {
+                return tableApi.rows({ search: 'applied' }).indexes().toArray();
+            }
+
+            function getVisiblePageRowIndexes(tableApi: any): number[] {
+                return tableApi.rows({ search: 'applied', page: 'current' }).indexes().toArray();
+            }
+
+            function renderSummaryBar(tableApi: any): void {
+                if (!summaryElem) return;
+
+                const filteredIndexes = getFilteredRowIndexes(tableApi);
+                const selectedIndexes = filteredIndexes.filter((idx: number) => selectedRowIndexes.has(idx));
+                const activeIndexes = selectedIndexes.length > 0 ? selectedIndexes : filteredIndexes;
+
+                const visiblePageIndexes = getVisiblePageRowIndexes(tableApi);
+                const allVisibleSelected = visiblePageIndexes.length > 0 && visiblePageIndexes.every((idx: number) => selectedRowIndexes.has(idx));
+                const selectVisibleLabel = allVisibleSelected ? 'Deselect visible' : 'Select visible';
+
+                const summaryParts: string[] = [];
+
+                tableApi.columns().every(function (colIndex: number) {
+                    if (colIndex === 0) {
+                        return;
+                    }
+
+                    if (!tableApi.column(colIndex).visible()) {
+                        return;
+                    }
+
+                    const dataColIndex = colIndex - 1;
+                    const isNumeric =
+                        (cell_format.formatNumber && cell_format.formatNumber.includes(dataColIndex)) ||
+                        (cell_format.formatMoney && cell_format.formatMoney.includes(dataColIndex));
+
+                    if (!isNumeric) {
+                        return;
+                    }
+
+                    const vals: number[] = activeIndexes.map((rowIdx: number) => {
+                        const rowData = tableApi.row(rowIdx).data();
+                        const value = rowData ? rowData[dataColIndex] : 0;
+                        return typeof value === 'number' ? value : Number(value) || 0;
+                    });
+
+                    if (vals.length === 0) return;
+
+                    const sum = vals.reduce((a: number, b: number) => a + b, 0);
+                    const avg = sum / vals.length;
+                    summaryParts.push(`${dataColumns[dataColIndex]}: Σ ${commafy(sum)} · avg ${commafy(Math.round(avg * 100) / 100)}`);
+                });
+
+                const mode = selectedIndexes.length > 0 ? `Selection mode (${selectedIndexes.length} rows)` : 'Filtered mode';
+                const summaryText = summaryParts.length > 0 ? summaryParts.join(' | ') : 'No numeric columns visible';
+                summaryElem.innerHTML = `<div class="d-flex flex-wrap align-items-center gap-2"><button type="button" class="btn btn-sm ux-btn ux-select-visible-btn">${selectVisibleLabel}</button><span class="text-muted">${mode}</span><span>${summaryText}</span></div>`;
+            }
+
             $.fn.dataTableExt.oStdClasses.sWrapper = "py-2 px-2 dataTables_wrapper";
             let table = tableArr[0] = (jqTable as any).DataTable({
                 dom: "rt<'ux-dt-bottom'plf>",
@@ -1167,9 +1439,22 @@ function setupTable(containerElem: HTMLElement,
                 scrollX: false,
                 // // createdRow: row_format,
                 rowCallback: function (row: any, data: any, _displayIndex: any, displayIndexFull: any) {
-                    $('td:eq(0)', row).html(displayIndexFull + 1);
+                    const api = (this as any).api();
+                    const rowIndex = api.row(row).index();
+                    const isSelected = selectedRowIndexes.has(rowIndex);
+                    $(row).toggleClass('table-active', isSelected);
+                    $('td:eq(0)', row).html(
+                        `<label class="d-inline-flex align-items-center gap-1 m-0"><input type="checkbox" class="ux-row-select" ${isSelected ? 'checked' : ''} /><span>${displayIndexFull + 1}</span></label>`
+                    );
                     if (row_format) {
                         row_format(row, data, displayIndexFull);
+                    }
+                },
+                drawCallback: function () {
+                    try {
+                        renderSummaryBar(this.api());
+                    } catch (err) {
+                        console.error('Failed to render table summary', err);
                     }
                 },
                 // Setup searchable dropdown for columns with unique values
@@ -1208,16 +1493,7 @@ function setupTable(containerElem: HTMLElement,
                 // }
             });
             table.on('column-reorder', function (_e: any, _settings: any, _details: any) {
-                const pageInfo = table.page.info();
-                const currentPage = pageInfo.page;
-                const rowsPerPage = pageInfo.length;
-                let startI = currentPage * rowsPerPage;
-                // iterate over all the `tr` in table and set td 0 to the correct index, use jquery/html, not datatables
-                // Iterate over all the `tr` elements in the table
-                jqTable.find('tbody tr').each(function (this: any, index: number) {
-                    // Set the textContent of the first `td` element to the correct index
-                    $(this).find('td:eq(0)').text(startI + index + 1);
-                });
+                table.draw(false);
             });
 
             // // Apply the search for input fields
@@ -1252,7 +1528,7 @@ function setupTable(containerElem: HTMLElement,
                 toggles.forEach((toggle: any) => {
                     toggle.addEventListener('click', function (e: Event) {
                         e.preventDefault();
-                        const target = e.target as HTMLElement;
+                        const target = e.currentTarget as HTMLElement;
                         const column = table.column(target.getAttribute('data-column'));
 
                         // Toggle the visibility
@@ -1272,7 +1548,10 @@ function setupTable(containerElem: HTMLElement,
                                 target.classList.add('d-none');
                             }
                         } else {
-                            (target as any).oldParent.appendChild(target);
+                            const oldParent = (target as any).oldParent;
+                            if (oldParent) {
+                                oldParent.appendChild(target);
+                            }
                         }
 
                         // Get names of visible columns
@@ -1338,10 +1617,69 @@ function setupTable(containerElem: HTMLElement,
                 });
             }
 
+            function addRowSelectionListener(jqTable: any, table: any) {
+                jqTable.querySelector('tbody').addEventListener('click', function (event: Event) {
+                    const target = event.target as HTMLElement;
+                    if (!target.classList.contains('ux-row-select')) return;
+                    const tr = target.closest('tr');
+                    if (!tr) return;
+
+                    const rowIndex = table.row(tr).index();
+                    const checkbox = target as HTMLInputElement;
+                    const checked = checkbox.checked;
+
+                    const visibleIndexes = getVisiblePageRowIndexes(table);
+                    const currentVisiblePos = visibleIndexes.indexOf(rowIndex);
+                    const mouseEvent = event as MouseEvent;
+
+                    if (mouseEvent.shiftKey && lastSelectionVisibleIndex != null && currentVisiblePos >= 0) {
+                        const start = Math.min(lastSelectionVisibleIndex, currentVisiblePos);
+                        const end = Math.max(lastSelectionVisibleIndex, currentVisiblePos);
+                        for (let i = start; i <= end; i++) {
+                            const idx = visibleIndexes[i];
+                            if (checked) {
+                                selectedRowIndexes.add(idx);
+                            } else {
+                                selectedRowIndexes.delete(idx);
+                            }
+                        }
+                    } else {
+                        if (checked) {
+                            selectedRowIndexes.add(rowIndex);
+                        } else {
+                            selectedRowIndexes.delete(rowIndex);
+                        }
+                    }
+
+                    lastSelectionVisibleIndex = currentVisiblePos >= 0 ? currentVisiblePos : null;
+                    table.draw(false);
+                });
+            }
+
+            function addSummaryActionsListener(table: any) {
+                if (!summaryElem) return;
+                summaryElem.addEventListener('click', function (event: Event) {
+                    const target = event.target as HTMLElement;
+                    if (!target.classList.contains('ux-select-visible-btn')) return;
+
+                    const visibleIndexes = getVisiblePageRowIndexes(table);
+                    const allVisibleSelected = visibleIndexes.length > 0 && visibleIndexes.every((idx: number) => selectedRowIndexes.has(idx));
+                    if (allVisibleSelected) {
+                        visibleIndexes.forEach((idx: number) => selectedRowIndexes.delete(idx));
+                    } else {
+                        visibleIndexes.forEach((idx: number) => selectedRowIndexes.add(idx));
+                    }
+                    table.draw(false);
+                });
+            }
+
             // Call the functions
             preventButtonPropagation();
             handleToggleVis(containerElem, table);
             addRowDetailsListener(tableElem, table);
+            addRowSelectionListener(tableElem, table);
+            addSummaryActionsListener(table);
+            renderSummaryBar(table);
             // Show the table (faster to only display after setup)
             tableElem.classList.remove("d-none");
         });
