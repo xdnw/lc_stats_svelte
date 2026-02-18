@@ -95,8 +95,8 @@ export function readSharedKpiConfig(
             widgets: Array.isArray(parsed.widgets)
                 ? parsed.widgets
                 : Array.isArray(parsed.conflictWidgets)
-                  ? parsed.conflictWidgets
-                : [],
+                    ? parsed.conflictWidgets
+                    : [],
         };
     } catch (error) {
         console.warn("Failed to read shared KPI config", error);

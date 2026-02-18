@@ -32,6 +32,7 @@
         type PresetCard,
         type PresetCardKey,
         type RankingCard,
+        type AavaScopeSnapshot,
         type ScopeSnapshot,
         type WidgetEntity,
         type WidgetScope,
@@ -283,6 +284,25 @@
         return { allianceIds, nationIds, label };
     }
 
+    function sanitizeAavaSnapshot(snapshot: any): AavaScopeSnapshot | undefined {
+        if (!snapshot || typeof snapshot !== "object") return undefined;
+        const primaryCoalitionIndex = snapshot.primaryCoalitionIndex === 1 ? 1 : 0;
+        const header = typeof snapshot.header === "string" ? snapshot.header : "wars";
+        const label = typeof snapshot.label === "string" ? snapshot.label : "AAvA snapshot";
+        const primaryIds = Array.isArray(snapshot.primaryIds)
+            ? snapshot.primaryIds
+                  .map((id: unknown) => Number(id))
+                  .filter((id: number) => Number.isFinite(id))
+            : [];
+        const vsIds = Array.isArray(snapshot.vsIds)
+            ? snapshot.vsIds
+                  .map((id: unknown) => Number(id))
+                  .filter((id: number) => Number.isFinite(id))
+            : [];
+
+        return { primaryCoalitionIndex, header, label, primaryIds, vsIds };
+    }
+
     function sanitizeWidget(item: any): KPIWidget | null {
         if (!item || typeof item !== "object") return null;
 
@@ -301,6 +321,7 @@
             if (!isWidgetScope(item.scope)) return null;
             if (typeof item.metric !== "string") return null;
             const snapshot = sanitizeScopeSnapshot(item.snapshot);
+            const aavaSnapshot = sanitizeAavaSnapshot(item.aavaSnapshot);
             return {
                 id: typeof item.id === "string" ? item.id : makeId("ranking"),
                 kind: "ranking",
@@ -308,7 +329,9 @@
                 metric: item.metric,
                 scope: item.scope,
                 limit: Math.max(1, Number(item.limit) || 10),
+                source: item.source === "aava" ? "aava" : "conflict",
                 snapshot,
+                aavaSnapshot,
             };
         }
 
@@ -320,6 +343,7 @@
                 return null;
             if (typeof item.metric !== "string") return null;
             const snapshot = sanitizeScopeSnapshot(item.snapshot);
+            const aavaSnapshot = sanitizeAavaSnapshot(item.aavaSnapshot);
             return {
                 id: typeof item.id === "string" ? item.id : makeId("metric"),
                 kind: "metric",
@@ -333,6 +357,7 @@
                         ? item.normalizeBy
                         : null,
                 snapshot,
+                aavaSnapshot,
             };
         }
 
@@ -752,6 +777,84 @@
             : (nationMetricTable as TableData | null);
     }
 
+    const AAVA_METRIC_LABELS: Record<string, string> = {
+        primary_to_row: "Selected → Compared",
+        row_to_primary: "Compared → Selected",
+        net: "Net",
+        total: "Total",
+        primary_share_pct: "Selected share %",
+        row_share_pct: "Compared share %",
+        abs_net: "Abs Net",
+    };
+
+    function buildAavaRowsForSnapshot(snapshot: AavaScopeSnapshot) {
+        if (!_rawData) return [] as any[];
+
+        const allAllianceIds = [
+            ..._rawData.coalitions[0].alliance_ids,
+            ..._rawData.coalitions[1].alliance_ids,
+        ];
+        const headerIndex = _rawData.war_web.headers.indexOf(snapshot.header);
+        if (headerIndex < 0) return [];
+        const matrix = _rawData.war_web.data[headerIndex] as number[][];
+
+        const pIndices = snapshot.primaryIds
+            .map((id) => allAllianceIds.indexOf(id))
+            .filter((i) => i >= 0);
+        const vIndices = snapshot.vsIds
+            .map((id) => allAllianceIds.indexOf(id))
+            .filter((i) => i >= 0);
+
+        const rows: any[] = [];
+        let sumPrimaryToRow = 0;
+        let sumRowToPrimary = 0;
+
+        for (const rIndex of vIndices) {
+            let p2r = 0;
+            let r2p = 0;
+            for (const pIndex of pIndices) {
+                const a = matrix[pIndex]?.[rIndex] ?? 0;
+                const b = matrix[rIndex]?.[pIndex] ?? 0;
+                p2r += Number.isFinite(a) ? a : 0;
+                r2p += Number.isFinite(b) ? b : 0;
+            }
+            sumPrimaryToRow += p2r;
+            sumRowToPrimary += r2p;
+
+            const allianceId = allAllianceIds[rIndex];
+            rows.push({
+                label:
+                    namesByAllianceId[allianceId] ||
+                    formatAllianceName(`AA:${allianceId}`, allianceId),
+                allianceId,
+                primary_to_row: p2r,
+                row_to_primary: r2p,
+                net: p2r - r2p,
+                total: p2r + r2p,
+                primary_share_pct: 0,
+                row_share_pct: 0,
+                abs_net: Math.abs(p2r - r2p),
+            });
+        }
+
+        rows.forEach((row) => {
+            row.primary_share_pct =
+                sumPrimaryToRow > 0
+                    ? (row.primary_to_row / sumPrimaryToRow) * 100
+                    : 0;
+            row.row_share_pct =
+                sumRowToPrimary > 0
+                    ? (row.row_to_primary / sumRowToPrimary) * 100
+                    : 0;
+        });
+
+        return rows;
+    }
+
+    function getAavaMetricValue(row: any, metric: string): number {
+        return Number(row?.[metric]) || 0;
+    }
+
     function getScopedRows(
         entity: WidgetEntity,
         scope: WidgetScope,
@@ -803,6 +906,18 @@
     }
 
     function getRankingRows(card: RankingCard) {
+        if (card.source === "aava") {
+            if (!card.aavaSnapshot || card.entity !== "alliance") return [];
+            return buildAavaRowsForSnapshot(card.aavaSnapshot)
+                .map((row) => ({
+                    label: row.label,
+                    alliance: "",
+                    value: getAavaMetricValue(row, card.metric),
+                }))
+                .sort((a, b) => b.value - a.value)
+                .slice(0, Math.max(1, card.limit));
+        }
+
         const table = getEntityTable(card.entity);
         if (!table) return [];
         const metricIndex = table.columns.indexOf(card.metric);
@@ -838,6 +953,35 @@
     }
 
     function getMetricCardValue(card: MetricCard): number | null {
+        if (card.source === "aava") {
+            if (!card.aavaSnapshot || card.entity !== "alliance") return null;
+            const rows = buildAavaRowsForSnapshot(card.aavaSnapshot);
+            const vals = rows.map((row) => getAavaMetricValue(row, card.metric));
+            if (vals.length === 0) return null;
+
+            if (card.normalizeBy) {
+                const denoms = rows.map((row) =>
+                    getAavaMetricValue(row, card.normalizeBy as string),
+                );
+                if (card.aggregation === "sum") {
+                    const numerator = vals.reduce((a, b) => a + b, 0);
+                    const denominator = denoms.reduce((a, b) => a + b, 0);
+                    return denominator === 0 ? null : numerator / denominator;
+                }
+                const ratios = vals
+                    .map((value, idx) => {
+                        const denominator = denoms[idx];
+                        return denominator === 0 ? null : value / denominator;
+                    })
+                    .filter((value): value is number => value != null);
+                if (ratios.length === 0) return null;
+                return ratios.reduce((a, b) => a + b, 0) / ratios.length;
+            }
+
+            const sum = vals.reduce((a, b) => a + b, 0);
+            return card.aggregation === "avg" ? sum / vals.length : sum;
+        }
+
         const table = getEntityTable(card.entity);
         if (!table) return null;
         const metricIndex = table.columns.indexOf(card.metric);
@@ -875,7 +1019,21 @@
     }
 
     function metricLabel(metric: string): string {
+        if (AAVA_METRIC_LABELS[metric]) return AAVA_METRIC_LABELS[metric];
         return trimHeader(metric);
+    }
+
+    function widgetScopeLabel(widget: KPIWidget): string {
+        if (
+            (widget.kind === "ranking" || widget.kind === "metric") &&
+            widget.source === "aava"
+        ) {
+            const snapshotLabel = widget.aavaSnapshot?.label || "AAvA snapshot";
+            const header = widget.aavaSnapshot?.header || "wars";
+            return `AAvA (${snapshotLabel} · ${header})`;
+        }
+        if (widget.kind === "preset") return "Preset";
+        return scopeLabel(widget.scope, widget.snapshot);
     }
 
     function widgetManagerLabel(widget: KPIWidget): string {
@@ -883,12 +1041,12 @@
             return PRESET_CARD_LABELS[widget.key];
         }
         if (widget.kind === "ranking") {
-            return `${widget.entity} · ${metricLabel(widget.metric)} · ${scopeLabel(widget.scope, widget.snapshot)} · top ${widget.limit}`;
+            return `${widget.entity} · ${metricLabel(widget.metric)} · ${widgetScopeLabel(widget)} · top ${widget.limit}`;
         }
         const normalized = widget.normalizeBy
             ? ` per ${metricLabel(widget.normalizeBy)}`
             : "";
-        return `${widget.aggregation.toUpperCase()} ${widget.entity} · ${metricLabel(widget.metric)}${normalized} · ${scopeLabel(widget.scope, widget.snapshot)}`;
+        return `${widget.aggregation.toUpperCase()} ${widget.entity} · ${metricLabel(widget.metric)}${normalized} · ${widgetScopeLabel(widget)}`;
     }
 
     function loadLayout(
@@ -1625,7 +1783,7 @@
                                 <div class="small text-muted mb-1">
                                     Top {card.limit}
                                     {card.entity}s by {metricLabel(card.metric)}
-                                    ({scopeLabel(card.scope, card.snapshot)})
+                                    ({widgetScopeLabel(card)})
                                 </div>
                                 <div class="table-responsive">
                                     <table
@@ -1669,10 +1827,7 @@
                                     {card.normalizeBy
                                         ? ` per ${metricLabel(card.normalizeBy)}`
                                         : ""}
-                                    ({scopeLabel(
-                                        card.scope,
-                                        card.snapshot,
-                                    )})
+                                    ({widgetScopeLabel(card)})
                                 </div>
                                 <div class="h6 m-0">
                                     {formatKpiNumber(getMetricCardValue(card))}

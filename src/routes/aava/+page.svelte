@@ -26,9 +26,8 @@
         makeKpiId,
         readSharedKpiConfig,
         saveSharedKpiConfig,
-        type AavaMetricCard,
-        type AavaMetricKey,
         type AavaScopeSnapshot,
+        type WidgetEntity,
     } from "$lib/kpi";
     import { config } from "../+layout";
 
@@ -63,14 +62,17 @@
         "row_share_pct",
     ];
 
-    const AAVA_METRIC_LABELS: Record<AavaMetricKey, string> = {
-        "selected-to-compared": "Selected → Compared total",
-        "compared-to-selected": "Compared → Selected total",
-        "net-selected": "Net selected advantage",
-        "damage-per-war": "Damage per war",
-        "participation-compared": "Compared participation",
-        "participation-selected": "Selected participation",
+    const AAVA_METRIC_LABELS: Record<string, string> = {
+        primary_to_row: "Selected → Compared",
+        row_to_primary: "Compared → Selected",
+        net: "Net",
+        total: "Total",
+        primary_share_pct: "Selected share %",
+        row_share_pct: "Compared share %",
+        abs_net: "Abs Net",
     };
+
+    const AAVA_METRIC_KEYS = Object.keys(AAVA_METRIC_LABELS);
 
     let conflictName = "";
     let conflictId: string | null = null;
@@ -86,9 +88,12 @@
     let selectedPrimaryIds: number[] = [];
     let selectedVsIds: number[] = [];
     let selectedColumns: ColumnKey[] = [...DEFAULT_VISIBLE_COLUMN_KEYS];
-    let aavaKpiCards: AavaMetricCard[] = [];
-    let aavaMetricToAdd: AavaMetricKey = "selected-to-compared";
-    let draggingAavaCardId: string | null = null;
+    let rankingMetricToAdd = "net";
+    let rankingLimitToAdd = 10;
+    let metricEntityToAdd: WidgetEntity = "alliance";
+    let metricMetricToAdd = "net";
+    let metricAggToAdd: "sum" | "avg" = "sum";
+    let metricNormalizeByToAdd = "";
 
     $: selectedPrimaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
     $: selectedVsIds =
@@ -343,118 +348,47 @@
         };
     }
 
-    function sanitizeAavaSnapshot(snapshot: any): AavaScopeSnapshot | null {
-        if (!snapshot || typeof snapshot !== "object") return null;
-        const primaryCoalitionIndex =
-            snapshot.primaryCoalitionIndex === 1 ? 1 : 0;
-        const primaryIds = normalizeAllianceIds(snapshot.primaryIds ?? []);
-        const vsIds = normalizeAllianceIds(snapshot.vsIds ?? []);
-        const header =
-            typeof snapshot.header === "string" ? snapshot.header : "wars";
-        const label =
-            typeof snapshot.label === "string" ? snapshot.label : "Snapshot";
-        return {
-            header,
-            primaryCoalitionIndex,
-            primaryIds,
-            vsIds,
-            label,
-        };
-    }
-
-    function sanitizeAavaCard(card: any): AavaMetricCard | null {
-        if (!card || typeof card !== "object") return null;
-        if (card.kind !== "aava-metric") return null;
-        if (!(card.metric in AAVA_METRIC_LABELS)) return null;
-        const snapshot = sanitizeAavaSnapshot(card.snapshot);
-        if (!snapshot) return null;
-        return {
-            id: typeof card.id === "string" ? card.id : makeKpiId("aava"),
-            kind: "aava-metric",
-            metric: card.metric as AavaMetricKey,
-            snapshot,
-        };
-    }
-
-    function loadAavaKpiFromStorage() {
+    function addAavaRankingWidget() {
         if (!conflictId) return;
+        if (selectedPrimaryIds.length === 0 || selectedVsIds.length === 0)
+            return;
         const config = readSharedKpiConfig(conflictId);
-        aavaKpiCards = (config.aavaWidgets ?? [])
-            .map((card: any) => sanitizeAavaCard(card))
-            .filter(
-                (card: AavaMetricCard | null): card is AavaMetricCard =>
-                    card !== null,
-            );
-    }
-
-    function saveAavaKpiToStorage() {
-        if (!conflictId) return;
-        const config = readSharedKpiConfig(conflictId);
-        config.aavaWidgets = aavaKpiCards;
+        config.widgets = [
+            ...(config.widgets ?? []),
+            {
+                id: makeKpiId("ranking"),
+                kind: "ranking",
+                entity: "alliance",
+                metric: rankingMetricToAdd,
+                scope: "selection",
+                limit: Math.max(1, rankingLimitToAdd),
+                source: "aava",
+                aavaSnapshot: makeSelectionSnapshot(),
+            },
+        ];
         saveSharedKpiConfig(conflictId, config);
     }
 
-    function addAavaKpiCard() {
+    function addAavaMetricWidget() {
+        if (!conflictId) return;
         if (selectedPrimaryIds.length === 0 || selectedVsIds.length === 0)
             return;
-        aavaKpiCards = [
-            ...aavaKpiCards,
+        const config = readSharedKpiConfig(conflictId);
+        config.widgets = [
+            ...(config.widgets ?? []),
             {
-                id: makeKpiId("aava"),
-                kind: "aava-metric",
-                metric: aavaMetricToAdd,
-                snapshot: makeSelectionSnapshot(),
+                id: makeKpiId("metric"),
+                kind: "metric",
+                entity: metricEntityToAdd,
+                metric: metricMetricToAdd,
+                scope: "selection",
+                aggregation: metricAggToAdd,
+                source: "aava",
+                normalizeBy: metricNormalizeByToAdd || null,
+                aavaSnapshot: makeSelectionSnapshot(),
             },
         ];
-        saveAavaKpiToStorage();
-    }
-
-    function removeAavaKpiCard(id: string) {
-        aavaKpiCards = aavaKpiCards.filter((card) => card.id !== id);
-        saveAavaKpiToStorage();
-    }
-
-    function moveAavaKpiCard(id: string, delta: number) {
-        const list = [...aavaKpiCards];
-        const index = list.findIndex((card) => card.id === id);
-        if (index === -1) return;
-        const newIndex = index + delta;
-        if (newIndex < 0 || newIndex >= list.length) return;
-        const [item] = list.splice(index, 1);
-        list.splice(newIndex, 0, item);
-        aavaKpiCards = list;
-        saveAavaKpiToStorage();
-    }
-
-    function startAavaCardDrag(id: string) {
-        draggingAavaCardId = id;
-    }
-
-    function endAavaCardDrag() {
-        draggingAavaCardId = null;
-    }
-
-    function dropAavaCardOn(targetId: string) {
-        if (!draggingAavaCardId || draggingAavaCardId === targetId) {
-            draggingAavaCardId = null;
-            return;
-        }
-        const list = [...aavaKpiCards];
-        const from = list.findIndex((card) => card.id === draggingAavaCardId);
-        const to = list.findIndex((card) => card.id === targetId);
-        if (from === -1 || to === -1) {
-            draggingAavaCardId = null;
-            return;
-        }
-        const [item] = list.splice(from, 1);
-        list.splice(to, 0, item);
-        aavaKpiCards = list;
-        draggingAavaCardId = null;
-        saveAavaKpiToStorage();
-    }
-
-    function aavaCardLabel(card: AavaMetricCard): string {
-        return `${AAVA_METRIC_LABELS[card.metric]} · ${card.snapshot.label} · ${card.snapshot.header}`;
+        saveSharedKpiConfig(conflictId, config);
     }
 
     function refreshSelectedColumnsFromQuery() {
@@ -556,142 +490,6 @@
             selectedPrimaryIds,
             selectedVsIds,
         );
-    }
-
-    function computeAavaSnapshotStats(snapshot: AavaScopeSnapshot) {
-        const rows = buildRowsForSelection(
-            snapshot.header,
-            snapshot.primaryIds,
-            snapshot.vsIds,
-        );
-        const selectedToCompared = rows.reduce(
-            (sum, row) => sum + (Number(row.primary_to_row) || 0),
-            0,
-        );
-        const comparedToSelected = rows.reduce(
-            (sum, row) => sum + (Number(row.row_to_primary) || 0),
-            0,
-        );
-
-        const totalCompared = snapshot.vsIds.length;
-        const activeCompared = rows.filter(
-            (row) => (Number(row.total) || 0) > 0,
-        ).length;
-
-        let activeSelected = 0;
-        if (_rawData) {
-            const allAllianceIds = [
-                ..._rawData.coalitions[0].alliance_ids,
-                ..._rawData.coalitions[1].alliance_ids,
-            ];
-            const headerIndex = _rawData.war_web.headers.indexOf(
-                snapshot.header,
-            );
-            if (headerIndex >= 0) {
-                const matrix = _rawData.war_web.data[headerIndex] as number[][];
-                const pIndices = snapshot.primaryIds
-                    .map((id) => allAllianceIds.indexOf(id))
-                    .filter((idx) => idx >= 0);
-                const vIndices = snapshot.vsIds
-                    .map((id) => allAllianceIds.indexOf(id))
-                    .filter((idx) => idx >= 0);
-                activeSelected = pIndices.filter((pIdx) => {
-                    let total = 0;
-                    for (const vIdx of vIndices) {
-                        total += Number(matrix[pIdx]?.[vIdx] ?? 0);
-                        total += Number(matrix[vIdx]?.[pIdx] ?? 0);
-                    }
-                    return total > 0;
-                }).length;
-            }
-        }
-
-        let selectedDamagePerWar: number | null = null;
-        if (_rawData) {
-            const warsRows = buildRowsForSelection(
-                "wars",
-                snapshot.primaryIds,
-                snapshot.vsIds,
-            );
-            const warsTotal = warsRows.reduce(
-                (sum, row) => sum + (Number(row.primary_to_row) || 0),
-                0,
-            );
-            selectedDamagePerWar =
-                warsTotal > 0 ? selectedToCompared / warsTotal : null;
-        }
-
-        return {
-            selectedToCompared,
-            comparedToSelected,
-            netSelected: selectedToCompared - comparedToSelected,
-            selectedDamagePerWar,
-            activeCompared,
-            totalCompared,
-            activeSelected,
-            totalSelected: snapshot.primaryIds.length,
-        };
-    }
-
-    function formatKpiNumber(value: number | null | undefined): string {
-        if (value == null || !Number.isFinite(value)) return "N/A";
-        return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    }
-
-    function getAavaCardDisplay(card: AavaMetricCard): {
-        title: string;
-        value: string;
-        note?: string;
-    } {
-        const stats = computeAavaSnapshotStats(card.snapshot);
-        if (card.metric === "selected-to-compared") {
-            return {
-                title: AAVA_METRIC_LABELS[card.metric],
-                value: formatKpiNumber(stats.selectedToCompared),
-                note: `${card.snapshot.header} · ${card.snapshot.label}`,
-            };
-        }
-        if (card.metric === "compared-to-selected") {
-            return {
-                title: AAVA_METRIC_LABELS[card.metric],
-                value: formatKpiNumber(stats.comparedToSelected),
-                note: `${card.snapshot.header} · ${card.snapshot.label}`,
-            };
-        }
-        if (card.metric === "net-selected") {
-            return {
-                title: AAVA_METRIC_LABELS[card.metric],
-                value: formatKpiNumber(stats.netSelected),
-                note: `${card.snapshot.header} · ${card.snapshot.label}`,
-            };
-        }
-        if (card.metric === "damage-per-war") {
-            return {
-                title: AAVA_METRIC_LABELS[card.metric],
-                value: formatKpiNumber(stats.selectedDamagePerWar),
-                note: `${card.snapshot.header} per wars · ${card.snapshot.label}`,
-            };
-        }
-        if (card.metric === "participation-compared") {
-            const pct =
-                stats.totalCompared > 0
-                    ? (stats.activeCompared / stats.totalCompared) * 100
-                    : null;
-            return {
-                title: AAVA_METRIC_LABELS[card.metric],
-                value: pct == null ? "N/A" : `${pct.toFixed(1)}%`,
-                note: `${stats.activeCompared}/${stats.totalCompared} alliances active`,
-            };
-        }
-        const pct =
-            stats.totalSelected > 0
-                ? (stats.activeSelected / stats.totalSelected) * 100
-                : null;
-        return {
-            title: AAVA_METRIC_LABELS[card.metric],
-            value: pct == null ? "N/A" : `${pct.toFixed(1)}%`,
-            note: `${stats.activeSelected}/${stats.totalSelected} alliances active`,
-        };
     }
 
     function renderTable() {
@@ -932,7 +730,6 @@
             return;
         }
         conflictId = id;
-        loadAavaKpiFromStorage();
         loadConflict(id);
     });
 </script>
@@ -987,56 +784,88 @@
                         aria-labelledby="aavaKpiManagerDropdown"
                         style="min-width: 340px;"
                     >
-                        <div class="small text-muted mb-1">AAvA KPI cards</div>
-                        {#if aavaKpiCards.length === 0}
-                            <div class="small text-muted mb-2">No cards</div>
-                        {/if}
-                        {#each aavaKpiCards as card, idx}
-                            <div
-                                class="d-flex align-items-center justify-content-between gap-2 mb-1"
-                            >
-                                <span class="small text-truncate"
-                                    >{aavaCardLabel(card)}</span
-                                >
-                                <div class="d-flex gap-1">
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-secondary"
-                                        on:click|preventDefault|stopPropagation={() =>
-                                            moveAavaKpiCard(card.id, -1)}
-                                        disabled={idx === 0}>↑</button
-                                    >
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-secondary"
-                                        on:click|preventDefault|stopPropagation={() =>
-                                            moveAavaKpiCard(card.id, 1)}
-                                        disabled={idx ===
-                                            aavaKpiCards.length - 1}>↓</button
-                                    >
-                                    <button
-                                        type="button"
-                                        class="btn btn-sm btn-outline-danger"
-                                        on:click|preventDefault|stopPropagation={() =>
-                                            removeAavaKpiCard(card.id)}
-                                        >Remove</button
-                                    >
-                                </div>
-                            </div>
-                        {/each}
-
-                        <hr class="dropdown-divider" />
-                        <div class="small text-muted mb-1">Add AAvA card</div>
+                        <div class="small text-muted mb-1">
+                            Add shared KPI widgets from current AAvA snapshot
+                        </div>
                         <div class="row g-1">
+                            <div class="col-12">
+                                <div class="small text-muted mb-1">
+                                    Ranking widget
+                                </div>
+                                <select
+                                    class="form-select form-select-sm"
+                                    bind:value={rankingMetricToAdd}
+                                >
+                                    {#each AAVA_METRIC_KEYS as key}
+                                        <option value={key}
+                                            >{AAVA_METRIC_LABELS[key]}</option
+                                        >
+                                    {/each}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <input
+                                    class="form-control form-control-sm"
+                                    type="number"
+                                    min="1"
+                                    max="50"
+                                    bind:value={rankingLimitToAdd}
+                                    placeholder="Top N"
+                                />
+                            </div>
+                            <div class="col-12">
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-secondary w-100"
+                                    on:click|preventDefault|stopPropagation={addAavaRankingWidget}
+                                    disabled={selectedPrimaryIds.length === 0 ||
+                                        selectedVsIds.length === 0}
+                                    >+ Add ranking widget</button
+                                >
+                            </div>
+
+                            <div class="col-12 mt-2">
+                                <div class="small text-muted mb-1">
+                                    Metric widget
+                                </div>
+                                <select
+                                    class="form-select form-select-sm"
+                                    bind:value={metricEntityToAdd}
+                                >
+                                    <option value="alliance">Alliance</option>
+                                </select>
+                            </div>
                             <div class="col-12">
                                 <select
                                     class="form-select form-select-sm"
-                                    bind:value={aavaMetricToAdd}
+                                    bind:value={metricAggToAdd}
                                 >
-                                    {#each Object.keys(AAVA_METRIC_LABELS) as key}
+                                    <option value="sum">SUM</option>
+                                    <option value="avg">AVG</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <select
+                                    class="form-select form-select-sm"
+                                    bind:value={metricMetricToAdd}
+                                >
+                                    {#each AAVA_METRIC_KEYS as key}
                                         <option value={key}
-                                            >{AAVA_METRIC_LABELS[
-                                                key as AavaMetricKey
+                                            >{AAVA_METRIC_LABELS[key]}</option
+                                        >
+                                    {/each}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <select
+                                    class="form-select form-select-sm"
+                                    bind:value={metricNormalizeByToAdd}
+                                >
+                                    <option value="">No normalization</option>
+                                    {#each AAVA_METRIC_KEYS as key}
+                                        <option value={key}
+                                            >Per {AAVA_METRIC_LABELS[
+                                                key
                                             ]}</option
                                         >
                                     {/each}
@@ -1049,11 +878,15 @@
                                 <button
                                     type="button"
                                     class="btn btn-sm btn-outline-secondary w-100"
-                                    on:click|preventDefault|stopPropagation={addAavaKpiCard}
+                                    on:click|preventDefault|stopPropagation={addAavaMetricWidget}
                                     disabled={selectedPrimaryIds.length === 0 ||
                                         selectedVsIds.length === 0}
-                                    >+ Add AAvA KPI card</button
+                                    >+ Add metric widget</button
                                 >
+                            </div>
+                            <div class="col-12 small text-muted">
+                                Added widgets appear on the shared KPI dashboard
+                                in Conflict.
                             </div>
                         </div>
                     </div>
@@ -1188,45 +1021,6 @@
         {/if}
     </div>
 
-    {#if _rawData && aavaKpiCards.length > 0}
-        <div class="ux-surface p-2 mb-3 rounded border">
-            <h5 class="m-0 mb-2">KPI</h5>
-            <div class="row g-2">
-                {#each aavaKpiCards as card}
-                    {@const display = getAavaCardDisplay(card)}
-                    <div class="col-12 col-sm-6 col-xl-4">
-                        <div
-                            class="ux-surface p-3 rounded border h-100 position-relative aava-kpi-card"
-                            class:aava-kpi-card-dragging={draggingAavaCardId ===
-                                card.id}
-                            role="group"
-                            draggable="true"
-                            on:dragstart={() => startAavaCardDrag(card.id)}
-                            on:dragend={endAavaCardDrag}
-                            on:dragover|preventDefault
-                            on:drop|preventDefault={() =>
-                                dropAavaCardOn(card.id)}
-                        >
-                            <button
-                                type="button"
-                                class="btn-close aava-kpi-card-close"
-                                aria-label="Remove KPI card"
-                                on:click={() => removeAavaKpiCard(card.id)}
-                            ></button>
-                            <div class="small text-muted">{display.title}</div>
-                            <div class="h6 m-0">{display.value}</div>
-                            {#if display.note}
-                                <div class="small text-muted">
-                                    {display.note}
-                                </div>
-                            {/if}
-                        </div>
-                    </div>
-                {/each}
-            </div>
-        </div>
-    {/if}
-
     {#if _rawData && (selectedPrimaryIds.length === 0 || selectedVsIds.length === 0)}
         <div class="alert alert-warning fw-bold">
             Select at least one alliance on both sides to render the table.
@@ -1245,20 +1039,5 @@
         z-index: 1080;
         max-height: 70vh;
         overflow-y: auto;
-    }
-
-    .aava-kpi-card {
-        padding-top: 1.9rem !important;
-        cursor: move;
-    }
-
-    .aava-kpi-card-close {
-        position: absolute;
-        top: 0.5rem;
-        right: 0.5rem;
-    }
-
-    .aava-kpi-card-dragging {
-        opacity: 0.6;
     }
 </style>
