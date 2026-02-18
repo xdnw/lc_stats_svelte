@@ -105,7 +105,11 @@ export interface TableData {
     visible: number[],
     cell_format: { [key: string]: number[]; },
     row_format: ((row: HTMLElement, data: { [key: string]: any }, index: number) => void) | null,
-    sort: [number, string]
+    sort: [number, string],
+    onSelectionChange?: (selection: {
+        selectedRowIndexes: number[];
+        selectedRows: any[][];
+    }) => void
 }
 
 // delimiter, file extension and Internet media type for csv and tsv
@@ -1212,7 +1216,11 @@ function setupTable(containerElem: HTMLElement,
         visible: number[], // the index of the columns that are visible
         cell_format: { [key: string]: number[]; },  // a map of the cell format function name to a list of column indexes e.g. `cell_format.formatNumber = [2,3,4]`
         row_format: ((row: HTMLElement, data /* row data */: { [key: string]: any }, index /* row index */: number) => void) | null, // A function to format the row (or null)
-        sort: [number, string] // the column index to sort by, and sort method (asc or desc)
+        sort: [number, string], // the column index to sort by, and sort method (asc or desc)
+        onSelectionChange?: (selection: {
+            selectedRowIndexes: number[];
+            selectedRows: any[][];
+        }) => void
     }
 ) {
 
@@ -1233,6 +1241,7 @@ function setupTable(containerElem: HTMLElement,
         let cell_format = dataSetRoot.cell_format;
         let row_format = dataSetRoot.row_format;
         let sort = dataSetRoot.sort;
+        const onSelectionChange = dataSetRoot.onSelectionChange;
         const summaryElem = containerElem.querySelector('.ux-table-summary') as HTMLElement | null;
         if (sort == null) sort = [0, 'asc'];
 
@@ -1349,8 +1358,20 @@ function setupTable(containerElem: HTMLElement,
         }
 
         ensureDTLoaded().then(() => {
-            const selectedRowIndexes = new Set<number>();
+            const selectedRowIndexesSet = new Set<number>();
             let lastSelectionVisibleIndex: number | null = null;
+
+            function publishSelection(tableApi: any): void {
+                if (!onSelectionChange) return;
+                const selectedRowIndexes = Array.from(selectedRowIndexesSet);
+                const selectedRows = selectedRowIndexes
+                    .map((idx) => tableApi.row(idx).data())
+                    .filter((row: any) => row != null);
+                onSelectionChange({
+                    selectedRowIndexes,
+                    selectedRows,
+                });
+            }
 
             function getFilteredRowIndexes(tableApi: any): number[] {
                 return tableApi.rows({ search: 'applied' }).indexes().toArray();
@@ -1364,11 +1385,11 @@ function setupTable(containerElem: HTMLElement,
                 if (!summaryElem) return;
 
                 const filteredIndexes = getFilteredRowIndexes(tableApi);
-                const selectedIndexes = filteredIndexes.filter((idx: number) => selectedRowIndexes.has(idx));
+                const selectedIndexes = filteredIndexes.filter((idx: number) => selectedRowIndexesSet.has(idx));
                 const activeIndexes = selectedIndexes.length > 0 ? selectedIndexes : filteredIndexes;
 
                 const visiblePageIndexes = getVisiblePageRowIndexes(tableApi);
-                const allVisibleSelected = visiblePageIndexes.length > 0 && visiblePageIndexes.every((idx: number) => selectedRowIndexes.has(idx));
+                const allVisibleSelected = visiblePageIndexes.length > 0 && visiblePageIndexes.every((idx: number) => selectedRowIndexesSet.has(idx));
                 const selectVisibleLabel = allVisibleSelected ? 'Deselect visible' : 'Select visible';
 
                 const summaryParts: string[] = [];
@@ -1441,7 +1462,7 @@ function setupTable(containerElem: HTMLElement,
                 rowCallback: function (row: any, data: any, _displayIndex: any, displayIndexFull: any) {
                     const api = (this as any).api();
                     const rowIndex = api.row(row).index();
-                    const isSelected = selectedRowIndexes.has(rowIndex);
+                    const isSelected = selectedRowIndexesSet.has(rowIndex);
                     $(row).toggleClass('table-active', isSelected);
                     $('td:eq(0)', row).html(
                         `<label class="d-inline-flex align-items-center gap-1 m-0"><input type="checkbox" class="ux-row-select" ${isSelected ? 'checked' : ''} /><span>${displayIndexFull + 1}</span></label>`
@@ -1638,20 +1659,21 @@ function setupTable(containerElem: HTMLElement,
                         for (let i = start; i <= end; i++) {
                             const idx = visibleIndexes[i];
                             if (checked) {
-                                selectedRowIndexes.add(idx);
+                                selectedRowIndexesSet.add(idx);
                             } else {
-                                selectedRowIndexes.delete(idx);
+                                selectedRowIndexesSet.delete(idx);
                             }
                         }
                     } else {
                         if (checked) {
-                            selectedRowIndexes.add(rowIndex);
+                            selectedRowIndexesSet.add(rowIndex);
                         } else {
-                            selectedRowIndexes.delete(rowIndex);
+                            selectedRowIndexesSet.delete(rowIndex);
                         }
                     }
 
                     lastSelectionVisibleIndex = currentVisiblePos >= 0 ? currentVisiblePos : null;
+                    publishSelection(table);
                     table.draw(false);
                 });
             }
@@ -1663,12 +1685,13 @@ function setupTable(containerElem: HTMLElement,
                     if (!target.classList.contains('ux-select-visible-btn')) return;
 
                     const visibleIndexes = getVisiblePageRowIndexes(table);
-                    const allVisibleSelected = visibleIndexes.length > 0 && visibleIndexes.every((idx: number) => selectedRowIndexes.has(idx));
+                    const allVisibleSelected = visibleIndexes.length > 0 && visibleIndexes.every((idx: number) => selectedRowIndexesSet.has(idx));
                     if (allVisibleSelected) {
-                        visibleIndexes.forEach((idx: number) => selectedRowIndexes.delete(idx));
+                        visibleIndexes.forEach((idx: number) => selectedRowIndexesSet.delete(idx));
                     } else {
-                        visibleIndexes.forEach((idx: number) => selectedRowIndexes.add(idx));
+                        visibleIndexes.forEach((idx: number) => selectedRowIndexesSet.add(idx));
                     }
+                    publishSelection(table);
                     table.draw(false);
                 });
             }
@@ -1680,6 +1703,7 @@ function setupTable(containerElem: HTMLElement,
             addRowSelectionListener(tableElem, table);
             addSummaryActionsListener(table);
             renderSummaryBar(table);
+            publishSelection(table);
             // Show the table (faster to only display after setup)
             tableElem.classList.remove("d-none");
         });
