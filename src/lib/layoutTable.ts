@@ -1,6 +1,6 @@
 import { formatAllianceName } from './formatting';
 import { trimHeader } from './warWeb';
-import type { Conflict, TableData } from './index';
+import type { Conflict, TableData } from './types';
 
 export function computeLayoutTableData(
     _rawData: Conflict,

@@ -1,3 +1,5 @@
+import type { GraphData, TierMetric } from './types';
+
 export const UNITS_PER_CITY: { [key: string]: number } = {
     soldier: 15_000,
     tank: 1250,
@@ -48,12 +50,8 @@ export function toggleCoalitionAllianceSelection(
 }
 
 export function resolveMetricAccessors(
-    data: {
-        metric_names: string[];
-        metrics_turn: number[];
-        metrics_day: number[];
-    },
-    metrics: Array<{ name: string; normalize: boolean }>,
+    data: GraphData,
+    metrics: TierMetric[],
 ): MetricAccessors | null {
     let metric_ids: number[] = [];
     let metric_indexes: number[] = [];
