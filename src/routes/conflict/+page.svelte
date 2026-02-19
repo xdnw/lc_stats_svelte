@@ -1049,15 +1049,18 @@
         );
         addFormatters();
 
-        setWindowGlobal("getIds", (
-            _coalitionName: string,
-            index: number,
-        ): { alliance_ids: number[]; alliance_names: string[] } => {
-            return _rawData?.coalitions[index] as {
-                alliance_ids: number[];
-                alliance_names: string[];
-            };
-        });
+        setWindowGlobal(
+            "getIds",
+            (
+                _coalitionName: string,
+                index: number,
+            ): { alliance_ids: number[]; alliance_names: string[] } => {
+                return _rawData?.coalitions[index] as {
+                    alliance_ids: number[];
+                    alliance_names: string[];
+                };
+            },
+        );
 
         setWindowGlobal("formatNation", (data: any) => {
             let aaId = data[2] as number;
@@ -1101,18 +1104,20 @@
             return button.outerHTML;
         });
 
-        setWindowGlobal("download", function download(
-            useClipboard: boolean,
-            type: string,
-        ) {
-            downloadTableElem(
-                (
-                    document.getElementById("conflict-table-1") as HTMLElement
-                ).querySelector("table") as HTMLTableElement,
-                useClipboard,
-                ExportTypes[type as keyof typeof ExportTypes],
-            );
-        });
+        setWindowGlobal(
+            "download",
+            function download(useClipboard: boolean, type: string) {
+                downloadTableElem(
+                    (
+                        document.getElementById(
+                            "conflict-table-1",
+                        ) as HTMLElement
+                    ).querySelector("table") as HTMLTableElement,
+                    useClipboard,
+                    ExportTypes[type as keyof typeof ExportTypes],
+                );
+            },
+        );
 
         let queryParams = new URLSearchParams(window.location.search);
         loadLayoutFromQuery(queryParams);

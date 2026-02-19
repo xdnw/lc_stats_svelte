@@ -5,8 +5,8 @@ type TableDataSet = {
     visible: number[];
     cell_format: { [key: string]: number[] };
     row_format:
-        | ((row: HTMLElement, data: { [key: string]: any }, index: number) => void)
-        | null;
+    | ((row: HTMLElement, data: { [key: string]: any }, index: number) => void)
+    | null;
     sort: [number, string];
     onSelectionChange?: (selection: {
         selectedRowIndexes: number[];

@@ -1,6 +1,14 @@
 import { Unpackr } from 'msgpackr';
 import { setQueryParam } from './queryState';
 import { setupContainer as setupContainerWithAdapter } from './tableAdapter';
+import { registerFormatters } from './formatters';
+import { modalWithCloseButton } from './modals';
+import {
+    commafy,
+    formatAllianceName,
+    formatDate,
+    formatDuration,
+} from './formatting';
 
 export {
     setQueryParam,
@@ -10,12 +18,40 @@ export {
     applySavedQueryParamsIfMissing,
     resetQueryParams,
 } from './queryState';
+export {
+    formatDate,
+    formatDaysToDate,
+    formatDuration,
+    formatTurnsToDate,
+    commafy,
+    formatAllianceName,
+    normalizeAllianceIds,
+} from './formatting';
+export {
+    Palette,
+    type ColorPalette,
+    colorPalettes,
+    palettePrimary,
+    darkenColor,
+    convertToRGB,
+    generateColors,
+    generateColorsFromPalettes,
+} from './colors';
+export type { ExportType } from './dataExport';
+export {
+    ExportTypes,
+    downloadTableData,
+    downloadTableElem,
+    downloadCells,
+    copyShareLink,
+} from './dataExport';
 export type { ColumnPreset } from './columnPresets';
 export {
     readColumnPresets,
     saveColumnPreset,
     deleteColumnPreset,
 } from './columnPresets';
+export { modal, modalStrWithCloseButton, modalWithCloseButton } from './modals';
 
 const extUnpackr = new Unpackr({ largeBigIntToFloat: true, mapsAsObjects: true, bundleStrings: true, int64AsType: "number" });
 /*
@@ -128,98 +164,6 @@ export interface TableData {
     }) => void
 }
 
-// delimiter, file extension and Internet media type for csv and tsv
-export interface ExportType {
-    delimiter: string,
-    ext: string,
-    mime: string
-}
-
-export const ExportTypes = {
-    CSV: {
-        delimiter: ',',
-        ext: 'csv',
-        mime: 'text/csv'
-    },
-    TSV: {
-        delimiter: '\t',
-        ext: 'tsv',
-        mime: 'text/tab-separated-values'
-    }
-}
-
-export function downloadTableData(_currentRowData: TableData, useClipboard: boolean, type: ExportType) {
-    if (!_currentRowData) {
-        modalStrWithCloseButton("Error", "No data to download");
-        return;
-    }
-    let visibleColumns = _currentRowData.visible.map(index => _currentRowData.columns[index]);
-    let data: any[][] = _currentRowData.data.map(row => _currentRowData.visible.map(index => row[index]));
-    data.unshift(visibleColumns);
-    downloadCells(data, useClipboard, type);
-}
-
-export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean, type: ExportType) {
-    var table = $(elem).DataTable();
-    // get visible columns
-    const visibleColumnNames: string[] = [];
-    const visibleColumnIds: Set<number> = new Set();
-    table.columns().every(function (index: number) {
-        if (table.column(index).visible()) {
-            if (index == 0) return;
-            visibleColumnNames.push(table.column(index).header().textContent || "name");
-            visibleColumnIds.add(index);
-        }
-    });
-    // Add header names to the data array
-    const data2dInclHeaderNames: any[][] = [visibleColumnNames];
-
-    // Add row data to the data array
-    table.rows({ search: 'applied' }).every(function (this: any, _: number) {
-        const rowData: any[] = [];
-        this.data().forEach((cellData: any, cellIdx: number) => {
-            if (visibleColumnIds.has(cellIdx + 1)) {
-                rowData.push(cellData);
-            }
-        });
-        data2dInclHeaderNames.push(rowData);
-    });
-
-    downloadCells(
-        data2dInclHeaderNames,
-        useClipboard,
-        type
-    );
-}
-
-export function downloadCells(data: any[][], useClipboard: boolean, type: ExportType) {
-    let csvContent = (useClipboard ? '' : 'sep=' + type.delimiter + '\n') + data.map(e => e.join(type.delimiter)).join("\n");
-
-    if (useClipboard) {
-        navigator.clipboard.writeText(csvContent).catch((err) => {
-            console.error("Failed to copy to clipboard", err);
-        });
-        modalStrWithCloseButton("Copied to clipboard", "The data for the currently selected columns has been copied to your clipboard.");
-    } else {
-        // Create a blob from the CSV content
-        let blob = new Blob([csvContent], { type: type.mime + ';charset=utf-8;' });
-
-        // Create a link element
-        let link = document.createElement("a");
-
-        if (link.download !== undefined) { // feature detection
-            // Browsers that support HTML5 download attribute
-            let url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", "data." + type.ext);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-        modalStrWithCloseButton("Download starting", "The data for the currently selected columns should begin downloading. If the download does not start, please check your browser settings, or try the clipboard button instead");
-    }
-}
 
 export const UNITS_PER_CITY: { [key: string]: number } = {
     "soldier": 15_000,
@@ -244,85 +188,6 @@ export function trimHeader(header: string) {
         header = "damage";
     }
     return header.replaceAll("_", " ");
-}
-
-export enum Palette {
-    REDS = 0,
-    BLUES = 1,
-    GREENS = 2,
-    NEUTRALS = 3
-}
-
-export type ColorPalette = {
-    [key in Palette]: string[];
-}
-
-export const colorPalettes: ColorPalette = {
-    [Palette.REDS]: ['128,0,0', '128,128,0', '139,0,0', '139,69,19', '160,82,45', '165,42,42', '178,34,34', '184,134,11', '188,143,143', '189,183,107', '199,21,133', '205,133,63', '205,92,92', '210,105,30', '210,180,140', '218,112,214', '218,165,32', '219,112,147', '220,20,60', '222,184,135', '233,150,122', '238,232,170', '240,128,128', '240,230,140', '244,164,96', '245,222,179', '245,245,220', '250,128,114', '250,235,215', '250,240,230', '250,250,210', '253,245,230', '255,0,0', '255,105,180', '255,127,80', '255,140,0', '255,160,122', '255,165,0', '255,182,193', '255,192,203', '255,20,147', '255,215,0', '255,218,185', '255,222,173', '255,228,181', '255,228,196', '255,228,225', '255,235,205', '255,239,213', '255,250,205', '255,255,0', '255,69,0', '255,99,71'],
-    [Palette.BLUES]: ['0,0,128', '0,0,139', '0,0,205', '0,0,255', '0,128,128', '0,139,139', '0,191,255', '0,206,209', '0,255,255', '0,255,255', '100,149,237', '106,90,205', '112,128,144', '119,136,153', '123,104,238', '135,206,235', '135,206,250', '138,43,226', '147,112,219', '148,0,211', '153,50,204', '173,216,230', '175,238,238', '176,196,222', '176,224,230', '186,85,211', '230,230,250', '25,25,112', '30,144,255', '47,79,79', '65,105,225', '70,130,180', '72,61,139', '75,0,130', '95,158,160'],
-    [Palette.GREENS]: ['0,100,0', '0,128,0', '0,250,154', '0,255,0', '0,255,127', '102,205,170', '107,142,35', '124,252,0', '127,255,0', '127,255,212', '143,188,143', '144,238,144', '152,251,152', '154,205,50', '173,255,47', '32,178,170', '34,139,34', '46,139,87', '50,205,50', '60,179,113', '64,224,208', '72,209,204', '85,107,47'],
-    [Palette.NEUTRALS]: ['0,0,0', '105,105,105', '128,0,128', '128,128,128', '139,0,139', '169,169,169', '192,192,192', '211,211,211', '216,191,216', '220,220,220', '221,160,221', '238,130,238', '245,245,245', '255,0,255', '255,0,255', '255,255,255']
-}
-export const palettePrimary: string[] = [
-    '255,0,0',
-    '0,0,255',
-    '0,255,0',
-    '128,128,128'
-];
-
-export function darkenColor(color: string, percentage: number): string {
-    let rgbValues = color.match(/\d+/g);
-    if (!rgbValues) {
-        throw new Error('Invalid color format');
-    }
-
-    let [r, g, b] = rgbValues.map(Number);
-
-    r = Math.floor(r * (1 - percentage / 100));
-    g = Math.floor(g * (1 - percentage / 100));
-    b = Math.floor(b * (1 - percentage / 100));
-
-    return `rgb(${r}, ${g}, ${b})`;
-}
-
-export function convertToRGB(colors: string[]): string[] {
-    return colors.map(color => {
-        let [r, g, b] = color.split(',');
-        return `rgb(${r}, ${g}, ${b})`;
-    });
-}
-export function generateColors(d3: any, n: number, palette: Palette) {
-    let colors = [];
-    let colorScale = d3.scaleSequential().domain([0, n]).interpolator(d3.interpolateRgbBasisClosed(convertToRGB(colorPalettes[palette])));
-    for (let i = 0; i < n; i++) {
-        colors.push(colorScale(i));
-    }
-    return colors;
-}
-
-export function generateColorsFromPalettes(d3: any, palettes: Palette[]) {
-    let countByPalette: number[] = new Array(Object.keys(Palette).length).fill(0);
-    for (const element of palettes) {
-        countByPalette[element]++;
-    }
-    let colorsByPalette: string[][] = new Array(countByPalette.length).fill([]);
-    for (const element of palettes) {
-        let palette = element;
-        let count = countByPalette[palette];
-        if (count > 0) {
-            let paletteColors = generateColors(d3, count, palette);
-            colorsByPalette[palette] = paletteColors;
-        }
-    }
-    countByPalette.fill(0);
-    let colors = [];
-    for (const element of palettes) {
-        let palette = element;
-        let j = countByPalette[palette]++;
-        let paletteColors = colorsByPalette[palette];
-        colors.push(paletteColors[j]);
-    }
-    return colors;
 }
 
 export interface GraphCoalitionData {
@@ -446,73 +311,6 @@ export function resolveMetricAccessors(
     };
 }
 
-/**
- * Format a timestamp (milliseconds) to a YYYY-MM-DD string
- * @param data epoch time millis
- * @returns date string
- */
-export function formatDate(data: number | null): string {
-    if (data == null || data == -1) return "N/A";
-    let date = new Date(data as number);
-    let formattedDate = date.toISOString().slice(0, 16).replace("T", " ");
-    return formattedDate.endsWith("00:00") ? formattedDate.slice(0, 10) : formattedDate;
-}
-
-export function formatDaysToDate(value: number) {
-    return formatTurnsToDate(value * 12);
-}
-
-export function formatDuration(x: number) {
-    let y = ~~(x / 31536000), // seconds in a year
-        w = ~~((x - y * 31536000) / 604800), // seconds in a week
-        d = ~~((x - y * 31536000 - w * 604800) / 86400), // seconds in a day
-        h = ~~((x - y * 31536000 - w * 604800 - d * 86400) / 3600), // seconds in an hour
-        m = ~~((x - y * 31536000 - w * 604800 - d * 86400 - h * 3600) / 60), // seconds in a minute
-        s = x - y * 31536000 - w * 604800 - d * 86400 - h * 3600 - m * 60; // remaining seconds
-
-    let words = ['year', 'week', 'day', 'hour', 'minute', 'second'];
-    return [y, w, d, h, m, s].map((x, i) => !x ? '' :
-        `${x} ${words[i]}${x !== 1 ? 's' : ''}`)
-        .filter(x => x).join(', ').replace(/,([^,]*)$/, ' and$1')
-}
-
-// Convert the slider (turns) to a time string
-export function formatTurnsToDate(value: number) {
-    let timeMillis = (value / 12) * 60 * 60 * 24 * 1000;
-    let date = new Date();
-    date.setTime(timeMillis);
-    let formattedDate = date.toISOString().slice(0, 16).replace("T", " ");
-    return formattedDate.endsWith("00:00") ? formattedDate.slice(0, 10) : formattedDate;
-}
-
-/**
- * Format a number to have commas
- * For large tables this is much faster than js locale formatting
- * @param num The
- * @returns string with commas
- */
-export function commafy(num: number): string {
-    var parts = ('' + (num < 0 ? -num : num)).split("."), s = parts[0], L, i = L = s.length, o = '';
-    while (i--) {
-        o = (i === 0 ? '' : ((L - i) % 3 ? '' : ','))
-            + s.charAt(i) + o
-    }
-    return (num < 0 ? '-' : '') + o + (parts[1] ? '.' + parts[1] : '');
-}
-
-export function formatAllianceName(name: string | null | undefined, id: number): string {
-    const trimmed = (name ?? '').trim();
-    return trimmed.length > 0 ? trimmed : `AA:${id}`;
-}
-
-export function normalizeAllianceIds(
-    ids: Array<number | string | null | undefined>,
-): number[] {
-    return ids
-        .map((id) => Number(id))
-        .filter((id) => Number.isFinite(id) && id > 0);
-}
-
 export function getDefaultWarWebHeader(data: Conflict): string {
     if (data.war_web.headers.includes("wars")) return "wars";
     return data.war_web.headers[0] ?? "wars";
@@ -532,58 +330,12 @@ export type WarWebMetricMeta = {
  * - formatDate
  */
 export function addFormatters() {
-    (window as any).formatNumber = (data: number, _type: any, _row: any, _meta: any): string => {
-        if (data == 0) return '0';
-        if (data < 1000 && data > -1000) return data.toString();
-        return commafy(data);
-    }
-
-    (window as any).formatMoney = (data: number, _type: any, _row: any, _meta: any): string => {
-        if (data == 0) return '$0';
-        if (data < 1000 && data > -1000) return '$' + data.toString();
-        return '$' + commafy(data);
-    }
-
-    (window as any).formatDate = (data: number, _type: any, _row: any, _meta: any): string => {
-        return formatDate(data);
-    }
-
-    // Add the showNames function to the window object (which shows a popup of the alliances in a coalition)
-    (window as any).showNames = (coalitionName: string, index: number) => {
-        let col: { alliance_ids: number[], alliance_names: string[] } = (window as any).getIds(coalitionName, index);
-        let alliance_ids: number[] = col.alliance_ids;
-        var modalTitle = "Coalition " + (index + 1) + ": " + coalitionName;
-        let ul = document.createElement("ul");
-        for (let i = 0; i < alliance_ids.length; i++) {
-            let alliance_id = alliance_ids[i];
-            let alliance_name = formatAllianceName(col.alliance_names[i], alliance_id);
-            let a = document.createElement("a");
-            a.setAttribute("href", "https://politicsandwar.com/alliance/id=" + alliance_id);
-            a.textContent = alliance_name;
-            let li = document.createElement("li");
-            li.appendChild(a);
-            ul.appendChild(li);
-        }
-        let modalBody = document.createElement("div");
-        let areaElem = document.createElement("kbd");
-        let idsStr = alliance_ids.join(",");
-        areaElem.textContent = idsStr;
-        areaElem.setAttribute("readonly", "true");
-        areaElem.setAttribute("class", "form-control m-0");
-        modalBody.appendChild(areaElem);
-        let copyToClipboard = "<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' onclick='copyToClipboard(\"" + idsStr + "\")'><i class='bi bi-clipboard'></i></button>";
-        modalBody.innerHTML += copyToClipboard;
-        modalBody.appendChild(ul);
-        modalWithCloseButton(modalTitle, modalBody);
-    }
-
-    (window as any).copyToClipboard = (data: string) => {
-        navigator.clipboard.writeText(data).then(() => {
-            alert("Copied to clipboard");
-        }).catch((err) => {
-            alert("Failed to copy to clipboard" + err);
-        });
-    }
+    registerFormatters({
+        commafy,
+        formatDate,
+        formatAllianceName,
+        modalWithCloseButton,
+    });
 }
 
 /**
@@ -667,69 +419,8 @@ export function htmlToElement(html: string): HTMLElement {
     return template.content.firstChild as HTMLElement;
 }
 
-/**
- * Create a closeable modal with a title and body (html string)
- * Modals are from bootstrap: <https://www.gethalfmoon.com/docs/modal/>
- * This is used for the coalition buttons that display the alliances in a coalition
- * @param title The title of the modal
- * @param bodyStr The body html, must be escaped beforehand if it contains user input
- */
-export function modalStrWithCloseButton(title: string, bodyStr: string) {
-    let bodyElem = document.createElement("div");
-    bodyElem.innerHTML = bodyStr;
-    modalWithCloseButton(title, bodyElem);
-}
-
-/**
- * Create closeable modal with a title and body (HTMLElement)
- * Modals are from bootstrap: <https://www.gethalfmoon.com/docs/modal/>
- * This is used for the coalition buttons that display the alliances in a coalition
- * @param title The title of the modal
- * @param body the body element
- */
-export function modalWithCloseButton(title: string, body: HTMLElement) {
-    modal(title, body, `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`);
-}
-
 export function arrayEquals(a: any[], b: any[]) {
     return a.length === b.length && a.every((val, index) => val === b[index]);
-}
-
-/**
- * Create a modal with a footer
- * Modals are from bootstrap: <https://www.gethalfmoon.com/docs/modal/>
- * @param title the text in modal title bar
- * @param body the element for modal body
- * @param footer the element for modal footer (e.g. a close button)
- */
-export function modal(title: string, body: HTMLElement, footer: string) {
-    let myModal = document.getElementById("exampleModal");
-
-    var html = `<div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
-          <div class="modal-dialog">
-              <div class="modal-content">
-                  <div class="modal-header">
-                      <h5 class="modal-title" id="exampleModalLabel"></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
-                          <span aria-hidden="true">&times;</span>
-                      </button>
-                  </div>
-                  <div class="modal-body text-break"></div>
-                  <div class="modal-footer"></div>
-              </div>
-          </div>
-      </div>`
-
-    if (myModal == null) {
-        let myModal = htmlToElement(html);
-        document.body.appendChild(myModal as Node);
-    }
-    let createdModal = document.getElementById("exampleModal") as HTMLElement;
-    createdModal.getElementsByClassName("modal-title")[0].innerHTML = title;
-    let myBody = createdModal.getElementsByClassName("modal-body")[0];
-    myBody.innerHTML = "";
-    myBody.appendChild(body);
-    createdModal.getElementsByClassName("modal-footer")[0].innerHTML = footer;
-    (window as any).bootstrap.Modal.getOrCreateInstance(createdModal).show();
 }
 
 /**
@@ -908,19 +599,6 @@ export function computeLayoutTableData(
         row_format,
         sort,
     } as TableData;
-}
-
-export async function copyShareLink(): Promise<boolean> {
-    const href = window.location.href;
-    try {
-        await navigator.clipboard.writeText(href);
-        modalStrWithCloseButton('Share link copied', 'The current page link has been copied to your clipboard.');
-        return true;
-    } catch (error) {
-        console.error('Failed to copy share link', error);
-        modalStrWithCloseButton('Copy failed', 'Could not copy the share link. Please copy the URL from your browser address bar.');
-        return false;
-    }
 }
 
 export function formatDatasetProvenance(version: number | string, updateMs?: number): string {

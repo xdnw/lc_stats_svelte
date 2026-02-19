@@ -151,13 +151,13 @@ export function sanitizeScopeSnapshot(snapshot: unknown): ScopeSnapshot | undefi
     const value = snapshot as Partial<ScopeSnapshot>;
     const allianceIds = Array.isArray(value.allianceIds)
         ? value.allianceIds
-              .map((id: unknown) => Number(id))
-              .filter((id: number) => Number.isFinite(id))
+            .map((id: unknown) => Number(id))
+            .filter((id: number) => Number.isFinite(id))
         : [];
     const nationIds = Array.isArray(value.nationIds)
         ? value.nationIds
-              .map((id: unknown) => Number(id))
-              .filter((id: number) => Number.isFinite(id))
+            .map((id: unknown) => Number(id))
+            .filter((id: number) => Number.isFinite(id))
         : [];
     const label =
         typeof value.label === "string" ? value.label : "Selection snapshot";
@@ -176,13 +176,13 @@ export function sanitizeAavaSnapshot(
     const label = typeof value.label === "string" ? value.label : "AAvA snapshot";
     const primaryIds = Array.isArray(value.primaryIds)
         ? value.primaryIds
-              .map((id: unknown) => Number(id))
-              .filter((id: number) => Number.isFinite(id))
+            .map((id: unknown) => Number(id))
+            .filter((id: number) => Number.isFinite(id))
         : [];
     const vsIds = Array.isArray(value.vsIds)
         ? value.vsIds
-              .map((id: unknown) => Number(id))
-              .filter((id: number) => Number.isFinite(id))
+            .map((id: unknown) => Number(id))
+            .filter((id: number) => Number.isFinite(id))
         : [];
 
     return { primaryCoalitionIndex, header, label, primaryIds, vsIds };

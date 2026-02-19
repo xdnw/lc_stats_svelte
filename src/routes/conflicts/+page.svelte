@@ -85,188 +85,203 @@
       // - Used by the row format function for coloring the rows
       // - Used to create the modal for the coalition alliances
 
-      setWindowGlobal("getIds", (
-        coalitionName: string,
-        index: number,
-      ): { alliance_ids: number[]; alliance_names: string[] } => {
-        const alliance_ids = allianceIdsByCoalition[coalitionName][index];
-        const alliance_names = alliance_ids.map((id) =>
-          formatAllianceName(allianceNameById[id], id),
-        );
-        return { alliance_ids, alliance_names };
-      });
+      setWindowGlobal(
+        "getIds",
+        (
+          coalitionName: string,
+          index: number,
+        ): { alliance_ids: number[]; alliance_names: string[] } => {
+          const alliance_ids = allianceIdsByCoalition[coalitionName][index];
+          const alliance_names = alliance_ids.map((id) =>
+            formatAllianceName(allianceNameById[id], id),
+          );
+          return { alliance_ids, alliance_names };
+        },
+      );
       // Function to format the url for the conflict name
       // Has a C1 and C2 button for showing coalition alliances modal
       // + the name of the conflict (linking to the conflict page)
-      setWindowGlobal("formatUrl", (
-        data: string,
-        _type: any,
-        row: any,
-        _meta: any,
-      ) => {
-        const id = row[ConflictIndex.ID] as number;
-        const safeLabel = escapeHtml(`${data}`);
-        const conflictUrl = `${base}/conflict?id=${id}`;
-        return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='return openConflictCardFromName(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
-      });
+      setWindowGlobal(
+        "formatUrl",
+        (data: string, _type: any, row: any, _meta: any) => {
+          const id = row[ConflictIndex.ID] as number;
+          const safeLabel = escapeHtml(`${data}`);
+          const conflictUrl = `${base}/conflict?id=${id}`;
+          return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='return openConflictCardFromName(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
+        },
+      );
 
-      setWindowGlobal("openConflictCardFromName", (
-        event: MouseEvent | undefined,
-        conflictId: number,
-      ) => {
-        if (!event) {
-          const openConflictCard = getWindowGlobal<
-            (event: Event | undefined, conflictId: number) => void
-          >("openConflictCard");
+      setWindowGlobal(
+        "openConflictCardFromName",
+        (event: MouseEvent | undefined, conflictId: number) => {
+          if (!event) {
+            const openConflictCard =
+              getWindowGlobal<
+                (event: Event | undefined, conflictId: number) => void
+              >("openConflictCard");
+            openConflictCard?.(undefined, conflictId);
+            return false;
+          }
+
+          event.stopPropagation();
+
+          const isPlainLeftClick =
+            event.button === 0 &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey &&
+            !event.altKey;
+
+          if (!isPlainLeftClick) {
+            return true;
+          }
+
+          event.preventDefault();
+          const openConflictCard =
+            getWindowGlobal<
+              (event: Event | undefined, conflictId: number) => void
+            >("openConflictCard");
           openConflictCard?.(undefined, conflictId);
           return false;
-        }
+        },
+      );
 
-        event.stopPropagation();
-
-        const isPlainLeftClick =
-          event.button === 0 &&
-          !event.ctrlKey &&
-          !event.metaKey &&
-          !event.shiftKey &&
-          !event.altKey;
-
-        if (!isPlainLeftClick) {
-          return true;
-        }
-
-        event.preventDefault();
-        const openConflictCard = getWindowGlobal<
-          (event: Event | undefined, conflictId: number) => void
-        >("openConflictCard");
-        openConflictCard?.(undefined, conflictId);
-        return false;
-      });
-
-      setWindowGlobal("download", function download(
-        useClipboard: boolean,
-        type: string,
-      ) {
-        downloadTableElem(
-          (
-            document.getElementById("conflictTable") as HTMLElement
-          ).querySelector("table") as HTMLTableElement,
-          useClipboard,
-          ExportTypes[type as keyof typeof ExportTypes],
-        );
-      });
-
-      setWindowGlobal("openConflictField", (
-        event: Event | undefined,
-        conflictId: number,
-        field: "status" | "cb" | "posts",
-      ) => {
-        stopTableEvent(event);
-        const details = conflictDetailsById[conflictId];
-        if (!details) return;
-
-        const title = `${details.name} - ${field.toUpperCase()}`;
-        modalStrWithCloseButton(title, buildConflictFieldBody(details, field));
-      });
-
-      setWindowGlobal("openConflictFieldFromCard", (
-        event: Event | undefined,
-        conflictId: number,
-        field: "status" | "cb" | "posts",
-      ) => {
-        stopTableEvent(event);
-        const details = conflictDetailsById[conflictId];
-        if (!details) return;
-
-        const title = `${details.name} - ${field.toUpperCase()}`;
-        modalStrWithCloseButton(
-          conflictModalTitleWithBack(title, conflictId),
-          buildConflictFieldBody(details, field),
-        );
-      });
-
-      setWindowGlobal("openCoalitionForConflict", (
-        event: Event | undefined,
-        conflictId: number,
-        index: number,
-        fromCard: boolean = false,
-      ) => {
-        stopTableEvent(event);
-        const details = conflictDetailsById[conflictId];
-        if (!details) return;
-
-        const getIds = getWindowGlobal<
-          (
-            coalitionName: string,
-            index: number,
-          ) => { alliance_ids: number[]; alliance_names: string[] }
-        >("getIds");
-        if (!getIds) return;
-        const col = getIds(details.name, index);
-
-        const alliance_ids = col.alliance_ids;
-        const ul = document.createElement("ul");
-        ul.className = "mb-0";
-        for (let i = 0; i < alliance_ids.length; i++) {
-          const alliance_id = alliance_ids[i];
-          const alliance_name = formatAllianceName(
-            col.alliance_names[i],
-            alliance_id,
+      setWindowGlobal(
+        "download",
+        function download(useClipboard: boolean, type: string) {
+          downloadTableElem(
+            (
+              document.getElementById("conflictTable") as HTMLElement
+            ).querySelector("table") as HTMLTableElement,
+            useClipboard,
+            ExportTypes[type as keyof typeof ExportTypes],
           );
-          const a = document.createElement("a");
-          a.setAttribute(
-            "href",
-            `https://politicsandwar.com/alliance/id=${alliance_id}`,
+        },
+      );
+
+      setWindowGlobal(
+        "openConflictField",
+        (
+          event: Event | undefined,
+          conflictId: number,
+          field: "status" | "cb" | "posts",
+        ) => {
+          stopTableEvent(event);
+          const details = conflictDetailsById[conflictId];
+          if (!details) return;
+
+          const title = `${details.name} - ${field.toUpperCase()}`;
+          modalStrWithCloseButton(
+            title,
+            buildConflictFieldBody(details, field),
           );
-          a.setAttribute("target", "_blank");
-          a.setAttribute("rel", "noopener noreferrer");
-          a.textContent = alliance_name;
-          const li = document.createElement("li");
-          li.appendChild(a);
-          ul.appendChild(li);
-        }
+        },
+      );
 
-        const modalBody = document.createElement("div");
-        const idsStr = alliance_ids.join(",");
-        const areaElem = document.createElement("kbd");
-        areaElem.textContent = idsStr;
-        areaElem.setAttribute("readonly", "true");
-        areaElem.setAttribute("class", "form-control m-0");
-        modalBody.appendChild(areaElem);
-        const copyToClipboard = `<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' onclick='copyToClipboard("${idsStr}")' aria-label='Copy alliance ids'><i class='bi bi-clipboard'></i></button>`;
-        modalBody.innerHTML += copyToClipboard;
-        modalBody.appendChild(ul);
+      setWindowGlobal(
+        "openConflictFieldFromCard",
+        (
+          event: Event | undefined,
+          conflictId: number,
+          field: "status" | "cb" | "posts",
+        ) => {
+          stopTableEvent(event);
+          const details = conflictDetailsById[conflictId];
+          if (!details) return;
 
-        modalStrWithCloseButton(
-          fromCard
-            ? conflictModalTitleWithBack(
-                `Coalition ${index + 1}: ${details.name}`,
-                conflictId,
-              )
-            : `Coalition ${index + 1}: ${details.name}`,
-          modalBody.outerHTML,
-        );
-      });
+          const title = `${details.name} - ${field.toUpperCase()}`;
+          modalStrWithCloseButton(
+            conflictModalTitleWithBack(title, conflictId),
+            buildConflictFieldBody(details, field),
+          );
+        },
+      );
 
-      setWindowGlobal("openConflictCard", (
-        event: Event | undefined,
-        conflictId: number,
-      ) => {
-        stopTableEvent(event);
-        const details = conflictDetailsById[conflictId];
-        if (!details) return;
+      setWindowGlobal(
+        "openCoalitionForConflict",
+        (
+          event: Event | undefined,
+          conflictId: number,
+          index: number,
+          fromCard: boolean = false,
+        ) => {
+          stopTableEvent(event);
+          const details = conflictDetailsById[conflictId];
+          if (!details) return;
 
-        const wikiValue = details.wiki ?? "";
-        const hasWiki = wikiValue.trim().length > 0;
-        const hasStatus = (details.status ?? "").trim().length > 0;
-        const hasCb = (details.cb ?? "").trim().length > 0;
-        const hasPosts = details.posts && typeof details.posts === "object";
-        const wikiUrl = hasWiki ? normalizeWikiUrl(wikiValue) : "#";
-        const conflictUrl = `${base}/conflict?id=${conflictId}`;
-        const safeName = escapeHtml(details.name);
-        const hasPinnedInfo = (details.pinnedInfo ?? "").trim().length > 0;
+          const getIds =
+            getWindowGlobal<
+              (
+                coalitionName: string,
+                index: number,
+              ) => { alliance_ids: number[]; alliance_names: string[] }
+            >("getIds");
+          if (!getIds) return;
+          const col = getIds(details.name, index);
 
-        const bodyHtml = `
+          const alliance_ids = col.alliance_ids;
+          const ul = document.createElement("ul");
+          ul.className = "mb-0";
+          for (let i = 0; i < alliance_ids.length; i++) {
+            const alliance_id = alliance_ids[i];
+            const alliance_name = formatAllianceName(
+              col.alliance_names[i],
+              alliance_id,
+            );
+            const a = document.createElement("a");
+            a.setAttribute(
+              "href",
+              `https://politicsandwar.com/alliance/id=${alliance_id}`,
+            );
+            a.setAttribute("target", "_blank");
+            a.setAttribute("rel", "noopener noreferrer");
+            a.textContent = alliance_name;
+            const li = document.createElement("li");
+            li.appendChild(a);
+            ul.appendChild(li);
+          }
+
+          const modalBody = document.createElement("div");
+          const idsStr = alliance_ids.join(",");
+          const areaElem = document.createElement("kbd");
+          areaElem.textContent = idsStr;
+          areaElem.setAttribute("readonly", "true");
+          areaElem.setAttribute("class", "form-control m-0");
+          modalBody.appendChild(areaElem);
+          const copyToClipboard = `<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' onclick='copyToClipboard("${idsStr}")' aria-label='Copy alliance ids'><i class='bi bi-clipboard'></i></button>`;
+          modalBody.innerHTML += copyToClipboard;
+          modalBody.appendChild(ul);
+
+          modalStrWithCloseButton(
+            fromCard
+              ? conflictModalTitleWithBack(
+                  `Coalition ${index + 1}: ${details.name}`,
+                  conflictId,
+                )
+              : `Coalition ${index + 1}: ${details.name}`,
+            modalBody.outerHTML,
+          );
+        },
+      );
+
+      setWindowGlobal(
+        "openConflictCard",
+        (event: Event | undefined, conflictId: number) => {
+          stopTableEvent(event);
+          const details = conflictDetailsById[conflictId];
+          if (!details) return;
+
+          const wikiValue = details.wiki ?? "";
+          const hasWiki = wikiValue.trim().length > 0;
+          const hasStatus = (details.status ?? "").trim().length > 0;
+          const hasCb = (details.cb ?? "").trim().length > 0;
+          const hasPosts = details.posts && typeof details.posts === "object";
+          const wikiUrl = hasWiki ? normalizeWikiUrl(wikiValue) : "#";
+          const conflictUrl = `${base}/conflict?id=${conflictId}`;
+          const safeName = escapeHtml(details.name);
+          const hasPinnedInfo = (details.pinnedInfo ?? "").trim().length > 0;
+
+          const bodyHtml = `
           <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' onclick='openConflictPageFromCard(event,${conflictId})' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
 
           <div class='ux-conflict-popup-actions' role='group' aria-label='Conflict actions'>
@@ -293,60 +308,59 @@
           </div>
         `;
 
-        modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
-      });
+          modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
+        },
+      );
 
-      setWindowGlobal("openConflictPageFromCard", (
-        event: Event | undefined,
-        conflictId: number,
-      ) => {
-        stopTableEvent(event);
-        const modalElem = document.getElementById("exampleModal");
-        const modalInstance = getBootstrapModalInstance(modalElem);
-        modalInstance?.hide?.();
-        window.setTimeout(() => {
-          window.location.href = `${base}/conflict?id=${conflictId}`;
-        }, 80);
-      });
+      setWindowGlobal(
+        "openConflictPageFromCard",
+        (event: Event | undefined, conflictId: number) => {
+          stopTableEvent(event);
+          const modalElem = document.getElementById("exampleModal");
+          const modalInstance = getBootstrapModalInstance(modalElem);
+          modalInstance?.hide?.();
+          window.setTimeout(() => {
+            window.location.href = `${base}/conflict?id=${conflictId}`;
+          }, 80);
+        },
+      );
 
-      setWindowGlobal("formatPinnedAlliances", (
-        _data: any,
-        _type: any,
-        row: any,
-        _meta: any,
-      ) => {
-        if (_allowedAllianceIds.size === _rawData?.alliance_ids.length) {
-          return "";
-        }
-        const c1_ids = row[ConflictIndex.C1_ID] as number[];
-        const c2_ids = row[ConflictIndex.C2_ID] as number[];
+      setWindowGlobal(
+        "formatPinnedAlliances",
+        (_data: any, _type: any, row: any, _meta: any) => {
+          if (_allowedAllianceIds.size === _rawData?.alliance_ids.length) {
+            return "";
+          }
+          const c1_ids = row[ConflictIndex.C1_ID] as number[];
+          const c2_ids = row[ConflictIndex.C2_ID] as number[];
 
-        const c1 = c1_ids.filter((id) => _allowedAllianceIds.has(id));
-        const c2 = c2_ids.filter((id) => _allowedAllianceIds.has(id));
-        const total = c1.length + c2.length;
+          const c1 = c1_ids.filter((id) => _allowedAllianceIds.has(id));
+          const c2 = c2_ids.filter((id) => _allowedAllianceIds.has(id));
+          const total = c1.length + c2.length;
 
-        if (total === 0) return "<span class='ux-muted'>-</span>";
+          if (total === 0) return "<span class='ux-muted'>-</span>";
 
-        let chips: string[] = [];
-        const pushChip = (ids: number[], side: string, cls: string) => {
-          for (const id of ids) {
-            if (chips.length >= 4) return;
-            const name = allianceNameById[id] ?? `AA:${id}`;
+          let chips: string[] = [];
+          const pushChip = (ids: number[], side: string, cls: string) => {
+            for (const id of ids) {
+              if (chips.length >= 4) return;
+              const name = allianceNameById[id] ?? `AA:${id}`;
+              chips.push(
+                `<span class='badge ${cls}' title='${side}: ${name}'>${side}:${name}</span>`,
+              );
+            }
+          };
+
+          pushChip(c1, "C1", "text-bg-primary");
+          pushChip(c2, "C2", "text-bg-danger");
+          if (total > chips.length) {
             chips.push(
-              `<span class='badge ${cls}' title='${side}: ${name}'>${side}:${name}</span>`,
+              `<span class='badge text-bg-secondary'>+${total - chips.length}</span>`,
             );
           }
-        };
-
-        pushChip(c1, "C1", "text-bg-primary");
-        pushChip(c2, "C2", "text-bg-danger");
-        if (total > chips.length) {
-          chips.push(
-            `<span class='badge text-bg-secondary'>+${total - chips.length}</span>`,
-          );
-        }
-        return `<span class='d-inline-flex flex-wrap gap-1'>${chips.join("")}</span>`;
-      });
+          return `<span class='d-inline-flex flex-wrap gap-1'>${chips.join("")}</span>`;
+        },
+      );
 
       // Url of s3 bucket
       let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;

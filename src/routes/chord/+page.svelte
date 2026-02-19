@@ -428,7 +428,9 @@
 </svelte:head>
 <div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-        <a href="conflicts" aria-label="Back to conflicts"><i class="bi bi-arrow-left"></i></a>&nbsp;Conflict: {conflictName}
+        <a href="conflicts" aria-label="Back to conflicts"
+            ><i class="bi bi-arrow-left"></i></a
+        >&nbsp;Conflict: {conflictName}
         {#if _rawData?.wiki}
             <a
                 class="btn ux-btn fw-bold"
@@ -438,15 +440,20 @@
             >
         {/if}
     </h1>
-    <ConflictRouteTabs conflictId={conflictId} active="chord" />
+    <ConflictRouteTabs {conflictId} active="chord" />
     <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 116px;">
         {#if !_loaded}
             <Progress />
         {/if}
         {#if _loadError}
-            <div class="alert alert-danger m-2 d-flex justify-content-between align-items-center">
+            <div
+                class="alert alert-danger m-2 d-flex justify-content-between align-items-center"
+            >
                 <span>{_loadError}</span>
-                <button class="btn btn-sm btn-outline-danger fw-bold" on:click={retryLoad}>Retry</button>
+                <button
+                    class="btn btn-sm btn-outline-danger fw-bold"
+                    on:click={retryLoad}>Retry</button
+                >
             </div>
         {/if}
         {#if _rawData}
@@ -462,21 +469,25 @@
                 >
             {/each}
             <hr class="m-1" />
-            <div class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red">
+            <div
+                class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red"
+            >
                 {_rawData?.coalitions[0].name}:
                 {#each _rawData.coalitions[0].alliance_ids as id, index}
                     <button
                         class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
                         class:active={_allowedAllianceIds.has(id)}
                         on:click={() => setLayoutAlliance(0, id)}
-                            >{formatAllianceName(
-                                _rawData.coalitions[0].alliance_names[index],
-                                id,
-                            )}</button
+                        >{formatAllianceName(
+                            _rawData.coalitions[0].alliance_names[index],
+                            id,
+                        )}</button
                     >
                 {/each}
             </div>
-            <div class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue">
+            <div
+                class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue"
+            >
                 {_rawData?.coalitions[1].name}:
                 {#each _rawData.coalitions[1].alliance_ids as id, index}
                     <button
@@ -494,8 +505,8 @@
                 {resolveWarWebMetricMeta(_currentHeaderName).directionNote(
                     _currentHeaderName,
                 )}
-                Hover a chord to inspect one Selected alliance versus Compared
-                alliances. "Net" = Selected value minus Compared value.
+                Hover a chord to inspect one Selected alliance versus Compared alliances.
+                "Net" = Selected value minus Compared value.
             </div>
         {/if}
     </div>
