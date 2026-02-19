@@ -258,15 +258,12 @@
     });
 
     function fetchConflictGraphData(conflictId: string) {
-        let start = Date.now();
         let url = getConflictGraphDataUrl(
             conflictId,
             config.version.graph_data,
         );
         decompressBson(url)
             .then((data) => {
-                console.log(`Loaded ${url} in ${Date.now() - start}ms`);
-                start = Date.now();
                 conflictName = data.name;
                 _rawData = data;
                 datasetProvenance = formatDatasetProvenance(
@@ -306,7 +303,6 @@
         y: number[];
         z: number[];
     }
-
     interface Timeframe {
         start: number;
         end: number;
@@ -510,7 +506,6 @@
         if (!data) return;
         let metrics_copy = selected_metrics.map((metric) => metric.value);
         if (metrics_copy.length != 3) return;
-        let start = Date.now();
         let metric_x: TierMetric = {
             name: metrics_copy[0],
             cumulative: metrics_copy[0].includes(":"),
@@ -543,7 +538,6 @@
             metric_y,
             metric_size,
         ];
-        console.log(`Generated traces in ${Date.now() - start}ms`);
         createGraph(
             tracesTime.traces,
             tracesTime.times,
@@ -560,8 +554,6 @@
         coalition_names: string[],
         metrics: [TierMetric, TierMetric, TierMetric],
     ) {
-        let start = Date.now();
-
         // Get the group names:
         var years: number[] = Object.keys(lookup).map(Number);
         if (years.length === 0) return;
@@ -848,7 +840,6 @@
         // is either dark, light, or empty (light)
         let theme = document.documentElement.getAttribute("data-bs-theme");
         if (theme === "dark") {
-            console.log("Dark theme");
             let bodyBg = getComputedStyle(
                 document.documentElement,
             ).getPropertyValue("--bs-body-bg");
@@ -877,9 +868,6 @@
                 font: { color: bodyColor },
             };
         }
-
-        console.log(`Generated graph data in ${Date.now() - start}ms`);
-        start = Date.now();
 
         ensureScriptsLoaded(["plotjs"]).then(() => {
             const plotly = getPlotly();
@@ -916,8 +904,6 @@
             };
             graphDivAny.on?.("plotly_animated", plotlyAnimatedListener);
             graphDivAny.on?.("plotly_sliderchange", plotlySliderChangeListener);
-            console.log(`Setup reactive plot in ${Date.now() - start}ms`);
-            start = Date.now();
         });
     }
 </script>

@@ -416,12 +416,9 @@
         ) as HTMLCanvasElement;
         let chartInstance = Chart.getChart(chartElem);
         if (chartInstance) {
-            console.log("destroy chart");
             chartInstance.destroy();
         }
-        console.log("creating chart");
         new Chart(chartElem, chartConfig);
-        console.log("Created chart");
 
         let format = response.is_turn ? formatTurnsToDate : formatDaysToDate;
         let density = response.is_turn ? 60 : 5;
@@ -454,7 +451,6 @@
         if (sliderOrNull) {
             sliderOrNull.destroy();
         }
-        console.log("create slider");
         noUiSlider.create(sliderElement, config);
 
         getSliderApi()?.on("set", (values: string[]) => {

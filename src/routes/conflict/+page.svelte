@@ -27,6 +27,8 @@
         makeKpiId,
         readSharedKpiConfig,
         saveSharedKpiConfig,
+        sanitizeKpiWidget,
+        buildLegacyKpiWidgets,
         type ConflictKPIWidget,
         type MetricCard,
         type PresetCard,
@@ -256,144 +258,6 @@
         return makeKpiId(prefix);
     }
 
-    function isWidgetScope(scope: unknown): scope is WidgetScope {
-        return (
-            scope === "all" ||
-            scope === "coalition1" ||
-            scope === "coalition2" ||
-            scope === "selection"
-        );
-    }
-
-    function sanitizeScopeSnapshot(snapshot: any): ScopeSnapshot | undefined {
-        if (!snapshot || typeof snapshot !== "object") return undefined;
-        const allianceIds = Array.isArray(snapshot.allianceIds)
-            ? snapshot.allianceIds
-                  .map((id: unknown) => Number(id))
-                  .filter((id: number) => Number.isFinite(id))
-            : [];
-        const nationIds = Array.isArray(snapshot.nationIds)
-            ? snapshot.nationIds
-                  .map((id: unknown) => Number(id))
-                  .filter((id: number) => Number.isFinite(id))
-            : [];
-        const label =
-            typeof snapshot.label === "string"
-                ? snapshot.label
-                : "Selection snapshot";
-        return { allianceIds, nationIds, label };
-    }
-
-    function sanitizeAavaSnapshot(
-        snapshot: any,
-    ): AavaScopeSnapshot | undefined {
-        if (!snapshot || typeof snapshot !== "object") return undefined;
-        const primaryCoalitionIndex =
-            snapshot.primaryCoalitionIndex === 1 ? 1 : 0;
-        const header =
-            typeof snapshot.header === "string" ? snapshot.header : "wars";
-        const label =
-            typeof snapshot.label === "string"
-                ? snapshot.label
-                : "AAvA snapshot";
-        const primaryIds = Array.isArray(snapshot.primaryIds)
-            ? snapshot.primaryIds
-                  .map((id: unknown) => Number(id))
-                  .filter((id: number) => Number.isFinite(id))
-            : [];
-        const vsIds = Array.isArray(snapshot.vsIds)
-            ? snapshot.vsIds
-                  .map((id: unknown) => Number(id))
-                  .filter((id: number) => Number.isFinite(id))
-            : [];
-
-        return { primaryCoalitionIndex, header, label, primaryIds, vsIds };
-    }
-
-    function sanitizeWidget(item: any): KPIWidget | null {
-        if (!item || typeof item !== "object") return null;
-
-        if (item.kind === "preset") {
-            if (!(item.key in PRESET_CARD_LABELS)) return null;
-            return {
-                id: typeof item.id === "string" ? item.id : makeId("preset"),
-                kind: "preset",
-                key: item.key as PresetCardKey,
-            };
-        }
-
-        if (item.kind === "ranking") {
-            if (!(item.entity === "alliance" || item.entity === "nation"))
-                return null;
-            if (!isWidgetScope(item.scope)) return null;
-            if (typeof item.metric !== "string") return null;
-            const snapshot = sanitizeScopeSnapshot(item.snapshot);
-            const aavaSnapshot = sanitizeAavaSnapshot(item.aavaSnapshot);
-            return {
-                id: typeof item.id === "string" ? item.id : makeId("ranking"),
-                kind: "ranking",
-                entity: item.entity,
-                metric: item.metric,
-                scope: item.scope,
-                limit: Math.max(1, Number(item.limit) || 10),
-                source: item.source === "aava" ? "aava" : "conflict",
-                snapshot,
-                aavaSnapshot,
-            };
-        }
-
-        if (item.kind === "metric") {
-            if (!(item.entity === "alliance" || item.entity === "nation"))
-                return null;
-            if (!isWidgetScope(item.scope)) return null;
-            if (!(item.aggregation === "sum" || item.aggregation === "avg"))
-                return null;
-            if (typeof item.metric !== "string") return null;
-            const snapshot = sanitizeScopeSnapshot(item.snapshot);
-            const aavaSnapshot = sanitizeAavaSnapshot(item.aavaSnapshot);
-            return {
-                id: typeof item.id === "string" ? item.id : makeId("metric"),
-                kind: "metric",
-                entity: item.entity,
-                metric: item.metric,
-                scope: item.scope,
-                aggregation: item.aggregation,
-                source: item.source === "aava" ? "aava" : "conflict",
-                normalizeBy:
-                    typeof item.normalizeBy === "string"
-                        ? item.normalizeBy
-                        : null,
-                snapshot,
-                aavaSnapshot,
-            };
-        }
-
-        return null;
-    }
-
-    function buildLegacyWidgets(config: any): KPIWidget[] {
-        const widgets: KPIWidget[] = [];
-        if (Array.isArray(config?.presetCards)) {
-            for (const item of config.presetCards) {
-                const sanitized = sanitizeWidget(item);
-                if (sanitized?.kind === "preset") widgets.push(sanitized);
-            }
-        }
-        if (Array.isArray(config?.rankingCards)) {
-            for (const item of config.rankingCards) {
-                const sanitized = sanitizeWidget(item);
-                if (sanitized?.kind === "ranking") widgets.push(sanitized);
-            }
-        }
-        if (Array.isArray(config?.metricCards)) {
-            for (const item of config.metricCards) {
-                const sanitized = sanitizeWidget(item);
-                if (sanitized?.kind === "metric") widgets.push(sanitized);
-            }
-        }
-        return widgets;
-    }
-
     function saveKpiConfig() {
         if (!conflictId) return;
         const config = readSharedKpiConfig(conflictId);
@@ -406,13 +270,13 @@
         let parsedWidgets: KPIWidget[] = [];
         if (Array.isArray(config.widgets)) {
             parsedWidgets = config.widgets
-                .map((item: any) => sanitizeWidget(item))
+                .map((item: any) => sanitizeKpiWidget(item, makeId))
                 .filter(
                     (item: KPIWidget | null): item is KPIWidget =>
                         item !== null,
                 );
         } else {
-            parsedWidgets = buildLegacyWidgets(config);
+            parsedWidgets = buildLegacyKpiWidgets(config, makeId);
         }
         if (parsedWidgets.length > 0) {
             kpiWidgets = parsedWidgets;

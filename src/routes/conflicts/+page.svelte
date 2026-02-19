@@ -467,15 +467,6 @@
         return source == 128;
       };
       rows = rows.filter(allowConflict);
-      console.log("Filtered rows", rows.length);
-    } else {
-      console.log(
-        "No source set ",
-        setParam,
-        source_sets,
-        rows.length,
-        source_sets,
-      );
     }
 
     // Build quick filter counts and preserve selection where possible
@@ -821,7 +812,6 @@
       let minStart = Date.now();
       let maxEnd = 0;
 
-      console.log("Loading timeline data", _rawData.conflicts.length);
       const filterConflicts =
         _rawData.alliance_ids.length != _allowedAllianceIds.size;
 
@@ -879,7 +869,6 @@
   }
 
   function onScriptLoad(event: Event) {
-    console.log("Script loaded");
     const script = event.target as HTMLScriptElement;
     script.setAttribute("data-loaded", "true");
     initializeTimeline(false);

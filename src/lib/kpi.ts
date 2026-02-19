@@ -63,6 +63,16 @@ export type SharedKpiConfig = {
     widgets: ConflictKPIWidget[];
 };
 
+const PRESET_CARD_KEYS: ReadonlySet<PresetCardKey> = new Set([
+    "duration",
+    "wars",
+    "damage-total",
+    "net-gap",
+    "c1-dealt",
+    "c2-dealt",
+    "participation",
+]);
+
 const DEFAULT_SHARED_KPI_CONFIG: SharedKpiConfig = {
     version: 1,
     widgets: [],
@@ -124,6 +134,151 @@ export function saveSharedKpiConfig(
 
 export function makeKpiId(prefix: string): string {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function isWidgetScope(scope: unknown): scope is WidgetScope {
+    return (
+        scope === "all" ||
+        scope === "coalition1" ||
+        scope === "coalition2" ||
+        scope === "selection"
+    );
+}
+
+export function sanitizeScopeSnapshot(snapshot: unknown): ScopeSnapshot | undefined {
+    if (!snapshot || typeof snapshot !== "object") return undefined;
+
+    const value = snapshot as Partial<ScopeSnapshot>;
+    const allianceIds = Array.isArray(value.allianceIds)
+        ? value.allianceIds
+              .map((id: unknown) => Number(id))
+              .filter((id: number) => Number.isFinite(id))
+        : [];
+    const nationIds = Array.isArray(value.nationIds)
+        ? value.nationIds
+              .map((id: unknown) => Number(id))
+              .filter((id: number) => Number.isFinite(id))
+        : [];
+    const label =
+        typeof value.label === "string" ? value.label : "Selection snapshot";
+
+    return { allianceIds, nationIds, label };
+}
+
+export function sanitizeAavaSnapshot(
+    snapshot: unknown,
+): AavaScopeSnapshot | undefined {
+    if (!snapshot || typeof snapshot !== "object") return undefined;
+
+    const value = snapshot as Partial<AavaScopeSnapshot>;
+    const primaryCoalitionIndex = value.primaryCoalitionIndex === 1 ? 1 : 0;
+    const header = typeof value.header === "string" ? value.header : "wars";
+    const label = typeof value.label === "string" ? value.label : "AAvA snapshot";
+    const primaryIds = Array.isArray(value.primaryIds)
+        ? value.primaryIds
+              .map((id: unknown) => Number(id))
+              .filter((id: number) => Number.isFinite(id))
+        : [];
+    const vsIds = Array.isArray(value.vsIds)
+        ? value.vsIds
+              .map((id: unknown) => Number(id))
+              .filter((id: number) => Number.isFinite(id))
+        : [];
+
+    return { primaryCoalitionIndex, header, label, primaryIds, vsIds };
+}
+
+export function sanitizeKpiWidget(
+    item: unknown,
+    makeId: (prefix: string) => string = makeKpiId,
+): ConflictKPIWidget | null {
+    if (!item || typeof item !== "object") return null;
+
+    const value = item as Partial<ConflictKPIWidget> & Record<string, unknown>;
+
+    if (value.kind === "preset") {
+        if (!PRESET_CARD_KEYS.has(value.key as PresetCardKey)) return null;
+        return {
+            id: typeof value.id === "string" ? value.id : makeId("preset"),
+            kind: "preset",
+            key: value.key as PresetCardKey,
+        };
+    }
+
+    if (value.kind === "ranking") {
+        if (!(value.entity === "alliance" || value.entity === "nation")) return null;
+        if (!isWidgetScope(value.scope)) return null;
+        if (typeof value.metric !== "string") return null;
+
+        const snapshot = sanitizeScopeSnapshot(value.snapshot);
+        const aavaSnapshot = sanitizeAavaSnapshot(value.aavaSnapshot);
+
+        return {
+            id: typeof value.id === "string" ? value.id : makeId("ranking"),
+            kind: "ranking",
+            entity: value.entity,
+            metric: value.metric,
+            scope: value.scope,
+            limit: Math.max(1, Number(value.limit) || 10),
+            source: value.source === "aava" ? "aava" : "conflict",
+            snapshot,
+            aavaSnapshot,
+        };
+    }
+
+    if (value.kind === "metric") {
+        if (!(value.entity === "alliance" || value.entity === "nation")) return null;
+        if (!isWidgetScope(value.scope)) return null;
+        if (!(value.aggregation === "sum" || value.aggregation === "avg")) {
+            return null;
+        }
+        if (typeof value.metric !== "string") return null;
+
+        const snapshot = sanitizeScopeSnapshot(value.snapshot);
+        const aavaSnapshot = sanitizeAavaSnapshot(value.aavaSnapshot);
+
+        return {
+            id: typeof value.id === "string" ? value.id : makeId("metric"),
+            kind: "metric",
+            entity: value.entity,
+            metric: value.metric,
+            scope: value.scope,
+            aggregation: value.aggregation,
+            source: value.source === "aava" ? "aava" : "conflict",
+            normalizeBy:
+                typeof value.normalizeBy === "string" ? value.normalizeBy : null,
+            snapshot,
+            aavaSnapshot,
+        };
+    }
+
+    return null;
+}
+
+export function buildLegacyKpiWidgets(
+    config: unknown,
+    makeId: (prefix: string) => string = makeKpiId,
+): ConflictKPIWidget[] {
+    if (!config || typeof config !== "object") return [];
+
+    const source = config as Record<string, unknown>;
+    const widgets: ConflictKPIWidget[] = [];
+
+    const pushSanitized = (list: unknown, kind: ConflictKPIWidget["kind"]) => {
+        if (!Array.isArray(list)) return;
+        for (const item of list) {
+            const sanitized = sanitizeKpiWidget(item, makeId);
+            if (sanitized?.kind === kind) {
+                widgets.push(sanitized);
+            }
+        }
+    };
+
+    pushSanitized(source.presetCards, "preset");
+    pushSanitized(source.rankingCards, "ranking");
+    pushSanitized(source.metricCards, "metric");
+
+    return widgets;
 }
 
 export function moveWidgetByDelta<T extends { id: string }>(

@@ -56,7 +56,6 @@
         decompressBson(url)
             .then((data) => {
                 _rawData = data;
-                console.log(data);
                 conflictName = data.name;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.conflict_data,
@@ -164,8 +163,6 @@
                 );
             });
         });
-        console.log(data.war_web.headers);
-
         let allPalette: number[] = [];
         let labels: string[] = [];
         let allAllianceIds = [

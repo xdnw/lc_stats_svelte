@@ -1,6 +1,21 @@
 import { Unpackr } from 'msgpackr';
-declare const $: any;
-declare const jQuery: any;
+import { setQueryParam } from './queryState';
+
+export {
+    setQueryParam,
+    getPageStorageKey,
+    saveCurrentQueryParams,
+    readSavedQueryParams,
+    applySavedQueryParamsIfMissing,
+    resetQueryParams,
+} from './queryState';
+export type { ColumnPreset } from './columnPresets';
+export {
+    readColumnPresets,
+    saveColumnPreset,
+    deleteColumnPreset,
+} from './columnPresets';
+
 const extUnpackr = new Unpackr({ largeBigIntToFloat: true, mapsAsObjects: true, bundleStrings: true, int64AsType: "number" });
 /*
 Shared typescript for all pages
@@ -127,7 +142,7 @@ export const ExportTypes = {
     },
     TSV: {
         delimiter: '\t',
-        ext: 'csv',
+        ext: 'tsv',
         mime: 'text/tab-separated-values'
     }
 }
@@ -152,7 +167,6 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
         if (table.column(index).visible()) {
             if (index == 0) return;
             visibleColumnNames.push(table.column(index).header().textContent || "name");
-            console.log(table.column(index + 1).header().textContent || "name");
             visibleColumnIds.add(index);
         }
     });
@@ -169,8 +183,6 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
         });
         data2dInclHeaderNames.push(rowData);
     });
-
-    console.log(JSON.stringify(data2dInclHeaderNames));
 
     downloadCells(
         data2dInclHeaderNames,
@@ -206,7 +218,7 @@ export function downloadCells(data: any[][], useClipboard: boolean, type: Export
             link.click();
             document.body.removeChild(link);
         }
-        modalStrWithCloseButton("Download starting", "The data for the currently selected columns should begind downloading. If the download does not start, please check your browser settings, or try the clipboard button instead");
+        modalStrWithCloseButton("Download starting", "The data for the currently selected columns should begin downloading. If the download does not start, please check your browser settings, or try the clipboard button instead");
     }
 }
 
@@ -802,149 +814,6 @@ function addTable(container: HTMLElement, id: string) {
     });
 }
 
-// Set the query param
-// Called during a layout button click (handleClick)
-export function setQueryParam(
-    param: string,
-    value: any,
-    options?: { replace?: boolean }
-) {
-    let url = new URL(window.location.href);
-    let oldUrl = url.toString();
-    if (value == null) {
-        url.searchParams.delete(param);
-    } else {
-        url.searchParams.set(param, value);
-    }
-    let newUrl = url.toString();
-    if (oldUrl !== newUrl) {
-        if (options?.replace) {
-            window.history.replaceState({}, '', newUrl);
-        } else {
-            window.history.pushState({}, '', newUrl);
-        }
-    }
-}
-
-export function getPageStorageKey(pathname?: string): string {
-    const path = pathname ?? window.location.pathname;
-    return `lc_stats:view:${path}`;
-}
-
-export function saveCurrentQueryParams(storageKey?: string, includeEmpty: boolean = false): void {
-    try {
-        const key = storageKey ?? getPageStorageKey();
-        const params = new URLSearchParams(window.location.search);
-        const data: Record<string, string> = {};
-        params.forEach((value, k) => {
-            if (includeEmpty || value !== '') {
-                data[k] = value;
-            }
-        });
-        localStorage.setItem(key, JSON.stringify(data));
-    } catch (error) {
-        console.warn('Failed to save view preset', error);
-    }
-}
-
-export function readSavedQueryParams(storageKey?: string): Record<string, string> {
-    try {
-        const key = storageKey ?? getPageStorageKey();
-        const value = localStorage.getItem(key);
-        if (!value) return {};
-        const parsed = JSON.parse(value);
-        if (!parsed || typeof parsed !== 'object') return {};
-        return parsed as Record<string, string>;
-    } catch (error) {
-        console.warn('Failed to read view preset', error);
-        return {};
-    }
-}
-
-export function applySavedQueryParamsIfMissing(
-    keys: string[],
-    requiredKeys: string[] = [],
-    storageKey?: string
-): boolean {
-    const saved = readSavedQueryParams(storageKey);
-    if (!saved || Object.keys(saved).length === 0) return false;
-    const url = new URL(window.location.href);
-    for (const required of requiredKeys) {
-        if (!url.searchParams.get(required)) {
-            return false;
-        }
-    }
-    let changed = false;
-    for (const key of keys) {
-        const hasInUrl = url.searchParams.has(key);
-        const hasSaved = Object.prototype.hasOwnProperty.call(saved, key);
-        if (!hasInUrl && hasSaved) {
-            const value = saved[key];
-            if (value == null || value === '') {
-                url.searchParams.delete(key);
-            } else {
-                url.searchParams.set(key, value);
-            }
-            changed = true;
-        }
-    }
-    if (changed) {
-        window.history.replaceState({}, '', url.toString());
-    }
-    return changed;
-}
-
-/**
- * Column preset storage helpers (per-page)
- * - Presets are stored under `${getPageStorageKey()}:presets` as an object { name: { columns, sort, order, createdAt } }
- */
-export type ColumnPreset = {
-    columns: string[];
-    sort?: string;
-    order?: string;
-    kpis?: string[];
-    kpiConfig?: any;
-    createdAt?: number;
-};
-
-export function readColumnPresets(storageKey?: string): Record<string, ColumnPreset> {
-    const key = (storageKey ?? getPageStorageKey()) + ':presets';
-    try {
-        const raw = localStorage.getItem(key);
-        if (!raw) return {};
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') return {};
-        return parsed as Record<string, ColumnPreset>;
-    } catch (err) {
-        console.warn('Failed to read column presets', err);
-        return {};
-    }
-}
-
-export function saveColumnPreset(name: string, preset: ColumnPreset, storageKey?: string): void {
-    const key = (storageKey ?? getPageStorageKey()) + ':presets';
-    try {
-        const cur = readColumnPresets(storageKey);
-        cur[name] = { ...preset, createdAt: Date.now() };
-        localStorage.setItem(key, JSON.stringify(cur));
-    } catch (err) {
-        console.warn('Failed to save column preset', err);
-    }
-}
-
-export function deleteColumnPreset(name: string, storageKey?: string): void {
-    const key = (storageKey ?? getPageStorageKey()) + ':presets';
-    try {
-        const cur = readColumnPresets(storageKey);
-        if (Object.prototype.hasOwnProperty.call(cur, name)) {
-            delete cur[name];
-            localStorage.setItem(key, JSON.stringify(cur));
-        }
-    } catch (err) {
-        console.warn('Failed to delete column preset', err);
-    }
-}
-
 /**
  * Compute table data (columns, rows, formats) for a conflict for a given layout type
  * Used by the conflict page to render the table and to compute derived summaries (top movers, totals)
@@ -1103,28 +972,6 @@ export function computeLayoutTableData(
         row_format,
         sort,
     } as TableData;
-}
-
-export function resetQueryParams(keysToClear: string[], requiredKeys: string[] = []): void {
-    const url = new URL(window.location.href);
-    for (const key of keysToClear) {
-        url.searchParams.delete(key);
-    }
-    const requiredSnapshot: Record<string, string> = {};
-    for (const required of requiredKeys) {
-        const value = url.searchParams.get(required);
-        if (value != null) {
-            requiredSnapshot[required] = value;
-        }
-    }
-    window.history.replaceState({}, '', url.toString());
-    saveCurrentQueryParams();
-    // Re-apply required key snapshot if any logic removed them accidentally
-    for (const required of requiredKeys) {
-        if (requiredSnapshot[required] != null) {
-            setQueryParam(required, requiredSnapshot[required], { replace: true });
-        }
-    }
 }
 
 export async function copyShareLink(): Promise<boolean> {
@@ -1481,7 +1328,7 @@ function setupTable(containerElem: HTMLElement,
                 }
             }
 
-            $.fn.dataTableExt.oStdClasses.sWrapper = "py-2 px-2 dataTables_wrapper";
+            ($.fn as any).dataTableExt.oStdClasses.sWrapper = "py-2 px-2 dataTables_wrapper";
             let table = tableArr[0] = (jqTable as any).DataTable({
                 dom: "rt<'ux-dt-bottom'plf>",
                 // the array of column info
@@ -1654,7 +1501,6 @@ function setupTable(containerElem: HTMLElement,
                         numFormat.push(...cell_format.formatMoney);
                     }
                     let title = dataColumns[index - 1];
-                    console.log("TITLE ")
                     if (title != null) {
                         if (!table.column(index).visible()) {
                             let data = d[index - 1];

@@ -6,12 +6,16 @@
         deleteColumnPreset,
         type ColumnPreset,
     } from "$lib";
+    import type { SharedKpiConfig } from "$lib/kpi";
 
     export let currentColumns: string[] = [];
     export let currentSort: string = "";
     export let currentOrder: string = "desc";
     export let currentKpis: string[] = [];
-    export let currentKpiConfig: any = null;
+    export let currentKpiConfig:
+        | SharedKpiConfig
+        | Record<string, unknown>
+        | null = null;
 
     const dispatch = createEventDispatcher();
 
