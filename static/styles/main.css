@@ -226,6 +226,23 @@ html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
     background: color-mix(in srgb, var(--ux-surface) 95%, transparent);
 }
 
+.ux-floating-controls {
+    position: relative;
+    overflow: visible;
+    z-index: 120;
+}
+
+.ux-floating-controls .dropdown,
+.ux-floating-controls li {
+    position: relative;
+}
+
+.ux-floating-controls .dropdown-menu {
+    z-index: 26000;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
 .ux-control-strip {
     display: flex;
     align-items: center;
@@ -298,15 +315,26 @@ html[data-bs-theme="dark"] .ux-btn-primary {
     background: color-mix(in srgb, var(--ux-surface) 90%, transparent);
     border-radius: var(--ux-radius-md);
     box-shadow: var(--ux-shadow-sm);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
 }
 
-.ux-table-wrap .dataTables_wrapper,
+.ux-table-wrap .dataTables_wrapper {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+}
+
 .ux-table-wrap table {
-    min-width: max-content;
+    min-width: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed;
 }
 
 .ux-conflict-cell {
@@ -388,6 +416,11 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 .dataTables_wrapper tfoot .ux-toggle-btn {
     border-color: color-mix(in srgb, var(--ux-brand) 56%, var(--ux-border)) !important;
     background: color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface)) !important;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .dataTables_wrapper tfoot .ux-toggle-btn:hover {
@@ -411,6 +444,16 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 .dataTables_wrapper table.dataTable thead th,
 .dataTables_wrapper table.dataTable thead td {
     border-bottom-color: color-mix(in srgb, var(--ux-brand) 38%, var(--ux-border)) !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.dataTables_wrapper table.dataTable tbody td,
+.dataTables_wrapper table.dataTable tfoot th {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .dataTables_wrapper table.dataTable tbody tr {
@@ -423,6 +466,42 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 
 .dataTables_wrapper table.dataTable tbody tr.shown {
     background-color: color-mix(in srgb, var(--ux-brand) 11%, var(--ux-surface)) !important;
+}
+
+.dataTables_wrapper table.dataTable tfoot tr.ux-summary-row th {
+    background: color-mix(in srgb, var(--ux-brand) 9%, var(--ux-surface)) !important;
+    border-top: 1px solid color-mix(in srgb, var(--ux-brand) 40%, var(--ux-border));
+    vertical-align: top;
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+}
+
+.dataTables_wrapper table.dataTable thead th:first-child,
+.dataTables_wrapper table.dataTable tbody td:first-child,
+.dataTables_wrapper table.dataTable tfoot th:first-child {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.dataTables_wrapper table.dataTable tfoot tr.ux-summary-row .ux-summary-actions {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.dataTables_wrapper table.dataTable tfoot tr.ux-summary-row .ux-select-visible-btn {
+    min-width: 1.8rem;
+    width: 1.8rem;
+    height: 1.8rem;
+    padding: 0;
+    line-height: 1;
+}
+
+.ux-summary-values {
+    display: grid;
+    gap: 0.06rem;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .dataTables_wrapper .dataTables_paginate .paginate_button {
@@ -554,6 +633,21 @@ html[data-bs-theme="dark"] .app-shell a:focus-visible {
 
 .app-shell .dropdown-item:hover {
     background-color: color-mix(in srgb, var(--ux-brand) 14%, transparent);
+}
+
+.kpi-card {
+    padding-top: 1.9rem !important;
+    cursor: move;
+}
+
+.kpi-card-close {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+}
+
+.kpi-card-dragging {
+    opacity: 0.6;
 }
 
 /* Shared compact style for svelte-select (used by bubble + tiering) */
@@ -785,4 +879,9 @@ table.dataTable tbody td.ux-col-selected {
 
 table.dataTable tbody td.ux-col-compared {
     background-color: color-mix(in srgb, var(--ux-brand) 8%, transparent);
+}
+
+.dataTables_wrapper table.dataTable tfoot tr:first-child th {
+    min-width: 0;
+    max-width: 1px;
 }

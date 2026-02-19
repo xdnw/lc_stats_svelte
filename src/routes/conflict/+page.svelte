@@ -37,6 +37,7 @@
         type WidgetEntity,
         type WidgetScope,
     } from "$lib/kpi";
+    import { getAavaMetricLabel } from "$lib/aava";
     import ColumnPresetManager from "../../components/ColumnPresetManager.svelte";
     import { config } from "../+layout";
 
@@ -167,7 +168,6 @@
 
     const DEFAULT_PRESET_CARDS: PresetCard[] = [
         { id: "preset-duration", kind: "preset", key: "duration" },
-        { id: "preset-wars", kind: "preset", key: "wars" },
         { id: "preset-total-dmg", kind: "preset", key: "damage-total" },
         { id: "preset-net-gap", kind: "preset", key: "net-gap" },
     ];
@@ -284,11 +284,18 @@
         return { allianceIds, nationIds, label };
     }
 
-    function sanitizeAavaSnapshot(snapshot: any): AavaScopeSnapshot | undefined {
+    function sanitizeAavaSnapshot(
+        snapshot: any,
+    ): AavaScopeSnapshot | undefined {
         if (!snapshot || typeof snapshot !== "object") return undefined;
-        const primaryCoalitionIndex = snapshot.primaryCoalitionIndex === 1 ? 1 : 0;
-        const header = typeof snapshot.header === "string" ? snapshot.header : "wars";
-        const label = typeof snapshot.label === "string" ? snapshot.label : "AAvA snapshot";
+        const primaryCoalitionIndex =
+            snapshot.primaryCoalitionIndex === 1 ? 1 : 0;
+        const header =
+            typeof snapshot.header === "string" ? snapshot.header : "wars";
+        const label =
+            typeof snapshot.label === "string"
+                ? snapshot.label
+                : "AAvA snapshot";
         const primaryIds = Array.isArray(snapshot.primaryIds)
             ? snapshot.primaryIds
                   .map((id: unknown) => Number(id))
@@ -416,7 +423,10 @@
         try {
             if (!conflictId) return;
             const sharedConfig = readSharedKpiConfig(conflictId);
-            if (Array.isArray(sharedConfig.widgets) && sharedConfig.widgets.length > 0) {
+            if (
+                Array.isArray(sharedConfig.widgets) &&
+                sharedConfig.widgets.length > 0
+            ) {
                 applyKpiConfig({ widgets: sharedConfig.widgets });
                 return;
             }
@@ -777,16 +787,6 @@
             : (nationMetricTable as TableData | null);
     }
 
-    const AAVA_METRIC_LABELS: Record<string, string> = {
-        primary_to_row: "Selected → Compared",
-        row_to_primary: "Compared → Selected",
-        net: "Net",
-        total: "Total",
-        primary_share_pct: "Selected share %",
-        row_share_pct: "Compared share %",
-        abs_net: "Abs Net",
-    };
-
     function buildAavaRowsForSnapshot(snapshot: AavaScopeSnapshot) {
         if (!_rawData) return [] as any[];
 
@@ -956,7 +956,9 @@
         if (card.source === "aava") {
             if (!card.aavaSnapshot || card.entity !== "alliance") return null;
             const rows = buildAavaRowsForSnapshot(card.aavaSnapshot);
-            const vals = rows.map((row) => getAavaMetricValue(row, card.metric));
+            const vals = rows.map((row) =>
+                getAavaMetricValue(row, card.metric),
+            );
             if (vals.length === 0) return null;
 
             if (card.normalizeBy) {
@@ -1019,8 +1021,24 @@
     }
 
     function metricLabel(metric: string): string {
-        if (AAVA_METRIC_LABELS[metric]) return AAVA_METRIC_LABELS[metric];
         return trimHeader(metric);
+    }
+
+    function widgetMetricLabel(widget: RankingCard | MetricCard): string {
+        if (widget.source === "aava") {
+            const header = widget.aavaSnapshot?.header ?? "wars";
+            return getAavaMetricLabel(widget.metric, header);
+        }
+        return metricLabel(widget.metric);
+    }
+
+    function widgetNormalizeLabel(widget: MetricCard): string | null {
+        if (!widget.normalizeBy) return null;
+        if (widget.source === "aava") {
+            const header = widget.aavaSnapshot?.header ?? "wars";
+            return getAavaMetricLabel(widget.normalizeBy, header);
+        }
+        return metricLabel(widget.normalizeBy);
     }
 
     function widgetScopeLabel(widget: KPIWidget): string {
@@ -1041,12 +1059,12 @@
             return PRESET_CARD_LABELS[widget.key];
         }
         if (widget.kind === "ranking") {
-            return `${widget.entity} · ${metricLabel(widget.metric)} · ${widgetScopeLabel(widget)} · top ${widget.limit}`;
+            return `${widget.entity} · ${widgetMetricLabel(widget)} · ${widgetScopeLabel(widget)} · top ${widget.limit}`;
         }
-        const normalized = widget.normalizeBy
-            ? ` per ${metricLabel(widget.normalizeBy)}`
+        const normalized = widgetNormalizeLabel(widget)
+            ? ` per ${widgetNormalizeLabel(widget)}`
             : "";
-        return `${widget.aggregation.toUpperCase()} ${widget.entity} · ${metricLabel(widget.metric)}${normalized} · ${widgetScopeLabel(widget)}`;
+        return `${widget.aggregation.toUpperCase()} ${widget.entity} · ${widgetMetricLabel(widget)}${normalized} · ${widgetScopeLabel(widget)}`;
     }
 
     function loadLayout(
@@ -1392,7 +1410,7 @@
     />
 
     <ul
-        class="layout-picker-bar nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
+        class="layout-picker-bar ux-floating-controls nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
     >
         <li class="me-1">Layout Picker:</li>
         {#each Object.keys(layouts) as key}
@@ -1782,7 +1800,14 @@
                                 {@const rows = getRankingRows(card)}
                                 <div class="small text-muted mb-1">
                                     Top {card.limit}
-                                    {card.entity}s by {metricLabel(card.metric)}
+                                    {card.entity}s by
+                                    {card.source === "aava"
+                                        ? getAavaMetricLabel(
+                                              card.metric,
+                                              card.aavaSnapshot?.header ??
+                                                  "wars",
+                                          )
+                                        : metricLabel(card.metric)}
                                     ({widgetScopeLabel(card)})
                                 </div>
                                 <div class="table-responsive">
@@ -1823,9 +1848,25 @@
                                 <div class="small text-muted">
                                     {card.aggregation.toUpperCase()}
                                     {card.entity}
-                                    {metricLabel(card.metric)}
+                                    {card.source === "aava"
+                                        ? getAavaMetricLabel(
+                                              card.metric,
+                                              card.aavaSnapshot?.header ??
+                                                  "wars",
+                                          )
+                                        : metricLabel(card.metric)}
                                     {card.normalizeBy
-                                        ? ` per ${metricLabel(card.normalizeBy)}`
+                                        ? ` per ${
+                                              card.source === "aava"
+                                                  ? getAavaMetricLabel(
+                                                        card.normalizeBy,
+                                                        card.aavaSnapshot
+                                                            ?.header ?? "wars",
+                                                    )
+                                                  : metricLabel(
+                                                        card.normalizeBy,
+                                                    )
+                                          }`
                                         : ""}
                                     ({widgetScopeLabel(card)})
                                 </div>
@@ -1894,37 +1935,3 @@
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
 </div>
-
-<style>
-    .layout-picker-bar {
-        position: relative;
-        overflow: visible;
-        z-index: 20;
-    }
-
-    .layout-picker-bar .dropdown,
-    .layout-picker-bar li {
-        position: relative;
-    }
-
-    .layout-picker-bar .dropdown-menu {
-        z-index: 1080;
-        max-height: 70vh;
-        overflow-y: auto;
-    }
-
-    .kpi-card {
-        padding-top: 1.9rem !important;
-        cursor: move;
-    }
-
-    .kpi-card-close {
-        position: absolute;
-        top: 0.5rem;
-        right: 0.5rem;
-    }
-
-    .kpi-card-dragging {
-        opacity: 0.6;
-    }
-</style>

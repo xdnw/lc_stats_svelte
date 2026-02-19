@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
@@ -22,12 +22,12 @@
         type Conflict,
         type TableData,
     } from "$lib";
+    import { AAVA_METRIC_KEYS, getAavaMetricLabels } from "$lib/aava";
     import {
         makeKpiId,
         readSharedKpiConfig,
         saveSharedKpiConfig,
         type AavaScopeSnapshot,
-        type WidgetEntity,
     } from "$lib/kpi";
     import { config } from "../+layout";
 
@@ -62,18 +62,6 @@
         "row_share_pct",
     ];
 
-    const AAVA_METRIC_LABELS: Record<string, string> = {
-        primary_to_row: "Selected → Compared",
-        row_to_primary: "Compared → Selected",
-        net: "Net",
-        total: "Total",
-        primary_share_pct: "Selected share %",
-        row_share_pct: "Compared share %",
-        abs_net: "Abs Net",
-    };
-
-    const AAVA_METRIC_KEYS = Object.keys(AAVA_METRIC_LABELS);
-
     let conflictName = "";
     let conflictId: string | null = null;
     let datasetProvenance = "";
@@ -90,7 +78,6 @@
     let selectedColumns: ColumnKey[] = [...DEFAULT_VISIBLE_COLUMN_KEYS];
     let rankingMetricToAdd = "net";
     let rankingLimitToAdd = 10;
-    let metricEntityToAdd: WidgetEntity = "alliance";
     let metricMetricToAdd = "net";
     let metricAggToAdd: "sum" | "avg" = "sum";
     let metricNormalizeByToAdd = "";
@@ -98,6 +85,7 @@
     $: selectedPrimaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
     $: selectedVsIds =
         selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
+    $: aavaMetricLabels = getAavaMetricLabels(currentHeader);
 
     function getCoalition(index: number) {
         return _rawData?.coalitions[index];
@@ -205,6 +193,14 @@
 
     function parseCoalitionIndex(raw: string | null): number {
         return raw === "1" ? 1 : 0;
+    }
+
+    function hasIntentionalSelectionParams(query: URLSearchParams): boolean {
+        const keys = ["c0", "c1", "pids", "vids"];
+        return keys.some((key) => {
+            const value = query.get(key);
+            return value !== null && value.trim().length > 0;
+        });
     }
 
     function defaultSelectionsByCoalition(
@@ -379,7 +375,7 @@
             {
                 id: makeKpiId("metric"),
                 kind: "metric",
-                entity: metricEntityToAdd,
+                entity: "alliance",
                 metric: metricMetricToAdd,
                 scope: "selection",
                 aggregation: metricAggToAdd,
@@ -497,9 +493,20 @@
         if (!container) return;
         container.innerHTML = "";
 
-        const primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
-        const vsIds =
+        let primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
+        let vsIds =
             selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
+
+        if (_rawData && (primaryIds.length === 0 || vsIds.length === 0)) {
+            const query = new URLSearchParams(window.location.search);
+            if (!hasIntentionalSelectionParams(query)) {
+                selectedByCoalition = defaultSelectionsByCoalition(_rawData);
+                primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
+                vsIds =
+                    selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ??
+                    [];
+            }
+        }
 
         if (!_rawData || primaryIds.length === 0 || vsIds.length === 0) return;
 
@@ -640,9 +647,7 @@
 
     function hydrateStateFromQuery(data: Conflict) {
         const query = new URLSearchParams(window.location.search);
-        const hasExplicitSelectionParams = ["c0", "c1", "pids", "vids"].some(
-            (k) => query.has(k),
-        );
+        const hasExplicitSelectionParams = hasIntentionalSelectionParams(query);
 
         primaryCoalitionIndex = parseCoalitionIndex(query.get("pc"));
         currentHeader = query.get("header") ?? getDefaultWarWebHeader(data);
@@ -674,7 +679,7 @@
         _loaded = false;
         const url = getConflictDataUrl(id, config.version.conflict_data);
         decompressBson(url)
-            .then((data: Conflict) => {
+            .then(async (data: Conflict) => {
                 _rawData = data;
                 conflictName = data.name;
                 datasetProvenance = formatDatasetProvenance(
@@ -682,6 +687,7 @@
                     (data as any).update_ms,
                 );
                 hydrateStateFromQuery(data);
+                await tick();
                 renderTable();
                 _loaded = true;
                 saveCurrentQueryParams();
@@ -755,7 +761,9 @@
     </h1>
     <ConflictRouteTabs {conflictId} active="aava" />
 
-    <div class="ux-surface ux-tab-panel p-2 fw-bold mb-2">
+    <div
+        class="ux-surface ux-tab-panel p-2 fw-bold mb-2 aava-controls ux-floating-controls"
+    >
         <div
             class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"
         >
@@ -780,7 +788,7 @@
                         KPI widgets&nbsp;<i class="bi bi-chevron-down"></i>
                     </button>
                     <div
-                        class="dropdown-menu p-2"
+                        class="dropdown-menu p-2 aava-kpi-dropdown-menu"
                         aria-labelledby="aavaKpiManagerDropdown"
                         style="min-width: 340px;"
                     >
@@ -798,7 +806,7 @@
                                 >
                                     {#each AAVA_METRIC_KEYS as key}
                                         <option value={key}
-                                            >{AAVA_METRIC_LABELS[key]}</option
+                                            >{aavaMetricLabels[key]}</option
                                         >
                                     {/each}
                                 </select>
@@ -828,12 +836,9 @@
                                 <div class="small text-muted mb-1">
                                     Metric widget
                                 </div>
-                                <select
-                                    class="form-select form-select-sm"
-                                    bind:value={metricEntityToAdd}
-                                >
-                                    <option value="alliance">Alliance</option>
-                                </select>
+                                <div class="small text-muted">
+                                    Entity: Alliance
+                                </div>
                             </div>
                             <div class="col-12">
                                 <select
@@ -851,7 +856,7 @@
                                 >
                                     {#each AAVA_METRIC_KEYS as key}
                                         <option value={key}
-                                            >{AAVA_METRIC_LABELS[key]}</option
+                                            >{aavaMetricLabels[key]}</option
                                         >
                                     {/each}
                                 </select>
@@ -864,9 +869,7 @@
                                     <option value="">No normalization</option>
                                     {#each AAVA_METRIC_KEYS as key}
                                         <option value={key}
-                                            >Per {AAVA_METRIC_LABELS[
-                                                key
-                                            ]}</option
+                                            >Per {aavaMetricLabels[key]}</option
                                         >
                                     {/each}
                                 </select>
@@ -1033,11 +1036,3 @@
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
 </div>
-
-<style>
-    .dropdown-menu {
-        z-index: 1080;
-        max-height: 70vh;
-        overflow-y: auto;
-    }
-</style>

@@ -784,7 +784,7 @@ function addTable(container: HTMLElement, id: string) {
         <thead class="table-info"><tr></tr></thead>
         <tbody></tbody>
         <tfoot><tr></tr></tfoot>
-    </table></div><div class="ux-table-summary small mt-2"></div>`));
+    </table></div>`));
 
     let input = container.getElementsByTagName("input")[0];
     input.addEventListener('input', function () {
@@ -1242,8 +1242,25 @@ function setupTable(containerElem: HTMLElement,
         let row_format = dataSetRoot.row_format;
         let sort = dataSetRoot.sort;
         const onSelectionChange = dataSetRoot.onSelectionChange;
-        const summaryElem = containerElem.querySelector('.ux-table-summary') as HTMLElement | null;
         if (sort == null) sort = [0, 'asc'];
+
+        function isDataColumnNumeric(dataColIndex: number): boolean {
+            return (
+                (cell_format.formatNumber && cell_format.formatNumber.includes(dataColIndex)) ||
+                (cell_format.formatMoney && cell_format.formatMoney.includes(dataColIndex))
+            );
+        }
+
+        function isDataColumnMoney(dataColIndex: number): boolean {
+            return !!(cell_format.formatMoney && cell_format.formatMoney.includes(dataColIndex));
+        }
+
+        function formatSummaryValue(value: number, isMoney: boolean): string {
+            const rounded = Math.round(value * 100) / 100;
+            if (isMoney) return `$${commafy(rounded)}`;
+            return commafy(rounded);
+        }
+
 
         // Convert the cell format function names to their respective js functions
         let cellFormatByCol: { [key: number]: (data: number, type: any, row: any, meta: any) => void } = {};
@@ -1296,6 +1313,8 @@ function setupTable(containerElem: HTMLElement,
         if (thead && tfoot && tableToggles) {
             const theadFragment = document.createDocumentFragment();
             const tfootFragment = document.createDocumentFragment();
+            const summaryRow = document.createElement('tr');
+            summaryRow.className = 'ux-summary-row';
 
             const thNumber = document.createElement('th');
             thNumber.textContent = "#";
@@ -1303,6 +1322,11 @@ function setupTable(containerElem: HTMLElement,
 
             const tfNumber = document.createElement('th');
             tfootFragment.appendChild(tfNumber);
+
+            const summaryActionsCell = document.createElement('th');
+            summaryActionsCell.className = 'ux-summary-actions';
+            summaryActionsCell.innerHTML = `<button type="button" class="btn btn-sm ux-btn ux-select-visible-btn" title="Select visible" aria-label="Select visible"><i class="bi bi-square" aria-hidden="true"></i></button>`;
+            summaryRow.appendChild(summaryActionsCell);
 
             for (let i = 0; i < columnsInfo.length; i++) {
                 let columnInfo = columnsInfo[i];
@@ -1313,12 +1337,15 @@ function setupTable(containerElem: HTMLElement,
 
                 const th = document.createElement('th');
                 const tf = document.createElement('th');
+                const summaryCell = document.createElement('th');
+                summaryCell.className = 'ux-summary-cell';
 
                 if (title != null) {
                     const toneClass = getColumnToneClass(title);
                     if (toneClass) {
                         th.classList.add(toneClass);
                         tf.classList.add(toneClass);
+                        summaryCell.classList.add(toneClass);
                     }
                     if (searchableColumns == null || searchableColumns.includes(i)) {
                         const input = document.createElement('input');
@@ -1351,10 +1378,12 @@ function setupTable(containerElem: HTMLElement,
 
                 theadFragment.appendChild(th);
                 tfootFragment.appendChild(tf);
+                summaryRow.appendChild(summaryCell);
             }
 
             thead.appendChild(theadFragment);
             tfoot.appendChild(tfootFragment);
+            tfoot.parentElement?.appendChild(summaryRow);
         }
 
         ensureDTLoaded().then(() => {
@@ -1381,9 +1410,7 @@ function setupTable(containerElem: HTMLElement,
                 return tableApi.rows({ search: 'applied', page: 'current' }).indexes().toArray();
             }
 
-            function renderSummaryBar(tableApi: any): void {
-                if (!summaryElem) return;
-
+            function renderSummaryRow(tableApi: any): void {
                 const filteredIndexes = getFilteredRowIndexes(tableApi);
                 const selectedIndexes = filteredIndexes.filter((idx: number) => selectedRowIndexesSet.has(idx));
                 const activeIndexes = selectedIndexes.length > 0 ? selectedIndexes : filteredIndexes;
@@ -1392,24 +1419,41 @@ function setupTable(containerElem: HTMLElement,
                 const allVisibleSelected = visiblePageIndexes.length > 0 && visiblePageIndexes.every((idx: number) => selectedRowIndexesSet.has(idx));
                 const selectVisibleLabel = allVisibleSelected ? 'Deselect visible' : 'Select visible';
 
-                const summaryParts: string[] = [];
+                const summaryRow = containerElem.querySelector('tfoot tr.ux-summary-row');
+                if (!summaryRow) return;
 
-                tableApi.columns().every(function (colIndex: number) {
-                    if (colIndex === 0) {
-                        return;
+                const actionButton = summaryRow.querySelector('.ux-select-visible-btn') as HTMLButtonElement | null;
+                if (actionButton) {
+                    const icon = actionButton.querySelector('i');
+                    if (icon) {
+                        icon.className = allVisibleSelected
+                            ? 'bi bi-check2-square'
+                            : 'bi bi-square';
                     }
+                    actionButton.title = selectVisibleLabel;
+                    actionButton.setAttribute('aria-label', selectVisibleLabel);
+                }
 
-                    if (!tableApi.column(colIndex).visible()) {
-                        return;
-                    }
+                const visibleApiIndexes: number[] = tableApi
+                    .columns(':visible')
+                    .indexes()
+                    .toArray()
+                    .filter((idx: number) => idx > 0);
+
+                let summaryCellPos = 1;
+                for (const colIndex of visibleApiIndexes) {
+                    const summaryCell = summaryRow.children[summaryCellPos] as HTMLElement | undefined;
+                    summaryCellPos++;
+                    if (!summaryCell) continue;
 
                     const dataColIndex = colIndex - 1;
-                    const isNumeric =
-                        (cell_format.formatNumber && cell_format.formatNumber.includes(dataColIndex)) ||
-                        (cell_format.formatMoney && cell_format.formatMoney.includes(dataColIndex));
+                    const colNumeric = isDataColumnNumeric(dataColIndex);
 
-                    if (!isNumeric) {
-                        return;
+                    summaryCell.style.display = '';
+
+                    if (!colNumeric) {
+                        summaryCell.textContent = '';
+                        continue;
                     }
 
                     const vals: number[] = activeIndexes.map((rowIdx: number) => {
@@ -1418,16 +1462,23 @@ function setupTable(containerElem: HTMLElement,
                         return typeof value === 'number' ? value : Number(value) || 0;
                     });
 
-                    if (vals.length === 0) return;
+                    if (vals.length === 0) {
+                        summaryCell.textContent = '';
+                        continue;
+                    }
 
                     const sum = vals.reduce((a: number, b: number) => a + b, 0);
                     const avg = sum / vals.length;
-                    summaryParts.push(`${dataColumns[dataColIndex]}: Σ ${commafy(sum)} · avg ${commafy(Math.round(avg * 100) / 100)}`);
-                });
+                    const isMoney = isDataColumnMoney(dataColIndex);
+                    summaryCell.innerHTML = `<div class="ux-summary-values"><span>Σ ${formatSummaryValue(sum, isMoney)}</span><span>avg ${formatSummaryValue(avg, isMoney)}</span></div>`;
+                }
 
-                const mode = selectedIndexes.length > 0 ? `Selection mode (${selectedIndexes.length} rows)` : 'Filtered mode';
-                const summaryText = summaryParts.length > 0 ? summaryParts.join(' | ') : 'No numeric columns visible';
-                summaryElem.innerHTML = `<div class="d-flex flex-wrap align-items-center gap-2"><button type="button" class="btn btn-sm ux-btn ux-select-visible-btn">${selectVisibleLabel}</button><span class="text-muted">${mode}</span><span>${summaryText}</span></div>`;
+                while (summaryCellPos < summaryRow.children.length) {
+                    const extraCell = summaryRow.children[summaryCellPos] as HTMLElement | undefined;
+                    summaryCellPos++;
+                    if (!extraCell) continue;
+                    extraCell.textContent = '';
+                }
             }
 
             $.fn.dataTableExt.oStdClasses.sWrapper = "py-2 px-2 dataTables_wrapper";
@@ -1458,6 +1509,11 @@ function setupTable(containerElem: HTMLElement,
                 processing: false,
                 stateSave: false,
                 scrollX: false,
+                initComplete: function () {
+                    const api = (this as any).api();
+                    api.columns.adjust();
+                    renderSummaryRow(api);
+                },
                 // // createdRow: row_format,
                 rowCallback: function (row: any, data: any, _displayIndex: any, displayIndexFull: any) {
                     const api = (this as any).api();
@@ -1472,11 +1528,7 @@ function setupTable(containerElem: HTMLElement,
                     }
                 },
                 drawCallback: function () {
-                    try {
-                        renderSummaryBar(this.api());
-                    } catch (err) {
-                        console.error('Failed to render table summary', err);
-                    }
+                    renderSummaryRow(this.api());
                 },
                 // Setup searchable dropdown for columns with unique values
                 // Not used currently
@@ -1532,6 +1584,9 @@ function setupTable(containerElem: HTMLElement,
                     '.table-toggles button, .dataTables_wrapper button',
                 );
                 localButtons.forEach((button) => {
+                    if (button.classList.contains('ux-select-visible-btn')) {
+                        return;
+                    }
                     button.addEventListener('click', stopPropagation);
                 });
 
@@ -1556,16 +1611,15 @@ function setupTable(containerElem: HTMLElement,
                         column.visible(!column.visible());
                         target.classList.toggle('is-hidden', !column.visible());
 
-                        // Move element
+                        // Move element between footer slot and customize panel
                         if (target.parentElement && target.parentElement.tagName === "TH") {
                             (target as any).oldParent = target.parentElement;
                             const tableToggles = jqContainer.querySelector(".table-toggles");
                             tableToggles.appendChild(target);
 
-                            // Find the input element of toggles
-                            const inputElem = tableToggles.querySelector('input');
+                            const inputElem = tableToggles.querySelector('input') as HTMLInputElement | null;
                             const targetText = target.textContent ?? '';
-                            if (inputElem && inputElem.value && !targetText.includes(inputElem.value)) {
+                            if (inputElem && inputElem.value && !targetText.toLowerCase().includes(inputElem.value.toLowerCase())) {
                                 target.classList.add('d-none');
                             }
                         } else {
@@ -1581,6 +1635,8 @@ function setupTable(containerElem: HTMLElement,
                             .map((idx: number) => dataColumns[idx - 1])
                             .toArray();
                         setQueryParam("columns", visibleColumns.join("."));
+
+                        table.columns.adjust().draw(false);
                     });
                 });
             }
@@ -1679,10 +1735,12 @@ function setupTable(containerElem: HTMLElement,
             }
 
             function addSummaryActionsListener(table: any) {
-                if (!summaryElem) return;
-                summaryElem.addEventListener('click', function (event: Event) {
+                const summaryRow = containerElem.querySelector('tfoot tr.ux-summary-row');
+                if (!summaryRow) return;
+                summaryRow.addEventListener('click', function (event: Event) {
                     const target = event.target as HTMLElement;
-                    if (!target.classList.contains('ux-select-visible-btn')) return;
+                    const button = target.closest('.ux-select-visible-btn') as HTMLButtonElement | null;
+                    if (!button) return;
 
                     const visibleIndexes = getVisiblePageRowIndexes(table);
                     const allVisibleSelected = visibleIndexes.length > 0 && visibleIndexes.every((idx: number) => selectedRowIndexesSet.has(idx));
@@ -1702,10 +1760,10 @@ function setupTable(containerElem: HTMLElement,
             addRowDetailsListener(tableElem, table);
             addRowSelectionListener(tableElem, table);
             addSummaryActionsListener(table);
-            renderSummaryBar(table);
             publishSelection(table);
             // Show the table (faster to only display after setup)
             tableElem.classList.remove("d-none");
+            table.columns.adjust().draw(false);
         });
     });
 }
