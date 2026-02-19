@@ -29,6 +29,8 @@
         saveSharedKpiConfig,
         sanitizeKpiWidget,
         buildLegacyKpiWidgets,
+        moveWidgetByDelta,
+        moveWidgetToIndex as moveWidgetToIndexInList,
         type ConflictKPIWidget,
         type MetricCard,
         type PresetCard,
@@ -40,6 +42,7 @@
         type WidgetScope,
     } from "$lib/kpi";
     import { getAavaMetricLabel } from "$lib/aava";
+    import { getVisGlobal, setWindowGlobal } from "$lib/globals";
     import ColumnPresetManager from "../../components/ColumnPresetManager.svelte";
     import { config } from "../+layout";
 
@@ -166,7 +169,7 @@
     };
 
     let _currentRowData: TableData;
-    const getVis = (): any => (window as any).vis;
+    const getVis = (): any => getVisGlobal();
 
     const DEFAULT_PRESET_CARDS: PresetCard[] = [
         { id: "preset-duration", kind: "preset", key: "duration" },
@@ -314,25 +317,12 @@
     }
 
     function moveWidget(id: string, delta: number) {
-        const list = [...kpiWidgets];
-        const index = list.findIndex((w) => w.id === id);
-        if (index === -1) return;
-        const newIndex = index + delta;
-        if (newIndex < 0 || newIndex >= list.length) return;
-        const [item] = list.splice(index, 1);
-        list.splice(newIndex, 0, item);
-        kpiWidgets = list;
+        kpiWidgets = moveWidgetByDelta(kpiWidgets, id, delta);
         saveKpiConfig();
     }
 
     function moveWidgetToIndex(id: string, targetIndex: number) {
-        const list = [...kpiWidgets];
-        const index = list.findIndex((w) => w.id === id);
-        if (index === -1 || index === targetIndex) return;
-        if (targetIndex < 0 || targetIndex >= list.length) return;
-        const [item] = list.splice(index, 1);
-        list.splice(targetIndex, 0, item);
-        kpiWidgets = list;
+        kpiWidgets = moveWidgetToIndexInList(kpiWidgets, id, targetIndex);
         saveKpiConfig();
     }
 
@@ -1059,7 +1049,7 @@
         );
         addFormatters();
 
-        (window as any).getIds = (
+        setWindowGlobal("getIds", (
             _coalitionName: string,
             index: number,
         ): { alliance_ids: number[]; alliance_names: string[] } => {
@@ -1067,9 +1057,9 @@
                 alliance_ids: number[];
                 alliance_names: string[];
             };
-        };
+        });
 
-        (window as any).formatNation = (data: any) => {
+        setWindowGlobal("formatNation", (data: any) => {
             let aaId = data[2] as number;
             let aaName = formatAllianceName(namesByAllianceId[aaId], aaId);
             return (
@@ -1083,9 +1073,9 @@
                 (data[0] ? data[0] : data[1]) +
                 "</a>"
             );
-        };
+        });
 
-        (window as any).formatAA = (data: any) => {
+        setWindowGlobal("formatAA", (data: any) => {
             let allianceId = data[1] as number;
             let allianceName = formatAllianceName(data[0], allianceId);
             return (
@@ -1095,9 +1085,9 @@
                 allianceName +
                 "</a>"
             );
-        };
+        });
 
-        (window as any).formatCol = (data: any) => {
+        setWindowGlobal("formatCol", (data: any) => {
             let index = data;
             let button = document.createElement("button");
             if (!_rawData) return "";
@@ -1109,9 +1099,9 @@
             );
             button.textContent = _rawData.coalitions[index].name;
             return button.outerHTML;
-        };
+        });
 
-        (window as any).download = function download(
+        setWindowGlobal("download", function download(
             useClipboard: boolean,
             type: string,
         ) {
@@ -1122,7 +1112,7 @@
                 useClipboard,
                 ExportTypes[type as keyof typeof ExportTypes],
             );
-        };
+        });
 
         let queryParams = new URLSearchParams(window.location.search);
         loadLayoutFromQuery(queryParams);

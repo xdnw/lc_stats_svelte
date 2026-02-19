@@ -22,6 +22,7 @@
         type Conflict,
         type TableData,
     } from "$lib";
+    import { setWindowGlobal } from "$lib/globals";
     import { AAVA_METRIC_KEYS, getAavaMetricLabels } from "$lib/aava";
     import {
         makeKpiId,
@@ -707,16 +708,16 @@
         );
 
         addFormatters();
-        (window as any).formatAllianceLink = (data: [string, number]) => {
+        setWindowGlobal("formatAllianceLink", (data: [string, number]) => {
             const allianceName = formatAllianceName(data?.[0], data?.[1]);
             const allianceId = data?.[1];
             return `<a href="https://politicsandwar.com/alliance/id=${allianceId}">${allianceName}</a>`;
-        };
-        (window as any).formatPercent = (data: number) => {
+        });
+        setWindowGlobal("formatPercent", (data: number) => {
             if (!Number.isFinite(data)) return "0.00%";
             return `${data.toFixed(2)}%`;
-        };
-        (window as any).download = (useClipboard: boolean, type: string) => {
+        });
+        setWindowGlobal("download", (useClipboard: boolean, type: string) => {
             const tableElem = document
                 .getElementById("aava-table")
                 ?.querySelector("table") as HTMLTableElement | null;
@@ -726,7 +727,7 @@
                 useClipboard,
                 ExportTypes[type as keyof typeof ExportTypes],
             );
-        };
+        });
 
         const query = new URLSearchParams(window.location.search);
         const id = query.get("id");

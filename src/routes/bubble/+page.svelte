@@ -25,10 +25,11 @@
         formatDatasetProvenance,
         formatAllianceName,
     } from "$lib";
+    import { getPlotlyGlobal } from "$lib/globals";
     import { config } from "../+layout";
 
     function getPlotly(): any {
-        return (window as any).Plotly;
+        return getPlotlyGlobal();
     }
 
     let _rawData: GraphData;

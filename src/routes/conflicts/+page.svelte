@@ -25,6 +25,12 @@
     formatDatasetProvenance,
     formatAllianceName,
   } from "$lib";
+  import {
+    getBootstrapModalInstance,
+    getWindowGlobal,
+    setWindowGlobal,
+    getVisGlobal,
+  } from "$lib/globals";
 
   let _currentRowData: TableData;
   let _rawData: RawData | null = null;
@@ -65,7 +71,7 @@
   let categoryCounts: { [key: string]: number } = {};
   let selectedCategories: Set<string> = new Set();
 
-  const getVis = (): any => (window as any).vis;
+  const getVis = (): any => getVisGlobal();
 
   // onMount runs when this component (i.e. the page) is loaded
   // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
@@ -79,7 +85,7 @@
       // - Used by the row format function for coloring the rows
       // - Used to create the modal for the coalition alliances
 
-      (window as any).getIds = (
+      setWindowGlobal("getIds", (
         coalitionName: string,
         index: number,
       ): { alliance_ids: number[]; alliance_names: string[] } => {
@@ -88,11 +94,11 @@
           formatAllianceName(allianceNameById[id], id),
         );
         return { alliance_ids, alliance_names };
-      };
+      });
       // Function to format the url for the conflict name
       // Has a C1 and C2 button for showing coalition alliances modal
       // + the name of the conflict (linking to the conflict page)
-      (window as any).formatUrl = (
+      setWindowGlobal("formatUrl", (
         data: string,
         _type: any,
         row: any,
@@ -102,14 +108,17 @@
         const safeLabel = escapeHtml(`${data}`);
         const conflictUrl = `${base}/conflict?id=${id}`;
         return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='return openConflictCardFromName(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
-      };
+      });
 
-      (window as any).openConflictCardFromName = (
+      setWindowGlobal("openConflictCardFromName", (
         event: MouseEvent | undefined,
         conflictId: number,
       ) => {
         if (!event) {
-          (window as any).openConflictCard(undefined, conflictId);
+          const openConflictCard = getWindowGlobal<
+            (event: Event | undefined, conflictId: number) => void
+          >("openConflictCard");
+          openConflictCard?.(undefined, conflictId);
           return false;
         }
 
@@ -127,11 +136,14 @@
         }
 
         event.preventDefault();
-        (window as any).openConflictCard(undefined, conflictId);
+        const openConflictCard = getWindowGlobal<
+          (event: Event | undefined, conflictId: number) => void
+        >("openConflictCard");
+        openConflictCard?.(undefined, conflictId);
         return false;
-      };
+      });
 
-      (window as any).download = function download(
+      setWindowGlobal("download", function download(
         useClipboard: boolean,
         type: string,
       ) {
@@ -142,9 +154,9 @@
           useClipboard,
           ExportTypes[type as keyof typeof ExportTypes],
         );
-      };
+      });
 
-      (window as any).openConflictField = (
+      setWindowGlobal("openConflictField", (
         event: Event | undefined,
         conflictId: number,
         field: "status" | "cb" | "posts",
@@ -155,9 +167,9 @@
 
         const title = `${details.name} - ${field.toUpperCase()}`;
         modalStrWithCloseButton(title, buildConflictFieldBody(details, field));
-      };
+      });
 
-      (window as any).openConflictFieldFromCard = (
+      setWindowGlobal("openConflictFieldFromCard", (
         event: Event | undefined,
         conflictId: number,
         field: "status" | "cb" | "posts",
@@ -171,9 +183,9 @@
           conflictModalTitleWithBack(title, conflictId),
           buildConflictFieldBody(details, field),
         );
-      };
+      });
 
-      (window as any).openCoalitionForConflict = (
+      setWindowGlobal("openCoalitionForConflict", (
         event: Event | undefined,
         conflictId: number,
         index: number,
@@ -183,9 +195,14 @@
         const details = conflictDetailsById[conflictId];
         if (!details) return;
 
-        const col: { alliance_ids: number[]; alliance_names: string[] } = (
-          window as any
-        ).getIds(details.name, index);
+        const getIds = getWindowGlobal<
+          (
+            coalitionName: string,
+            index: number,
+          ) => { alliance_ids: number[]; alliance_names: string[] }
+        >("getIds");
+        if (!getIds) return;
+        const col = getIds(details.name, index);
 
         const alliance_ids = col.alliance_ids;
         const ul = document.createElement("ul");
@@ -229,9 +246,9 @@
             : `Coalition ${index + 1}: ${details.name}`,
           modalBody.outerHTML,
         );
-      };
+      });
 
-      (window as any).openConflictCard = (
+      setWindowGlobal("openConflictCard", (
         event: Event | undefined,
         conflictId: number,
       ) => {
@@ -277,24 +294,22 @@
         `;
 
         modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
-      };
+      });
 
-      (window as any).openConflictPageFromCard = (
+      setWindowGlobal("openConflictPageFromCard", (
         event: Event | undefined,
         conflictId: number,
       ) => {
         stopTableEvent(event);
         const modalElem = document.getElementById("exampleModal");
-        const modalInstance = modalElem
-          ? (window as any).bootstrap.Modal.getOrCreateInstance(modalElem)
-          : null;
-        modalInstance?.hide();
+        const modalInstance = getBootstrapModalInstance(modalElem);
+        modalInstance?.hide?.();
         window.setTimeout(() => {
           window.location.href = `${base}/conflict?id=${conflictId}`;
         }, 80);
-      };
+      });
 
-      (window as any).formatPinnedAlliances = (
+      setWindowGlobal("formatPinnedAlliances", (
         _data: any,
         _type: any,
         row: any,
@@ -331,7 +346,7 @@
           );
         }
         return `<span class='d-inline-flex flex-wrap gap-1'>${chips.join("")}</span>`;
-      };
+      });
 
       // Url of s3 bucket
       let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
