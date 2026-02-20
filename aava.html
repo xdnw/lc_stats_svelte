@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en" data-bs-core="modern">
+
+<head>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/js-polyfills/0.1.43/polyfill.min.js"></script>
+	<!-- Google Tag Manager -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-4J3KV26E2Z"></script>
+	<script>
+		window.dataLayer = window.dataLayer || [];
+		function gtag() { dataLayer.push(arguments); }
+		gtag('js', new Date());
+		gtag('config', 'G-4J3KV26E2Z');
+	</script>
+	<!-- End Google Tag Manager -->
+	<!-- <script src="bytebuffer.js?1.0"></script>
+		<script src="PSON.js?1.0"></script> -->
+	<!--  -->
+	<meta charset="utf-8" />
+	<link rel="icon" type="image/x-icon" href="./favicon.ico" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="color-scheme" content="light dark">
+	<title>Conflicts</title>
+
+	<!-- <script defer src="https://cdn.datatables.net/v/dt/jq-3.7.0/dt-2.1.8/cr-2.0.4/datatables.min.js"></script>
+		<script defer src="https://cdn.datatables.net/plug-ins/2.1.8/sorting/numeric-comma.js"></script>
+		<link media="print" onload="this.media='all'" href="https://cdn.datatables.net/v/dt/jq-3.7.0/dt-2.1.8/cr-2.0.4/datatables.min.css" rel="stylesheet"> -->
+	<!-- ^ Disabled, use v1 insteas as its faster -->
+
+	<!-- Halfmoon is a bootstrap theme (light & dark) -->
+	<script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+	<script id="jqjs" defer src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs1" defer src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs2" defer src="https://cdn.datatables.net/colreorder/1.7.0/js/dataTables.colReorder.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="dtjs3" defer src="https://cdn.datatables.net/plug-ins/1.13.7/sorting/numeric-comma.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<script id="plotjs" defer src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.29.1/plotly.min.js"
+		onload="this.setAttribute('data-loaded', 'true')"></script>
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdnjs.cloudflare.com/ajax/libs/Halfmoon/2.0.1/css/halfmoon.min.css" />
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdn.jsdelivr.net/npm/halfmoon@2.0.1/css/cores/halfmoon.modern.css">
+	<!-- Icons for links/buttons -->
+	<!-- For dropdowns, currently unused -->
+	<!-- <link rel="stylesheet"  media="print" onload="this.media='all'" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/css/bootstrap-select.min.css"> -->
+	<!-- For tables -->
+	<link rel="stylesheet" media="print" onload="this.media='all'" type="text/css"
+		href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+	<link rel="stylesheet" media="print" onload="this.media='all'" type="text/css"
+		href="https://cdn.datatables.net/colreorder/1.7.0/css/colReorder.dataTables.min.css">
+	<!-- For graphs (more performant than chartjs) - UNUSED -->
+	<!-- <link rel="stylesheet"  media="print" onload="this.media='all'" type="text/css" href="https://cdn.jsdelivr.net/npm/uplot@1.6.28/dist/uPlot.min.css"> -->
+	<!-- Bootstrap -->
+
+	<!-- Bootstrap select is UNUSED  -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script> -->
+	<!-- For highlighting code in pre tags UNUSED -->
+	<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.4.1/highlight.min.js"></script> -->
+	<!-- <script src="https://unpkg.com/twemoji@14.0.2/dist/twemoji.min.js"></script> -->
+	<!-- For data tables -->
+
+	<!-- For charts (uplot faster than chart.js) UNUSED -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.28/dist/uPlot.iife.min.js"></script> -->
+	<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> -->
+	<!-- For reading and decompressing gzip json -->
+	<!-- <script src="https://cdn.jsdelivr.net/gh/tdzl2003/PSON@patch-1/dist/PSON.js"></script> -->
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+	<link rel="stylesheet" media="print" onload="this.media='all'"
+		href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css" />
+	<link rel="stylesheet" media="print" onload="this.media='all'" href="./styles/main.css" />
+	
+		<link href="./_app/immutable/assets/Progress.BQLQbZAD.css" rel="stylesheet">
+		<link rel="modulepreload" href="./_app/immutable/entry/start.CQVtOEk-.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/entry.rjLqDbq-.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/runtime.mdILdFMH.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/paths.C3hcIf8J.js">
+		<link rel="modulepreload" href="./_app/immutable/entry/app.Cwn7qaAn.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/disclose-version.B0B114Pu.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index-client.T9W-Qjf4.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/props.C-lgak6u.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/store.C2t6gIDA.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/this.BUleMenJ.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/0.CsTtCTGg.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/_layout.B2jEg47M.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/legacy.DQ3BPbVs.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/slot.U7cSSl_l.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/3.LshVmwew.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/each.CSPNoT9w.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/Progress.sJimGKi_.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/misc.CV3rZvPR.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/kpi.CTeKY0Fk.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/warWeb.da6xX1jT.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/event-modifiers.BCjtW8R-.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/ConflictRouteTabs.B_9-Me3P.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/containerSetup.bmmcM5eb.js"><!--[--><!--]--><title>AAvA </title>
+	<script defer>
+		var systemColorMode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+		var cookieVal = document.cookie.split('; ').find(row => row.startsWith('halfmoonColorMode='));
+		var setColorMode = cookieVal ? cookieVal.split('=')[1] : systemColorMode;
+		document.documentElement.setAttribute("data-bs-theme", setColorMode);
+	</script>
+</head>
+
+<body data-sveltekit-preload-data="hover" class="app-shell">
+	<div style="display: contents"><!--[--><!--[--><!----><nav class="navbar navbar-expand-md border-bottom bg-body-subtle shadow-sm sticky-top"><div class="container-fluid py-1"><div class="row d-flex w-100 g-1 align-items-center"><div class="col-auto"><div class="btn-group ux-surface p-1"><button class="btn ux-btn d-md-block" aria-label="Toggle dark mode"><i class="bi bi-moon-stars-fill"></i></button> <div class="d-inline text-truncate mt-1 ux-muted"></div></div></div> <div class="col"><form class="d-flex ux-surface p-1" role="search" id="navbar-search-form"><input id="navbar-search" class="form-control border-0" type="search" placeholder="Search pages..." aria-label="Search"> <button type="submit" class="btn ux-btn ux-btn-primary text-nowrap" aria-label="Search"><i class="bi bi-search"></i></button></form></div> <div class="col-auto"></div></div></div></nav><!----> <main><!----><!----><div class="container-fluid p-2 ux-page-body"><h1 class="m-0 mb-2 p-2 ux-surface ux-page-title"><a href="conflicts" aria-label="Back to conflicts"><i class="bi bi-arrow-left"></i></a> Conflict:  <!--[!--><!--]--></h1> <div class="row p-0 m-0 ux-tabstrip fw-bold"><!--[!--><a href="conflict?id=&amp;layout=coalition" class="col ps-0 pe-0 btn ">◑ Coalition</a> <a href="conflict?id=&amp;layout=alliance" class="col btn ps-0 pe-0 ">𖣯 Alliance</a> <a href="conflict?id=&amp;layout=nation" class="col ps-0 pe-0 btn ">♟ Nation</a><!--]--> <a class="col ps-0 pe-0 btn is-active" href="aava?id=">⚔️ AA vs AA</a> <a class="col ps-0 pe-0 btn " href="tiering?id=">📊 Tier/Time</a> <a class="col ps-0 pe-0 btn " href="bubble?id=">📈 Bubble/Time</a> <a class="col ps-0 pe-0 btn " href="chord?id=">🌐 Web</a></div><!----> <div class="ux-surface ux-tab-panel p-2 fw-bold mb-2 aava-controls ux-floating-controls"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><div class="d-flex align-items-center gap-2 flex-wrap"><span class="fw-bold">AAvA Controls</span> <button class="btn ux-btn btn-sm fw-bold">Swap coalitions</button></div> <div class="d-flex align-items-center gap-2 flex-wrap"><div class="dropdown" data-bs-auto-close="outside"><button class="btn ux-btn btn-sm" type="button" id="aavaKpiManagerDropdown" data-bs-toggle="dropdown" aria-expanded="false">KPI widgets <i class="bi bi-chevron-down"></i></button> <div class="dropdown-menu p-2 aava-kpi-dropdown-menu" aria-labelledby="aavaKpiManagerDropdown" style="min-width: 340px;"><div class="small text-muted mb-1">Add shared KPI widgets from current AAvA snapshot</div> <div class="row g-1"><div class="col-12"><div class="small text-muted mb-1">Ranking widget</div> <select class="form-select form-select-sm"><!--[--><option value="primary_to_row">wars as attacker: Selected</option><option value="row_to_primary">wars as attacker: Compared</option><option value="net">Net</option><option value="total">Total</option><option value="primary_share_pct">Selected share %</option><option value="row_share_pct">Compared share %</option><option value="abs_net">Abs Net</option><!--]--></select></div> <div class="col-12"><input class="form-control form-control-sm" type="number" min="1" max="50" value="10" placeholder="Top N"></div> <div class="col-12"><button type="button" class="btn btn-sm btn-outline-secondary w-100" disabled>+ Add ranking widget</button></div> <div class="col-12 mt-2"><div class="small text-muted mb-1">Metric widget</div> <div class="small text-muted">Entity: Alliance</div></div> <div class="col-12"><select class="form-select form-select-sm"><option value="sum">SUM</option><option value="avg">AVG</option></select></div> <div class="col-12"><select class="form-select form-select-sm"><!--[--><option value="primary_to_row">wars as attacker: Selected</option><option value="row_to_primary">wars as attacker: Compared</option><option value="net">Net</option><option value="total">Total</option><option value="primary_share_pct">Selected share %</option><option value="row_share_pct">Compared share %</option><option value="abs_net">Abs Net</option><!--]--></select></div> <div class="col-12"><select class="form-select form-select-sm"><option value="">No normalization</option><!--[--><option value="primary_to_row">Per wars as attacker: Selected</option><option value="row_to_primary">Per wars as attacker: Compared</option><option value="net">Per Net</option><option value="total">Per Total</option><option value="primary_share_pct">Per Selected share %</option><option value="row_share_pct">Per Compared share %</option><option value="abs_net">Per Abs Net</option><!--]--></select></div> <div class="col-12 small text-muted">Snapshot: Selected vs Compared · 0/0 · wars</div> <div class="col-12"><button type="button" class="btn btn-sm btn-outline-secondary w-100" disabled>+ Add metric widget</button></div> <div class="col-12 small text-muted">Added widgets appear on the shared KPI dashboard
+                                in Conflict.</div></div></div></div> <div class="d-flex flex-wrap gap-1 align-items-center justify-content-end"><!----><!----> <button class="btn ux-btn btn-sm fw-bold">Copy share link</button> <button class="btn ux-btn btn-sm fw-bold">Reset</button></div><!----></div></div> <!--[--><div class="progress flex-grow-1 svelte-7mqq29" role="status" aria-label="Loading"><div class="progress-bar text-bg-info progress-bar-animated placeholder-wave svelte-7mqq29" style="width: 100%;"></div></div><!--]--> <!--[!--><!--]--> <!--[!--><!--]--></div> <!--[!--><!--]--> <div id="aava-table"></div> <!--[!--><!--]--></div><!----><!----></main> <footer class="bd-footer border-top border-1 mt-3 py-4 bg-body-tertiary"><div class="container-md p-3 p-md-4"><div class="row g-4"><div class="col-12 col-md-4"><div class="d-flex align-items-center gap-2"><img src="favicon-large.webp" alt="Logo" width="20" height="20"> <h5 class="fw-semibold m-0">Locutus</h5></div> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://github.com/xdnw/locutus"><i class="bi bi-git"></i> Source Code</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/wiki"><i class="bi bi-wikipedia"></i> Wiki</a></li> <li class="mb-2"><a href="https://locutus.link:8443/job/locutus/"><i class="bi bi-box"></i> Jenkins</a></li></ul></div> <div class="col-12 col-md-4"><h5 class="fw-medium m-0">Get in Touch</h5> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://discord.gg/cUuskPDrB7"><i class="bi bi-discord"></i> Discord Server</a></li> <li class="mb-2"><a href="discord://discord.com/users/664156861033087000"><i class="bi bi-person-circle"></i> Discord User</a></li> <li class="mb-2"><a href="https://politicsandwar.com/nation/id=189573"><i class="bi bi-joystick"></i> In-Game</a></li> <li class="mb-2"><a href="mailto:jessepaleg@gmail.com"><i class="bi bi-at"></i> Email</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/issues"><i class="bi bi-github"></i> Report Issue</a></li></ul></div> <div class="col-12 col-md-4"><h5 class="fw-medium m-0">Legal</h5> <hr class="my-2"> <ul class="list-unstyled"><li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/LICENSE"><i class="bi bi-list-columns-reverse"></i> License</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/ToS.MD"><i class="bi bi-list-check"></i> Terms Of Service</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/PRIVACY.MD"><i class="bi bi-list-stars"></i> Privacy Policy</a></li> <li class="mb-2"><a href="https://github.com/xdnw/locutus/blob/master/SECURITY.md"><i class="bi bi-incognito"></i> Vulnerability Disclosure</a></li></ul></div></div></div></footer><!----><!----><!--]--> <!--[!--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_h0pcwq = {
+						base: new URL(".", location).pathname.slice(0, -1)
+					};
+
+					const element = document.currentScript.parentElement;
+
+					const data = [null,null];
+
+					Promise.all([
+						import("./_app/immutable/entry/start.CQVtOEk-.js"),
+						import("./_app/immutable/entry/app.Cwn7qaAn.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 3],
+							data,
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+</body>
+
+</html>

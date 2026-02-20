@@ -126,6 +126,9 @@ html[data-bs-theme="dark"] .ux-toggle-btn.active {
 }
 
 .ux-tabstrip {
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible;
     margin-top: 0;
     gap: 0;
     margin-bottom: -1px;
@@ -133,6 +136,7 @@ html[data-bs-theme="dark"] .ux-toggle-btn.active {
 
 .ux-tabstrip .btn,
 .ux-tabstrip a.btn {
+    flex: 1 1 9rem !important;
     color: var(--ux-text) !important;
     background: color-mix(in srgb, var(--ux-surface-alt) 94%, transparent);
     border: 1px solid var(--ux-border) !important;
@@ -186,13 +190,13 @@ html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
     box-shadow: inset 0 2px 0 color-mix(in srgb, var(--ux-brand) 26%, transparent) !important;
 }
 
-.ux-tabstrip > .btn:first-child,
-.ux-tabstrip > a.btn:first-child {
+.ux-tabstrip>.btn:first-child,
+.ux-tabstrip>a.btn:first-child {
     border-top-left-radius: var(--ux-radius-sm) !important;
 }
 
-.ux-tabstrip > .btn:last-child,
-.ux-tabstrip > a.btn:last-child {
+.ux-tabstrip>.btn:last-child,
+.ux-tabstrip>a.btn:last-child {
     border-top-right-radius: var(--ux-radius-sm) !important;
 }
 
@@ -207,9 +211,9 @@ html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
         0 0 0 0.12rem color-mix(in srgb, var(--ux-brand) 18%, transparent) !important;
 }
 
-.ux-tabstrip + .ux-surface,
-.ux-tabstrip + ul.ux-surface,
-.ux-tabstrip + div.ux-surface {
+.ux-tabstrip+.ux-surface,
+.ux-tabstrip+ul.ux-surface,
+.ux-tabstrip+div.ux-surface {
     border-top: 0 !important;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
@@ -220,6 +224,23 @@ html[data-bs-theme="dark"] .ux-tabstrip a.btn.bg-light-subtle {
     border-top-left-radius: 0 !important;
     border-top-right-radius: 0 !important;
     background: color-mix(in srgb, var(--ux-surface) 95%, transparent);
+}
+
+.ux-floating-controls {
+    position: relative;
+    overflow: visible;
+    z-index: 120;
+}
+
+.ux-floating-controls .dropdown,
+.ux-floating-controls li {
+    position: relative;
+}
+
+.ux-floating-controls .dropdown-menu {
+    z-index: 26000;
+    max-height: 70vh;
+    overflow-y: auto;
 }
 
 .ux-control-strip {
@@ -289,12 +310,83 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 }
 
 .ux-table-wrap {
-    margin-top: 0.3rem;
+    margin-top: 0;
     border: 1px solid var(--ux-border);
     background: color-mix(in srgb, var(--ux-surface) 90%, transparent);
     border-radius: var(--ux-radius-md);
     box-shadow: var(--ux-shadow-sm);
-    overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.ux-table-wrap .dataTables_wrapper {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+}
+
+.ux-table-wrap table {
+    min-width: 100%;
+    width: max-content !important;
+    max-width: none !important;
+    table-layout: auto;
+}
+
+.ux-conflict-cell {
+    display: inline-flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.ux-conflict-cell-actions {
+    display: inline-flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.ux-conflict-name-btn {
+    text-align: left;
+    white-space: normal;
+}
+
+.ux-conflict-popup-meta {
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    padding: 0.5rem;
+    background: color-mix(in srgb, var(--ux-surface) 93%, transparent);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+    font-size: 0.95rem;
+}
+
+.ux-conflict-popup-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.38rem;
+}
+
+.ux-conflict-popup-actions .btn {
+    min-height: 2.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ux-conflict-popup-actions .btn[aria-disabled="true"] {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.ux-conflict-subview-controls {
+    display: flex;
+    gap: 0.4rem;
 }
 
 .table-toggles {
@@ -324,6 +416,11 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 .dataTables_wrapper tfoot .ux-toggle-btn {
     border-color: color-mix(in srgb, var(--ux-brand) 56%, var(--ux-border)) !important;
     background: color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface)) !important;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .dataTables_wrapper tfoot .ux-toggle-btn:hover {
@@ -347,6 +444,17 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 .dataTables_wrapper table.dataTable thead th,
 .dataTables_wrapper table.dataTable thead td {
     border-bottom-color: color-mix(in srgb, var(--ux-brand) 38%, var(--ux-border)) !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.dataTables_wrapper table.dataTable tbody td,
+.dataTables_wrapper table.dataTable tfoot th {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    hyphens: auto;
 }
 
 .dataTables_wrapper table.dataTable tbody tr {
@@ -359,6 +467,55 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 
 .dataTables_wrapper table.dataTable tbody tr.shown {
     background-color: color-mix(in srgb, var(--ux-brand) 11%, var(--ux-surface)) !important;
+}
+
+.dataTables_wrapper table.dataTable tfoot tr.ux-summary-row th {
+    background: color-mix(in srgb, var(--ux-brand) 9%, var(--ux-surface)) !important;
+    border-top: 1px solid color-mix(in srgb, var(--ux-brand) 40%, var(--ux-border));
+    vertical-align: top;
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+}
+
+.dataTables_wrapper table.dataTable thead th:first-child,
+.dataTables_wrapper table.dataTable tbody td:first-child,
+.dataTables_wrapper table.dataTable tfoot th:first-child {
+    width: 1%;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.dataTables_wrapper table.dataTable tbody .ux-row-index {
+    white-space: nowrap;
+}
+
+.dataTables_wrapper table.dataTable tbody .ux-row-index>span {
+    display: inline-block;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.dataTables_wrapper table.dataTable tfoot tr.ux-summary-row .ux-summary-actions {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.dataTables_wrapper table.dataTable tfoot tr.ux-summary-row .ux-select-visible-btn {
+    min-width: 1.8rem;
+    width: 1.8rem;
+    height: 1.8rem;
+    padding: 0;
+    line-height: 1;
+}
+
+.ux-summary-values {
+    display: grid;
+    gap: 0.06rem;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-word;
+    font-size: 0.6rem;
 }
 
 .dataTables_wrapper .dataTables_paginate .paginate_button {
@@ -385,8 +542,44 @@ html[data-bs-theme="dark"] .ux-btn-primary {
     margin-bottom: 0.25rem !important;
 }
 
-.container-fluid > h1.ux-surface {
+.dataTables_wrapper .ux-dt-bottom {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.45rem 1rem;
+    width: 100%;
+}
+
+.dataTables_wrapper .ux-dt-bottom .dataTables_paginate,
+.dataTables_wrapper .ux-dt-bottom .dataTables_length,
+.dataTables_wrapper .ux-dt-bottom .dataTables_filter {
+    float: none !important;
+    text-align: left !important;
+    margin: 0 !important;
+}
+
+.dataTables_wrapper .ux-dt-bottom .dataTables_filter label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.dataTables_wrapper .ux-dt-bottom .dataTables_filter input {
+    margin-left: 0 !important;
+}
+
+.dataTables_wrapper .dataTables_paginate {
+    float: none !important;
+    text-align: left !important;
+}
+
+.container-fluid>h1.ux-surface {
     padding: 0.45rem 0.75rem !important;
+}
+
+.ux-page-body {
+    min-height: calc(100vh - 203px);
 }
 
 h1.ux-surface.ux-page-title {
@@ -405,12 +598,12 @@ h1.ux-surface.ux-page-title {
     border-radius: 0 !important;
 }
 
-.app-shell .input-group.ux-inputbar > :first-child {
+.app-shell .input-group.ux-inputbar> :first-child {
     border-top-left-radius: 0.5rem !important;
     border-bottom-left-radius: 0.5rem !important;
 }
 
-.app-shell .input-group.ux-inputbar > :last-child {
+.app-shell .input-group.ux-inputbar> :last-child {
     border-top-right-radius: 0.5rem !important;
     border-bottom-right-radius: 0.5rem !important;
 }
@@ -454,6 +647,21 @@ html[data-bs-theme="dark"] .app-shell a:focus-visible {
 
 .app-shell .dropdown-item:hover {
     background-color: color-mix(in srgb, var(--ux-brand) 14%, transparent);
+}
+
+.kpi-card {
+    padding-top: 1.9rem !important;
+    cursor: move;
+}
+
+.kpi-card-close {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+}
+
+.kpi-card-dragging {
+    opacity: 0.6;
 }
 
 /* Shared compact style for svelte-select (used by bubble + tiering) */
@@ -544,6 +752,10 @@ html[data-bs-theme="dark"] .app-shell a:focus-visible {
     font-size: 10px;
 }
 
+.noUi-value {
+    color: var(--ux-text-muted);
+}
+
 
 html[data-bs-theme="dark"] .vis-item {
     background-color: #23314a;
@@ -558,6 +770,73 @@ html[data-bs-theme="dark"] .vis-item {
 
     .ux-toolbar {
         gap: 0.35rem;
+    }
+
+    .ux-tabstrip {
+        gap: 0.2rem;
+        margin-bottom: 0.2rem;
+    }
+
+    .ux-tabstrip>.btn,
+    .ux-tabstrip>a.btn {
+        flex: 1 1 calc(50% - 0.2rem) !important;
+        min-width: 0;
+        font-size: 0.87rem;
+        white-space: normal;
+        text-align: center;
+        padding: 0.4rem 0.42rem !important;
+        border-radius: var(--ux-radius-sm) !important;
+    }
+
+    .ux-table-wrap {
+        border-radius: var(--ux-radius-sm);
+    }
+
+    .dataTables_wrapper {
+        font-size: 0.92rem;
+    }
+
+    .dataTables_wrapper .ux-dt-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
+    }
+
+    .dataTables_wrapper table.dataTable thead th,
+    .dataTables_wrapper table.dataTable thead td,
+    .dataTables_wrapper table.dataTable tbody td,
+    .dataTables_wrapper table.dataTable tbody th {
+        min-width: 6ch;
+    }
+
+    .dataTables_wrapper table.dataTable thead th:first-child,
+    .dataTables_wrapper table.dataTable tbody td:first-child,
+    .dataTables_wrapper table.dataTable tfoot th:first-child {
+        min-width: 0;
+    }
+
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+        padding: 0.1rem 0.4rem !important;
+        margin-left: 0.08rem !important;
+    }
+
+    .ux-conflict-cell {
+        width: 100%;
+    }
+
+    .ux-conflict-cell-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .ux-conflict-popup-actions {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.34rem;
+    }
+
+    .ux-conflict-popup-actions .btn {
+        min-height: 2.35rem;
+        font-size: 0.95rem;
     }
 }
 
@@ -575,19 +854,54 @@ html[data-bs-theme="dark"] .vis-item {
 }
 
 .ux-coalition-panel--red {
-    border-left: 0.15rem solid color-mix(in srgb, var(--ux-danger) 24%, var(--ux-border));
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ux-danger) 6%, var(--ux-surface-alt)),
-        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
-    );
+    border-left: 0.28rem solid color-mix(in srgb, var(--ux-danger) 60%, var(--ux-border));
+    background: linear-gradient(90deg,
+            color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface-alt)),
+            color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-danger) 18%, transparent);
 }
 
 .ux-coalition-panel--blue {
-    border-left: 0.15rem solid color-mix(in srgb, var(--ux-brand) 24%, var(--ux-border));
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ux-brand) 6%, var(--ux-surface-alt)),
-        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
-    );
+    border-left: 0.28rem solid color-mix(in srgb, var(--ux-brand) 60%, var(--ux-border));
+    background: linear-gradient(90deg,
+            color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface-alt)),
+            color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-brand) 18%, transparent);
+}
+
+.ux-coalition-panel--red .ux-btn.active,
+.ux-coalition-panel--red .ux-btn:active {
+    border-color: color-mix(in srgb, var(--ux-danger) 52%, transparent);
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-danger) 12%, transparent);
+}
+
+.ux-coalition-panel--blue .ux-btn.active,
+.ux-coalition-panel--blue .ux-btn:active {
+    border-color: color-mix(in srgb, var(--ux-brand) 52%, transparent);
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-brand) 14%, transparent);
+}
+
+table.dataTable thead th.ux-col-selected,
+table.dataTable tfoot th.ux-col-selected {
+    background: color-mix(in srgb, var(--ux-danger) 14%, var(--ux-surface-alt));
+    color: color-mix(in srgb, var(--ux-danger) 64%, var(--ux-text));
+}
+
+table.dataTable thead th.ux-col-compared,
+table.dataTable tfoot th.ux-col-compared {
+    background: color-mix(in srgb, var(--ux-brand) 14%, var(--ux-surface-alt));
+    color: color-mix(in srgb, var(--ux-brand) 64%, var(--ux-text));
+}
+
+table.dataTable tbody td.ux-col-selected {
+    background-color: color-mix(in srgb, var(--ux-danger) 8%, transparent);
+}
+
+table.dataTable tbody td.ux-col-compared {
+    background-color: color-mix(in srgb, var(--ux-brand) 8%, transparent);
+}
+
+.dataTables_wrapper table.dataTable tfoot tr:first-child th {
+    min-width: 0;
+    max-width: 1px;
 }
