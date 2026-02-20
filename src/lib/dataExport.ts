@@ -92,9 +92,14 @@ export function downloadCells(data: any[][], useClipboard: boolean, type: Export
     modalStrWithCloseButton('Download starting', 'The data for the currently selected columns should begin downloading. If the download does not start, please check your browser settings, or try the clipboard button instead');
 }
 
-export async function copyShareLink(): Promise<boolean> {
-    const href = window.location.href;
+export async function copyShareLink(options?: {
+    prepare?: () => void | Promise<void>;
+}): Promise<boolean> {
     try {
+        if (options?.prepare) {
+            await options.prepare();
+        }
+        const href = window.location.href;
         await navigator.clipboard.writeText(href);
         modalStrWithCloseButton('Share link copied', 'The current page link has been copied to your clipboard.');
         return true;

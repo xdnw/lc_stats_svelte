@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getQueryParam } from "$lib";
   import { config } from "./+layout";
 
   type AdTemplate = {
@@ -90,8 +91,7 @@
 
   // The matrix background animation
   onMount(() => {
-    let queryParams = new URLSearchParams(window.location.search);
-    let setGuild = queryParams.get("guild") || queryParams.get("guild_id");
+    let setGuild = getQueryParam("guild") || getQueryParam("guild_id");
     if (setGuild) {
       _guildId = setGuild;
     }

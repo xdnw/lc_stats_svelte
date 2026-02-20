@@ -16,6 +16,7 @@
         type TierMetric,
         arrayEquals,
         setQueryParam,
+        getCurrentQueryParams,
         resolveMetricAccessors,
         toggleCoalitionAllianceSelection,
         getConflictGraphDataUrl,
@@ -66,6 +67,21 @@
         defaultMetricSelection.map((name) => {
             return { value: name, label: name };
         });
+    $: isResetDirty = (() => {
+        const selectedValues = selected_metrics.map((metric) => metric.value);
+        const sameSelected =
+            selectedValues.length === defaultMetricSelection.length &&
+            selectedValues.every(
+                (value, idx) => value === defaultMetricSelection[idx],
+            );
+        const allAllianceCount = _rawData
+            ? _rawData.coalitions[0].alliance_ids.length +
+              _rawData.coalitions[1].alliance_ids.length
+            : 0;
+        const allSelected =
+            !_rawData || _allowedAllianceIds.size === allAllianceCount;
+        return normalize || useSingleColor || !sameSelected || !allSelected;
+    })();
 
     $: maxItems = selected_metrics?.length === 4;
     $: items =
@@ -166,7 +182,7 @@
             ["id"],
         );
         // Get the conflict id from the url query string
-        let queryParams = new URLSearchParams(window.location.search);
+        let queryParams = getCurrentQueryParams();
         loadQueryParams(queryParams);
 
         const id = queryParams.get("id");
@@ -861,7 +877,10 @@
                 class="ux-control-strip mb-1"
                 style="position: relative; z-index: 2;"
             >
-                <ShareResetBar onReset={resetFilters} />
+                <ShareResetBar
+                    onReset={resetFilters}
+                    resetDirty={isResetDirty}
+                />
                 <label for="inlineCheckbox1" class="ux-toggle-chip">
                     <span>Use Percent</span>
                     <input

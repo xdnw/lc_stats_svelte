@@ -63,6 +63,50 @@ export type SharedKpiConfig = {
     widgets: ConflictKPIWidget[];
 };
 
+type CompactScopeSnapshot = {
+    a?: number[];
+    n?: number[];
+};
+
+type CompactAavaSnapshot = {
+    h?: string;
+    p?: number[];
+    v?: number[];
+};
+
+type CompactPresetWidget = {
+    k: "p";
+    p: PresetCardKey;
+};
+
+type CompactRankingWidget = {
+    k: "r";
+    e: "a" | "n";
+    m: string;
+    s?: "c1" | "c2" | "sel";
+    l?: number;
+    z?: "a";
+    ss?: CompactScopeSnapshot;
+    as?: CompactAavaSnapshot;
+};
+
+type CompactMetricWidget = {
+    k: "m";
+    e: "a" | "n";
+    m: string;
+    s?: "c1" | "c2" | "sel";
+    g?: "a";
+    n?: string;
+    z?: "a";
+    ss?: CompactScopeSnapshot;
+    as?: CompactAavaSnapshot;
+};
+
+type CompactKpiWidget =
+    | CompactPresetWidget
+    | CompactRankingWidget
+    | CompactMetricWidget;
+
 const PRESET_CARD_KEYS: ReadonlySet<PresetCardKey> = new Set([
     "duration",
     "wars",
@@ -102,11 +146,7 @@ export function readSharedKpiConfig(
         }
         return {
             version: 1,
-            widgets: Array.isArray(parsed.widgets)
-                ? parsed.widgets
-                : Array.isArray(parsed.conflictWidgets)
-                    ? parsed.conflictWidgets
-                    : [],
+            widgets: Array.isArray(parsed.widgets) ? parsed.widgets : [],
         };
     } catch (error) {
         console.warn("Failed to read shared KPI config", error);
@@ -255,30 +295,198 @@ export function sanitizeKpiWidget(
     return null;
 }
 
-export function buildLegacyKpiWidgets(
-    config: unknown,
+function compactScope(scope: WidgetScope): "c1" | "c2" | "sel" | undefined {
+    if (scope === "coalition1") return "c1";
+    if (scope === "coalition2") return "c2";
+    if (scope === "selection") return "sel";
+    return undefined;
+}
+
+function expandScope(scope: "c1" | "c2" | "sel" | undefined): WidgetScope {
+    if (scope === "c1") return "coalition1";
+    if (scope === "c2") return "coalition2";
+    if (scope === "sel") return "selection";
+    return "all";
+}
+
+function compactEntity(entity: WidgetEntity): "a" | "n" {
+    return entity === "alliance" ? "a" : "n";
+}
+
+function expandEntity(entity: "a" | "n"): WidgetEntity {
+    return entity === "a" ? "alliance" : "nation";
+}
+
+function compactScopeSnapshot(snapshot?: ScopeSnapshot): CompactScopeSnapshot | undefined {
+    if (!snapshot) return undefined;
+    const a = snapshot.allianceIds?.length ? [...snapshot.allianceIds] : undefined;
+    const n = snapshot.nationIds?.length ? [...snapshot.nationIds] : undefined;
+    if (!a && !n) return undefined;
+    return { a, n };
+}
+
+function expandScopeSnapshot(snapshot?: CompactScopeSnapshot): ScopeSnapshot | undefined {
+    if (!snapshot) return undefined;
+    return {
+        allianceIds: Array.isArray(snapshot.a)
+            ? snapshot.a
+                .map((id: unknown) => Number(id))
+                .filter((id: number) => Number.isFinite(id))
+            : [],
+        nationIds: Array.isArray(snapshot.n)
+            ? snapshot.n
+                .map((id: unknown) => Number(id))
+                .filter((id: number) => Number.isFinite(id))
+            : [],
+        label: "Selection snapshot",
+    };
+}
+
+function compactAavaSnapshot(snapshot?: AavaScopeSnapshot): CompactAavaSnapshot | undefined {
+    if (!snapshot) return undefined;
+    const h = snapshot.header && snapshot.header !== "wars" ? snapshot.header : undefined;
+    const p = snapshot.primaryIds?.length ? [...snapshot.primaryIds] : undefined;
+    const v = snapshot.vsIds?.length ? [...snapshot.vsIds] : undefined;
+    if (!h && !p && !v) return undefined;
+    return { h, p, v };
+}
+
+function expandAavaSnapshot(snapshot?: CompactAavaSnapshot): AavaScopeSnapshot | undefined {
+    if (!snapshot) return undefined;
+    return {
+        header: typeof snapshot.h === "string" ? snapshot.h : "wars",
+        primaryCoalitionIndex: 0,
+        primaryIds: Array.isArray(snapshot.p)
+            ? snapshot.p
+                .map((id: unknown) => Number(id))
+                .filter((id: number) => Number.isFinite(id))
+            : [],
+        vsIds: Array.isArray(snapshot.v)
+            ? snapshot.v
+                .map((id: unknown) => Number(id))
+                .filter((id: number) => Number.isFinite(id))
+            : [],
+        label: "AAvA snapshot",
+    };
+}
+
+function compactWidget(widget: ConflictKPIWidget): CompactKpiWidget | null {
+    if (widget.kind === "preset") {
+        return { k: "p", p: widget.key };
+    }
+
+    if (widget.kind === "ranking") {
+        return {
+            k: "r",
+            e: compactEntity(widget.entity),
+            m: widget.metric,
+            s: compactScope(widget.scope),
+            l: widget.limit !== 10 ? Math.max(1, Number(widget.limit) || 10) : undefined,
+            z: widget.source === "aava" ? "a" : undefined,
+            ss: widget.scope === "selection" ? compactScopeSnapshot(widget.snapshot) : undefined,
+            as: widget.source === "aava" ? compactAavaSnapshot(widget.aavaSnapshot) : undefined,
+        };
+    }
+
+    return {
+        k: "m",
+        e: compactEntity(widget.entity),
+        m: widget.metric,
+        s: compactScope(widget.scope),
+        g: widget.aggregation === "avg" ? "a" : undefined,
+        n: typeof widget.normalizeBy === "string" && widget.normalizeBy.length > 0
+            ? widget.normalizeBy
+            : undefined,
+        z: widget.source === "aava" ? "a" : undefined,
+        ss: widget.scope === "selection" ? compactScopeSnapshot(widget.snapshot) : undefined,
+        as: widget.source === "aava" ? compactAavaSnapshot(widget.aavaSnapshot) : undefined,
+    };
+}
+
+function expandCompactWidget(item: unknown): ConflictKPIWidget | null {
+    if (!item || typeof item !== "object") return null;
+
+    const value = item as Partial<CompactKpiWidget> & Record<string, unknown>;
+    if (value.k === "p") {
+        return sanitizeKpiWidget({
+            kind: "preset",
+            key: value.p,
+        });
+    }
+
+    if (value.k === "r") {
+        if (!(value.e === "a" || value.e === "n")) return null;
+        if (typeof value.m !== "string") return null;
+
+        return sanitizeKpiWidget({
+            kind: "ranking",
+            entity: expandEntity(value.e),
+            metric: value.m,
+            scope: expandScope(value.s as "c1" | "c2" | "sel" | undefined),
+            limit: Number(value.l) || 10,
+            source: value.z === "a" ? "aava" : "conflict",
+            snapshot: expandScopeSnapshot(value.ss as CompactScopeSnapshot | undefined),
+            aavaSnapshot: expandAavaSnapshot(value.as as CompactAavaSnapshot | undefined),
+        });
+    }
+
+    if (value.k === "m") {
+        if (!(value.e === "a" || value.e === "n")) return null;
+        if (typeof value.m !== "string") return null;
+
+        return sanitizeKpiWidget({
+            kind: "metric",
+            entity: expandEntity(value.e),
+            metric: value.m,
+            scope: expandScope(value.s as "c1" | "c2" | "sel" | undefined),
+            aggregation: value.g === "a" ? "avg" : "sum",
+            source: value.z === "a" ? "aava" : "conflict",
+            normalizeBy: typeof value.n === "string" ? value.n : null,
+            snapshot: expandScopeSnapshot(value.ss as CompactScopeSnapshot | undefined),
+            aavaSnapshot: expandAavaSnapshot(value.as as CompactAavaSnapshot | undefined),
+        });
+    }
+
+    return null;
+}
+
+export function serializeKpiWidgetsForQuery(
+    widgets: ConflictKPIWidget[],
+    makeId: (prefix: string) => string = makeKpiId,
+): string | null {
+    try {
+        if (!widgets || widgets.length === 0) return null;
+        const compact = widgets
+            .map((item) => sanitizeKpiWidget(item, makeId))
+            .filter((item): item is ConflictKPIWidget => item !== null)
+            .map((item) => compactWidget(item))
+            .filter((item): item is CompactKpiWidget => item !== null);
+        if (compact.length === 0) return null;
+        return JSON.stringify(compact);
+    } catch (error) {
+        console.warn("Failed to serialize compact KPI widgets", error);
+        return null;
+    }
+}
+
+export function parseKpiWidgetsFromQuery(
+    raw: string,
     makeId: (prefix: string) => string = makeKpiId,
 ): ConflictKPIWidget[] {
-    if (!config || typeof config !== "object") return [];
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
 
-    const source = config as Record<string, unknown>;
-    const widgets: ConflictKPIWidget[] = [];
-
-    const pushSanitized = (list: unknown, kind: ConflictKPIWidget["kind"]) => {
-        if (!Array.isArray(list)) return;
-        for (const item of list) {
-            const sanitized = sanitizeKpiWidget(item, makeId);
-            if (sanitized?.kind === kind) {
-                widgets.push(sanitized);
-            }
-        }
-    };
-
-    pushSanitized(source.presetCards, "preset");
-    pushSanitized(source.rankingCards, "ranking");
-    pushSanitized(source.metricCards, "metric");
-
-    return widgets;
+        return parsed
+            .map((item) => expandCompactWidget(item))
+            .filter((item): item is ConflictKPIWidget => item !== null)
+            .map(
+                (item) =>
+                    sanitizeKpiWidget(item, makeId) as ConflictKPIWidget,
+            );
+    } catch {
+        return [];
+    }
 }
 
 export function moveWidgetByDelta<T extends { id: string }>(

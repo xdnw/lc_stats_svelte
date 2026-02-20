@@ -11,7 +11,9 @@
         computeLayoutTableData,
         getPageStorageKey,
         type Conflict,
-        setQueryParam,
+        setQueryParams,
+        getCurrentQueryParams,
+        decodeQueryParamValue,
         formatDuration,
         type TableData,
         ExportTypes,
@@ -22,13 +24,16 @@
         formatDatasetProvenance,
         formatAllianceName,
         trimHeader,
+        buildAavaSelectionRows,
+        formatNationName,
     } from "$lib";
     import {
         makeKpiId,
         readSharedKpiConfig,
         saveSharedKpiConfig,
         sanitizeKpiWidget,
-        buildLegacyKpiWidgets,
+        serializeKpiWidgetsForQuery,
+        parseKpiWidgetsFromQuery,
         moveWidgetByDelta,
         moveWidgetToIndex as moveWidgetToIndexInList,
         type ConflictKPIWidget,
@@ -36,7 +41,6 @@
         type PresetCard,
         type PresetCardKey,
         type RankingCard,
-        type AavaScopeSnapshot,
         type ScopeSnapshot,
         type WidgetEntity,
         type WidgetScope,
@@ -270,17 +274,12 @@
 
     function applyKpiConfig(config: any) {
         if (!config || typeof config !== "object") return;
-        let parsedWidgets: KPIWidget[] = [];
-        if (Array.isArray(config.widgets)) {
-            parsedWidgets = config.widgets
-                .map((item: any) => sanitizeKpiWidget(item, makeId))
-                .filter(
-                    (item: KPIWidget | null): item is KPIWidget =>
-                        item !== null,
-                );
-        } else {
-            parsedWidgets = buildLegacyKpiWidgets(config, makeId);
-        }
+        if (!Array.isArray(config.widgets)) return;
+        const parsedWidgets: KPIWidget[] = config.widgets
+            .map((item: any) => sanitizeKpiWidget(item, makeId))
+            .filter(
+                (item: KPIWidget | null): item is KPIWidget => item !== null,
+            );
         if (parsedWidgets.length > 0) {
             kpiWidgets = parsedWidgets;
         }
@@ -295,16 +294,6 @@
                 sharedConfig.widgets.length > 0
             ) {
                 applyKpiConfig({ widgets: sharedConfig.widgets });
-                return;
-            }
-
-            const legacyRaw = localStorage.getItem(
-                `${getPageStorageKey()}:kpi-config`,
-            );
-            if (legacyRaw) {
-                const parsedLegacy = JSON.parse(legacyRaw);
-                applyKpiConfig(parsedLegacy);
-                saveKpiConfig();
             }
         } catch (error) {
             console.warn("Failed to read KPI config", error);
@@ -493,22 +482,6 @@
         localStorage.setItem(kpiCollapseStorageKey(), "0");
     }
 
-    function loadLegacyKpisFromQuery(query: URLSearchParams) {
-        const kpi = query.get("kpi");
-        if (!kpi) return;
-        const parsed = kpi
-            .split(".")
-            .map((s) => s.trim())
-            .filter((key) => key in PRESET_CARD_LABELS) as PresetCardKey[];
-        if (parsed.length > 0) {
-            kpiWidgets = parsed.map((key) => ({
-                id: makeId("preset"),
-                kind: "preset",
-                key,
-            }));
-        }
-    }
-
     $: durationSoFar = (() => {
         if (!_rawData) return "N/A";
         const start = _rawData.start;
@@ -641,72 +614,43 @@
             : (nationMetricTable as TableData | null);
     }
 
-    function buildAavaRowsForSnapshot(snapshot: AavaScopeSnapshot) {
-        if (!_rawData) return [] as any[];
-
-        const allAllianceIds = [
-            ..._rawData.coalitions[0].alliance_ids,
-            ..._rawData.coalitions[1].alliance_ids,
-        ];
-        const headerIndex = _rawData.war_web.headers.indexOf(snapshot.header);
-        if (headerIndex < 0) return [];
-        const matrix = _rawData.war_web.data[headerIndex] as number[][];
-
-        const pIndices = snapshot.primaryIds
-            .map((id) => allAllianceIds.indexOf(id))
-            .filter((i) => i >= 0);
-        const vIndices = snapshot.vsIds
-            .map((id) => allAllianceIds.indexOf(id))
-            .filter((i) => i >= 0);
-
-        const rows: any[] = [];
-        let sumPrimaryToRow = 0;
-        let sumRowToPrimary = 0;
-
-        for (const rIndex of vIndices) {
-            let p2r = 0;
-            let r2p = 0;
-            for (const pIndex of pIndices) {
-                const a = matrix[pIndex]?.[rIndex] ?? 0;
-                const b = matrix[rIndex]?.[pIndex] ?? 0;
-                p2r += Number.isFinite(a) ? a : 0;
-                r2p += Number.isFinite(b) ? b : 0;
-            }
-            sumPrimaryToRow += p2r;
-            sumRowToPrimary += r2p;
-
-            const allianceId = allAllianceIds[rIndex];
-            rows.push({
-                label:
-                    namesByAllianceId[allianceId] ||
-                    formatAllianceName(`AA:${allianceId}`, allianceId),
-                allianceId,
-                primary_to_row: p2r,
-                row_to_primary: r2p,
-                net: p2r - r2p,
-                total: p2r + r2p,
-                primary_share_pct: 0,
-                row_share_pct: 0,
-                abs_net: Math.abs(p2r - r2p),
-            });
-        }
-
-        rows.forEach((row) => {
-            row.primary_share_pct =
-                sumPrimaryToRow > 0
-                    ? (row.primary_to_row / sumPrimaryToRow) * 100
-                    : 0;
-            row.row_share_pct =
-                sumRowToPrimary > 0
-                    ? (row.row_to_primary / sumRowToPrimary) * 100
-                    : 0;
-        });
-
-        return rows;
-    }
-
     function getAavaMetricValue(row: any, metric: string): number {
         return Number(row?.[metric]) || 0;
+    }
+
+    type RankingViewRow = {
+        label: string;
+        nationId?: number;
+        allianceName?: string;
+        allianceId?: number;
+        value: number;
+        valueText: string;
+    };
+
+    function formatMetricValue(
+        table: TableData | null,
+        metricIndex: number,
+        value: number,
+        isAavaMetric = false,
+    ): string {
+        if (isAavaMetric && metricIndex === -1) {
+            if (Number.isFinite(value)) {
+                if (Math.abs(value) <= 100 && `${value}`.includes(".")) {
+                    return value.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                    });
+                }
+                return value.toLocaleString();
+            }
+            return "0";
+        }
+
+        const moneyColumns = table?.cell_format?.formatMoney ?? [];
+        const isMoney = moneyColumns.includes(metricIndex);
+        const formatted = Number(value || 0).toLocaleString(undefined, {
+            maximumFractionDigits: 2,
+        });
+        return isMoney ? `$${formatted}` : formatted;
     }
 
     function getScopedRows(
@@ -759,16 +703,25 @@
         });
     }
 
-    function getRankingRows(card: RankingCard) {
+    function getRankingRows(card: RankingCard): RankingViewRow[] {
         if (card.source === "aava") {
             if (!card.aavaSnapshot || card.entity !== "alliance") return [];
-            return buildAavaRowsForSnapshot(card.aavaSnapshot)
+            if (!_rawData) return [];
+            return buildAavaSelectionRows(_rawData, {
+                header: card.aavaSnapshot.header,
+                primaryIds: card.aavaSnapshot.primaryIds,
+                vsIds: card.aavaSnapshot.vsIds,
+            })
                 .map((row) => ({
-                    label: row.label,
-                    alliance: "",
+                    label: row.alliance[0],
+                    allianceId: row.alliance[1],
                     value: getAavaMetricValue(row, card.metric),
                 }))
                 .sort((a, b) => b.value - a.value)
+                .map((row) => ({
+                    ...row,
+                    valueText: formatMetricValue(null, -1, row.value, true),
+                }))
                 .slice(0, Math.max(1, card.limit));
         }
 
@@ -786,30 +739,43 @@
         return rows
             .map((row) => {
                 if (card.entity === "alliance") {
+                    const allianceId = Number(row[0]?.[1]);
                     return {
-                        label: row[0]?.[0] ?? "N/A",
-                        alliance: "",
+                        label: formatAllianceName(row[0]?.[0], allianceId),
+                        allianceId,
                         value: Number(row[metricIndex]) || 0,
                     };
                 }
+                const nationId = Number(row[0]?.[1]);
                 const allianceId = Number(row[0]?.[2]);
                 return {
-                    label: row[0]?.[0] ?? "N/A",
-                    alliance: formatAllianceName(
-                        namesByAllianceId[allianceId] ?? "",
+                    label: formatNationName(row[0]?.[0], nationId),
+                    nationId,
+                    allianceName: formatAllianceName(
+                        namesByAllianceId[allianceId],
                         allianceId,
                     ),
+                    allianceId,
                     value: Number(row[metricIndex]) || 0,
                 };
             })
             .sort((a, b) => b.value - a.value)
+            .map((row) => ({
+                ...row,
+                valueText: formatMetricValue(table, metricIndex, row.value),
+            }))
             .slice(0, Math.max(1, card.limit));
     }
 
     function getMetricCardValue(card: MetricCard): number | null {
         if (card.source === "aava") {
             if (!card.aavaSnapshot || card.entity !== "alliance") return null;
-            const rows = buildAavaRowsForSnapshot(card.aavaSnapshot);
+            if (!_rawData) return null;
+            const rows = buildAavaSelectionRows(_rawData, {
+                header: card.aavaSnapshot.header,
+                primaryIds: card.aavaSnapshot.primaryIds,
+                vsIds: card.aavaSnapshot.vsIds,
+            });
             const vals = rows.map((row) =>
                 getAavaMetricValue(row, card.metric),
             );
@@ -988,7 +954,21 @@
         if (order) _layoutData.order = order;
         let columns = query.get("columns");
         if (columns) _layoutData.columns = columns.split(".");
-        loadLegacyKpisFromQuery(query);
+
+        const decodedWidgets = decodeQueryParamValue("kpiw", query.get("kpiw"));
+        if (decodedWidgets) {
+            try {
+                const widgets = parseKpiWidgetsFromQuery(
+                    decodedWidgets,
+                    makeId,
+                );
+                if (widgets.length > 0) {
+                    kpiWidgets = widgets;
+                }
+            } catch (error) {
+                console.warn("Failed to parse KPI widgets from URL", error);
+            }
+        }
     }
 
     function loadCurrentLayout() {
@@ -1001,6 +981,101 @@
             _layoutData.order,
         );
     }
+
+    function serializeKpiWidgetsForUrl(
+        widgets: KPIWidget[] = kpiWidgets,
+    ): string | null {
+        return serializeKpiWidgetsForQuery(widgets, makeId);
+    }
+
+    function queryDefaults() {
+        return {
+            layout: Layout.COALITION,
+            sort: layouts.Summary.sort,
+            order: "desc",
+            columns: layouts.Summary.columns.join("."),
+            kpiw: serializeKpiWidgetsForUrl(DEFAULT_KPI_WIDGETS),
+        };
+    }
+
+    function syncShareStateToUrl() {
+        const encodedWidgets = serializeKpiWidgetsForUrl();
+        setQueryParams(
+            {
+                layout: _layoutData.layout,
+                sort: _layoutData.sort,
+                order: _layoutData.order,
+                columns: _layoutData.columns.join("."),
+                kpiw: encodedWidgets,
+            },
+            {
+                replace: true,
+                defaults: queryDefaults(),
+            },
+        );
+        saveCurrentQueryParams();
+    }
+
+    function syncLayoutQueryState(replace = false) {
+        setQueryParams(
+            {
+                layout: _layoutData.layout,
+                sort: _layoutData.sort,
+                order: _layoutData.order,
+                columns: _layoutData.columns.join("."),
+            },
+            {
+                replace,
+                defaults: queryDefaults(),
+            },
+        );
+    }
+
+    function syncLayoutAndKpiState(replace = true) {
+        const encodedWidgets = serializeKpiWidgetsForUrl();
+        setQueryParams(
+            {
+                layout: _layoutData.layout,
+                sort: _layoutData.sort,
+                order: _layoutData.order,
+                columns: _layoutData.columns.join("."),
+                kpiw: encodedWidgets,
+            },
+            {
+                replace,
+                defaults: queryDefaults(),
+            },
+        );
+    }
+
+    function stripWidgetIds(widgets: KPIWidget[]) {
+        return widgets.map((item) => {
+            const { id: _id, ...rest } = item;
+            return rest;
+        });
+    }
+
+    $: isResetDirty = (() => {
+        const defaultCols = layouts.Summary.columns;
+        const sameColumns =
+            _layoutData.columns.length === defaultCols.length &&
+            _layoutData.columns.every(
+                (value, idx) => value === defaultCols[idx],
+            );
+        const sameLayout =
+            _layoutData.layout === Layout.COALITION &&
+            _layoutData.sort === layouts.Summary.sort &&
+            _layoutData.order === "desc" &&
+            sameColumns;
+
+        const currentWidgets = JSON.stringify(stripWidgetIds(kpiWidgets));
+        const defaultWidgets = JSON.stringify(
+            stripWidgetIds(DEFAULT_KPI_WIDGETS),
+        );
+        const sameKpi = currentWidgets === defaultWidgets;
+
+        return !(sameLayout && sameKpi);
+    })();
 
     function setupConflictTables(conflictId: string) {
         _loadError = null;
@@ -1044,7 +1119,7 @@
 
     onMount(() => {
         applySavedQueryParamsIfMissing(
-            ["layout", "sort", "order", "columns", "kpi"],
+            ["layout", "sort", "order", "columns", "kpiw"],
             ["id"],
         );
         addFormatters();
@@ -1065,6 +1140,7 @@
         setWindowGlobal("formatNation", (data: any) => {
             let aaId = data[2] as number;
             let aaName = formatAllianceName(namesByAllianceId[aaId], aaId);
+            let nationName = formatNationName(data[0], data[1]);
             return (
                 '<a href="https://politicsandwar.com/alliance/id=' +
                 data[2] +
@@ -1073,7 +1149,7 @@
                 '</a> | <a href="https://politicsandwar.com/nation/id=' +
                 data[1] +
                 '">' +
-                (data[0] ? data[0] : data[1]) +
+                nationName +
                 "</a>"
             );
         });
@@ -1119,7 +1195,7 @@
             },
         );
 
-        let queryParams = new URLSearchParams(window.location.search);
+        const queryParams = getCurrentQueryParams();
         loadLayoutFromQuery(queryParams);
         kpiCollapsed = localStorage.getItem(kpiCollapseStorageKey()) === "1";
 
@@ -1136,9 +1212,16 @@
 
     function handleClick(layout: number): void {
         _layoutData.layout = layout;
-        setQueryParam("layout", _layoutData.layout);
-        setQueryParam("sort", null);
-        setQueryParam("columns", null);
+        setQueryParams(
+            {
+                layout: _layoutData.layout,
+                sort: null,
+                columns: null,
+            },
+            {
+                defaults: queryDefaults(),
+            },
+        );
         saveCurrentQueryParams();
         loadCurrentLayout();
     }
@@ -1152,14 +1235,11 @@
         kpiWidgets = [...DEFAULT_KPI_WIDGETS];
         saveKpiConfig();
 
-        resetQueryParams(["layout", "sort", "order", "columns", "kpi"], ["id"]);
-        setQueryParam("layout", _layoutData.layout, { replace: true });
-        setQueryParam("sort", _layoutData.sort, { replace: true });
-        setQueryParam("order", _layoutData.order, { replace: true });
-        setQueryParam("columns", _layoutData.columns.join("."), {
-            replace: true,
-        });
-        setQueryParam("kpi", null, { replace: true });
+        resetQueryParams(
+            ["layout", "sort", "order", "columns", "kpiw"],
+            ["id"],
+        );
+        syncLayoutAndKpiState(true);
         saveCurrentQueryParams();
         loadCurrentLayout();
     }
@@ -1282,8 +1362,7 @@
                     on:click={() => {
                         _layoutData.columns = layouts[key].columns;
                         _layoutData.sort = layouts[key].sort;
-                        setQueryParam("sort", _layoutData.sort);
-                        setQueryParam("columns", _layoutData.columns.join("."));
+                        syncLayoutQueryState();
                         saveCurrentQueryParams();
                         loadCurrentLayout();
                     }}>{key}</button
@@ -1324,9 +1403,7 @@
                             saveKpiConfig();
                         }
                     }
-                    setQueryParam("columns", _layoutData.columns.join("."));
-                    setQueryParam("sort", _layoutData.sort);
-                    setQueryParam("order", _layoutData.order);
+                    syncLayoutQueryState();
                     saveCurrentQueryParams();
                     loadCurrentLayout();
                 }}
@@ -1548,7 +1625,11 @@
         </li>
 
         <li class="d-flex flex-wrap gap-1 justify-content-end">
-            <ShareResetBar onReset={resetFilters} />
+            <ShareResetBar
+                onReset={resetFilters}
+                onSharePrepare={syncShareStateToUrl}
+                resetDirty={isResetDirty}
+            />
         </li>
     </ul>
 
@@ -1691,12 +1772,29 @@
                                             {#each rows as row, i}
                                                 <tr>
                                                     <td>{i + 1}</td>
-                                                    <td>{row.label}</td>
+                                                    <td>
+                                                        {#if card.entity === "alliance"}
+                                                            <a
+                                                                href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}
+                                                                >{row.label}</a
+                                                            >
+                                                        {:else}
+                                                            <a
+                                                                href={`https://politicsandwar.com/nation/id=${row.nationId}`}
+                                                                >{row.label}</a
+                                                            >
+                                                        {/if}
+                                                    </td>
                                                     {#if card.entity === "nation"}
-                                                        <td>{row.alliance}</td>
+                                                        <td>
+                                                            <a
+                                                                href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}
+                                                                >{row.allianceName}</a
+                                                            >
+                                                        </td>
                                                     {/if}
                                                     <td class="text-end"
-                                                        >{row.value.toLocaleString()}</td
+                                                        >{row.valueText}</td
                                                     >
                                                 </tr>
                                             {/each}

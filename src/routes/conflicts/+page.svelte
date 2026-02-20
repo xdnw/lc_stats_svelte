@@ -18,6 +18,7 @@
     type RawData,
     ConflictIndex,
     type JSONValue,
+    getCurrentQueryParams,
     setQueryParam,
     applySavedQueryParamsIfMissing,
     saveCurrentQueryParams,
@@ -70,6 +71,21 @@
 
   let categoryCounts: { [key: string]: number } = {};
   let selectedCategories: Set<string> = new Set();
+  $: isResetDirty = (() => {
+    if (!_rawData) return false;
+    const allAlliancesSelected =
+      _allowedAllianceIds.size === _rawData.alliance_ids.length;
+    const categories = Object.keys(categoryCounts);
+    const allCategoriesSelected =
+      selectedCategories.size === categories.length &&
+      categories.every((category) => selectedCategories.has(category));
+    return (
+      !allAlliancesSelected ||
+      !!guildParam ||
+      searchQuery.trim().length > 0 ||
+      !allCategoriesSelected
+    );
+  })();
 
   const getVis = (): any => getVisGlobal();
 
@@ -407,7 +423,7 @@
             );
           }
 
-          let queryParams = new URLSearchParams(window.location.search);
+          let queryParams = getCurrentQueryParams();
 
           const allianceIdsParam = queryParams.get("ids");
           if (allianceIdsParam) {
@@ -990,7 +1006,7 @@
           class:bi-chevron-up={showDiv}
         ></i>
       </button>
-      <ShareResetBar onReset={resetFilters} />
+      <ShareResetBar onReset={resetFilters} resetDirty={isResetDirty} />
     </div>
     {#if showDiv}
       <input

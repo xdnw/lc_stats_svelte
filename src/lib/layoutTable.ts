@@ -1,4 +1,4 @@
-import { formatAllianceName } from './formatting';
+import { formatAllianceName, formatNationName } from './formatting';
 import { trimHeader } from './warWeb';
 import type { Conflict, TableData } from './types';
 
@@ -127,7 +127,7 @@ export function computeLayoutTableData(
                 for (let i = 0; i < nation_ids.length; i++) {
                     let row = [];
                     let nation_id = nation_ids[i];
-                    let nation_name = nation_names[i];
+                    let nation_name = formatNationName(nation_names[i], nation_id);
                     let nation_aa = nation_aas[i];
                     row.push([nation_name, nation_id, nation_aa]);
                     addStats2Row(row, damage[i * 2 + oo], damage[i * 2 + oo + 1]);

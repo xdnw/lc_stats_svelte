@@ -45,6 +45,11 @@ export function formatAllianceName(name: string | null | undefined, id: number):
     return trimmed.length > 0 ? trimmed : `AA:${id}`;
 }
 
+export function formatNationName(name: string | null | undefined, id: number): string {
+    const trimmed = (name ?? '').trim();
+    return trimmed.length > 0 ? trimmed : `nation:${id}`;
+}
+
 export function normalizeAllianceIds(ids: Array<number | string | null | undefined>): number[] {
     return ids
         .map((id) => Number(id))

@@ -14,6 +14,7 @@
         Palette,
         generateColors,
         setQueryParam,
+        getCurrentQueryParams,
         arrayEquals,
         type TierMetric,
         resolveMetricAccessors,
@@ -60,6 +61,25 @@
         defaultMetricSelection.map((name) => {
             return { value: name, label: name };
         });
+    $: isResetDirty = (() => {
+        const selectedValues = selected_metrics.map((metric) => metric.value);
+        const sameSelected =
+            selectedValues.length === defaultMetricSelection.length &&
+            selectedValues.every(
+                (value, idx) => value === defaultMetricSelection[idx],
+            );
+        const normalizeBits =
+            (normalize_x ? 1 : 0) +
+            (normalize_y ? 2 : 0) +
+            (normalize_z ? 4 : 0);
+        return (
+            graphSliderIndex !== 0 ||
+            cityValues[0] !== 0 ||
+            cityValues[1] !== 70 ||
+            normalizeBits !== 0 ||
+            !sameSelected
+        );
+    })();
     $: maxItems = selected_metrics?.length === 3;
     $: items =
         maxItems || !_rawData
@@ -183,7 +203,7 @@
             ["city_min", "city_max", "time", "normalize", "selected"],
             ["id"],
         );
-        let queryParams = new URLSearchParams(window.location.search);
+        let queryParams = getCurrentQueryParams();
         loadQueryParams(queryParams);
 
         const id = queryParams.get("id");
@@ -971,7 +991,10 @@
                             <i class="bi bi-info-circle"></i>
                         </button></span
                     >
-                    <ShareResetBar onReset={resetFilters} />
+                    <ShareResetBar
+                        onReset={resetFilters}
+                        resetDirty={isResetDirty}
+                    />
                 </div>
                 <div
                     class="select-compact mb-2"

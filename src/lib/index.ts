@@ -1,5 +1,10 @@
 export {
     setQueryParam,
+    setQueryParams,
+    getQueryParam,
+    getCurrentQueryParams,
+    encodeQueryParamValue,
+    decodeQueryParamValue,
     getPageStorageKey,
     saveCurrentQueryParams,
     readSavedQueryParams,
@@ -13,6 +18,7 @@ export {
     formatTurnsToDate,
     commafy,
     formatAllianceName,
+    formatNationName,
     normalizeAllianceIds,
 } from './formatting';
 export {
@@ -64,4 +70,5 @@ export {
     deleteColumnPreset,
 } from './columnPresets';
 export { modal, modalStrWithCloseButton, modalWithCloseButton } from './modals';
+export { buildAavaSelectionRows, type AavaSelectionRow, type AavaSelectionSnapshot } from './aavaSelection';
 export * from './types';

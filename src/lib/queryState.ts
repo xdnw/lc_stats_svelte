@@ -1,17 +1,134 @@
+import LZString from "lz-string";
+
 export type QueryParamValue = string | number | boolean | null | undefined;
+
+type QueryParamCodec = {
+    encode: (value: string) => string | null;
+    decode: (value: string) => string | null;
+};
+
+const KPIW_PREFIX = "lz:";
+
+const queryParamCodecs: Record<string, QueryParamCodec> = {
+    kpiw: {
+        encode: (value: string) => {
+            const compressed = LZString.compressToEncodedURIComponent(value);
+            if (!compressed) return null;
+            return `${KPIW_PREFIX}${compressed}`;
+        },
+        decode: (value: string) => {
+            if (value.startsWith(KPIW_PREFIX)) {
+                const decompressed = LZString.decompressFromEncodedURIComponent(
+                    value.slice(KPIW_PREFIX.length),
+                );
+                return decompressed ?? null;
+            }
+
+            return value;
+        },
+    },
+};
+
+export type SetQueryParamOptions = {
+    replace?: boolean;
+    defaultValue?: QueryParamValue;
+};
+
+export type SetQueryParamsOptions = {
+    replace?: boolean;
+    defaults?: Record<string, QueryParamValue>;
+};
+
+function normalizeQueryValue(value: QueryParamValue): string | null {
+    if (value == null) return null;
+    return String(value);
+}
+
+export function encodeQueryParamValue(
+    param: string,
+    value: QueryParamValue,
+): string | null {
+    const normalized = normalizeQueryValue(value);
+    if (normalized == null) return null;
+    const codec = queryParamCodecs[param];
+    if (!codec) return normalized;
+    return codec.encode(normalized);
+}
+
+export function decodeQueryParamValue(
+    param: string,
+    value: string | null,
+): string | null {
+    if (value == null) return null;
+    const codec = queryParamCodecs[param];
+    if (!codec) return value;
+    return codec.decode(value);
+}
+
+export function getCurrentQueryParams(): URLSearchParams {
+    return new URLSearchParams(window.location.search);
+}
+
+export function getQueryParam(param: string): string | null {
+    const rawValue = getCurrentQueryParams().get(param);
+    return decodeQueryParamValue(param, rawValue);
+}
 
 export function setQueryParam(
     param: string,
     value: QueryParamValue,
-    options?: { replace?: boolean },
+    options?: SetQueryParamOptions,
 ): void {
     const url = new URL(window.location.href);
     const oldUrl = url.toString();
 
-    if (value == null) {
+    const nextValue = normalizeQueryValue(value);
+    const defaultValue = normalizeQueryValue(options?.defaultValue);
+
+    if (nextValue == null || (defaultValue != null && nextValue === defaultValue)) {
         url.searchParams.delete(param);
     } else {
-        url.searchParams.set(param, String(value));
+        const encodedValue = encodeQueryParamValue(param, nextValue);
+        if (encodedValue == null) {
+            url.searchParams.delete(param);
+        } else {
+            url.searchParams.set(param, encodedValue);
+        }
+    }
+
+    const newUrl = url.toString();
+    if (oldUrl !== newUrl) {
+        if (options?.replace) {
+            window.history.replaceState({}, "", newUrl);
+        } else {
+            window.history.pushState({}, "", newUrl);
+        }
+    }
+}
+
+export function setQueryParams(
+    values: Record<string, QueryParamValue>,
+    options?: SetQueryParamsOptions,
+): void {
+    const url = new URL(window.location.href);
+    const oldUrl = url.toString();
+
+    for (const [param, value] of Object.entries(values)) {
+        const nextValue = normalizeQueryValue(value);
+        const defaultValue = normalizeQueryValue(options?.defaults?.[param]);
+        if (
+            nextValue == null ||
+            (defaultValue != null && nextValue === defaultValue)
+        ) {
+            url.searchParams.delete(param);
+        } else {
+            const encodedValue = encodeQueryParamValue(param, nextValue);
+            if (encodedValue == null) {
+                url.searchParams.delete(param);
+            } else {
+                url.searchParams.set(param, encodedValue);
+            }
+        }
     }
 
     const newUrl = url.toString();

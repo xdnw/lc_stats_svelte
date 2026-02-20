@@ -6,6 +6,7 @@
     import {
         addFormatters,
         applySavedQueryParamsIfMissing,
+        buildAavaSelectionRows,
         decompressBson,
         downloadTableElem,
         ExportTypes,
@@ -13,6 +14,7 @@
         formatDatasetProvenance,
         getDefaultWarWebHeader,
         getConflictDataUrl,
+        getCurrentQueryParams,
         normalizeAllianceIds,
         resetQueryParams,
         resolveWarWebMetricMeta,
@@ -87,6 +89,28 @@
     $: selectedVsIds =
         selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
     $: aavaMetricLabels = getAavaMetricLabels(currentHeader);
+    $: isResetDirty = (() => {
+        if (!_rawData) return false;
+        const defaultHeader = getDefaultWarWebHeader(_rawData);
+        const defaults = defaultSelectionsByCoalition(_rawData);
+        const defaultCols = DEFAULT_VISIBLE_COLUMN_KEYS;
+        const sameCols =
+            selectedColumns.length === defaultCols.length &&
+            selectedColumns.every((col, idx) => col === defaultCols[idx]);
+        const sameC0 =
+            selectedByCoalition[0].length === defaults[0].length &&
+            selectedByCoalition[0].every((id, idx) => id === defaults[0][idx]);
+        const sameC1 =
+            selectedByCoalition[1].length === defaults[1].length &&
+            selectedByCoalition[1].every((id, idx) => id === defaults[1][idx]);
+        return !(
+            primaryCoalitionIndex === 0 &&
+            currentHeader === defaultHeader &&
+            sameCols &&
+            sameC0 &&
+            sameC1
+        );
+    })();
 
     function getCoalition(index: number) {
         return _rawData?.coalitions[index];
@@ -389,7 +413,7 @@
     }
 
     function refreshSelectedColumnsFromQuery() {
-        const query = new URLSearchParams(window.location.search);
+        const query = getCurrentQueryParams();
         const parsedColumns = parseColumns(query.get("columns"), currentHeader);
         const parsedLegacy = parseColumns(query.get("cols"), currentHeader);
         const parsed = parsedColumns.length > 0 ? parsedColumns : parsedLegacy;
@@ -402,83 +426,11 @@
         vsIds: number[],
     ) {
         if (!_rawData) return [] as any[];
-
-        const c1Ids = _rawData.coalitions[0].alliance_ids;
-        const c2Ids = _rawData.coalitions[1].alliance_ids;
-        const allAllianceIds = [...c1Ids, ...c2Ids];
-
-        const headerIndex = _rawData.war_web.headers.indexOf(header);
-        if (headerIndex < 0) return [];
-
-        const matrix = _rawData.war_web.data[headerIndex] as number[][];
-        const allianceNameById: Record<number, string> = {};
-        _rawData.coalitions.forEach((coalition) => {
-            coalition.alliance_ids.forEach((id, i) => {
-                allianceNameById[id] = formatAllianceName(
-                    coalition.alliance_names[i],
-                    id,
-                );
-            });
+        return buildAavaSelectionRows(_rawData, {
+            header,
+            primaryIds,
+            vsIds,
         });
-
-        const pIndices = primaryIds
-            .map((id) => allAllianceIds.indexOf(id))
-            .filter((i) => i >= 0);
-        const vIndices = vsIds
-            .map((id) => allAllianceIds.indexOf(id))
-            .filter((i) => i >= 0);
-
-        type RowAgg = {
-            alliance: [string, number];
-            primary_to_row: number;
-            row_to_primary: number;
-            net: number;
-            total: number;
-            primary_share_pct: number;
-            row_share_pct: number;
-            abs_net: number;
-        };
-
-        const tempRows: RowAgg[] = [];
-        let sumPrimaryToRow = 0;
-        let sumRowToPrimary = 0;
-
-        for (const rIndex of vIndices) {
-            let p2r = 0;
-            let r2p = 0;
-            for (const pIndex of pIndices) {
-                const a = matrix[pIndex]?.[rIndex] ?? 0;
-                const b = matrix[rIndex]?.[pIndex] ?? 0;
-                p2r += Number.isFinite(a) ? a : 0;
-                r2p += Number.isFinite(b) ? b : 0;
-            }
-            sumPrimaryToRow += p2r;
-            sumRowToPrimary += r2p;
-            const id = allAllianceIds[rIndex];
-            tempRows.push({
-                alliance: [allianceNameById[id] ?? `AA:${id}`, id],
-                primary_to_row: p2r,
-                row_to_primary: r2p,
-                net: p2r - r2p,
-                total: p2r + r2p,
-                primary_share_pct: 0,
-                row_share_pct: 0,
-                abs_net: Math.abs(p2r - r2p),
-            });
-        }
-
-        tempRows.forEach((row) => {
-            row.primary_share_pct =
-                sumPrimaryToRow > 0
-                    ? (row.primary_to_row / sumPrimaryToRow) * 100
-                    : 0;
-            row.row_share_pct =
-                sumRowToPrimary > 0
-                    ? (row.row_to_primary / sumRowToPrimary) * 100
-                    : 0;
-        });
-
-        return tempRows;
     }
 
     function buildRows() {
@@ -499,7 +451,7 @@
             selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
 
         if (_rawData && (primaryIds.length === 0 || vsIds.length === 0)) {
-            const query = new URLSearchParams(window.location.search);
+            const query = getCurrentQueryParams();
             if (!hasIntentionalSelectionParams(query)) {
                 selectedByCoalition = defaultSelectionsByCoalition(_rawData);
                 primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
@@ -647,7 +599,7 @@
     }
 
     function hydrateStateFromQuery(data: Conflict) {
-        const query = new URLSearchParams(window.location.search);
+        const query = getCurrentQueryParams();
         const hasExplicitSelectionParams = hasIntentionalSelectionParams(query);
 
         primaryCoalitionIndex = parseCoalitionIndex(query.get("pc"));
@@ -729,7 +681,7 @@
             );
         });
 
-        const query = new URLSearchParams(window.location.search);
+        const query = getCurrentQueryParams();
         const id = query.get("id");
         if (!id) {
             _loadError = "Missing conflict id in URL";
@@ -895,7 +847,10 @@
                         </div>
                     </div>
                 </div>
-                <ShareResetBar onReset={resetFilters} />
+                <ShareResetBar
+                    onReset={resetFilters}
+                    resetDirty={isResetDirty}
+                />
             </div>
         </div>
 

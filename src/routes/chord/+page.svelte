@@ -4,6 +4,7 @@
         decompressBson,
         type Conflict,
         rafDelay,
+        getCurrentQueryParams,
         setQueryParam,
         generateColorsFromPalettes,
         Palette,
@@ -35,10 +36,21 @@
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
+    $: isResetDirty = (() => {
+        if (!_rawData) return false;
+        const defaultHeader = getDefaultWarWebHeader(_rawData);
+        const defaultAllianceCount =
+            _rawData.coalitions[0].alliance_ids.length +
+            _rawData.coalitions[1].alliance_ids.length;
+        return (
+            _currentHeaderName !== defaultHeader ||
+            _allowedAllianceIds.size !== defaultAllianceCount
+        );
+    })();
 
     onMount(() => {
         applySavedQueryParamsIfMissing(["header", "ids"], ["id"]);
-        let queryParams = new URLSearchParams(window.location.search);
+        let queryParams = getCurrentQueryParams();
         const id = queryParams.get("id");
         if (id) {
             conflictId = id;
@@ -135,7 +147,7 @@
 
     function retryLoad() {
         if (!conflictId) return;
-        const queryParams = new URLSearchParams(window.location.search);
+        const queryParams = getCurrentQueryParams();
         setupWebFromId(conflictId, queryParams);
     }
 
@@ -459,7 +471,10 @@
         {#if _rawData}
             <div class="d-flex justify-content-between align-items-center mb-1">
                 <span class="fw-bold">Layout Picker:</span>
-                <ShareResetBar onReset={resetFilters} />
+                <ShareResetBar
+                    onReset={resetFilters}
+                    resetDirty={isResetDirty}
+                />
             </div>
             {#each _rawData.war_web.headers as header (header)}
                 <button
