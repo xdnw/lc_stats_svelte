@@ -204,9 +204,7 @@ function setupTable(
         function handleSearch(input: HTMLInputElement, _event: Event) {
             const th = input.closest("th");
             if (!th || tableArr[0] == null) return;
-            const column = tableArr[0].column(
-                (th as HTMLTableCellElement).cellIndex,
-            );
+            const column = tableArr[0].column(th as any);
             if (column.search() !== input.value) {
                 column.search(input.value).draw();
             }
