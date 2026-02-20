@@ -229,7 +229,7 @@ function setupTable(
 
             const summaryActionsCell = document.createElement("th");
             summaryActionsCell.className = "ux-summary-actions";
-            summaryActionsCell.innerHTML = `<button type="button" class="btn btn-sm ux-btn ux-select-visible-btn" title="Select visible" aria-label="Select visible"><i class="bi bi-square" aria-hidden="true"></i></button>`;
+            summaryActionsCell.innerHTML = `<button type="button" class="btn btn-sm ux-btn ux-select-visible-btn" title="Select all filtered" aria-label="Select all filtered"><i class="bi bi-square" aria-hidden="true"></i></button>`;
             summaryRow.appendChild(summaryActionsCell);
 
             for (let i = 0; i < columnsInfo.length; i++) {
@@ -328,15 +328,15 @@ function setupTable(
                 const activeIndexes =
                     selectedIndexes.length > 0 ? selectedIndexes : filteredIndexes;
 
-                const visiblePageIndexes = getVisiblePageRowIndexes(tableApi);
+                const filteredSelectableIndexes = getFilteredRowIndexes(tableApi);
                 const allVisibleSelected =
-                    visiblePageIndexes.length > 0 &&
-                    visiblePageIndexes.every((idx: number) =>
+                    filteredSelectableIndexes.length > 0 &&
+                    filteredSelectableIndexes.every((idx: number) =>
                         selectedRowIndexesSet.has(idx),
                     );
                 const selectVisibleLabel = allVisibleSelected
-                    ? "Deselect visible"
-                    : "Select visible";
+                    ? "Deselect all filtered"
+                    : "Select all filtered";
 
                 const summaryRow = containerElem.querySelector("tfoot tr.ux-summary-row");
                 if (!summaryRow) return;
@@ -393,7 +393,7 @@ function setupTable(
                     const sum = vals.reduce((a: number, b: number) => a + b, 0);
                     const avg = sum / vals.length;
                     const isMoney = isDataColumnMoney(dataColIndex);
-                    summaryCell.innerHTML = `<div class="ux-summary-values"><span>Σ ${formatSummaryValue(sum, isMoney)}</span><span>avg ${formatSummaryValue(avg, isMoney)}</span></div>`;
+                    summaryCell.innerHTML = `<div class="ux-summary-values"><span>Σ ${formatSummaryValue(sum, isMoney)}</span><span>x̄ ${formatSummaryValue(avg, isMoney)}</span></div>`;
                 }
 
                 while (summaryCellPos < summaryRow.children.length) {
@@ -454,7 +454,7 @@ function setupTable(
                     const isSelected = selectedRowIndexesSet.has(rowIndex);
                     $(row).toggleClass("table-active", isSelected);
                     $("td:eq(0)", row).html(
-                        `<label class="d-inline-flex align-items-center gap-1 m-0"><input type="checkbox" class="ux-row-select" ${isSelected ? "checked" : ""} /><span>${displayIndexFull + 1}</span></label>`,
+                        `<label class="d-inline-flex align-items-center m-0 ux-row-index"><input type="checkbox" class="ux-row-select" ${isSelected ? "checked" : ""} /><span>${displayIndexFull + 1}</span></label>`,
                     );
                     if (row_format) {
                         row_format(row, data, displayIndexFull);
@@ -654,7 +654,7 @@ function setupTable(
                     ) as HTMLButtonElement | null;
                     if (!button) return;
 
-                    const visibleIndexes = getVisiblePageRowIndexes(table);
+                    const visibleIndexes = getFilteredRowIndexes(table);
                     const allVisibleSelected =
                         visibleIndexes.length > 0 &&
                         visibleIndexes.every((idx: number) => selectedRowIndexesSet.has(idx));

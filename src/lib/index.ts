@@ -65,25 +65,3 @@ export {
 } from './columnPresets';
 export { modal, modalStrWithCloseButton, modalWithCloseButton } from './modals';
 export * from './types';
-
-// function sortColors(colors: string[]): [string[], string[], string[], string[]] {
-//     let reds: string[] = [], greens: string[] = [], blues: string[] = [], neutrals: string[] = [];
-
-//     for (let color of colors) {
-//         let [r, g, b] = color.split(',').map(Number);
-
-//         if (r >= g && r > b) {
-//             reds.push(color);
-//         } else if (g > r && g > b) {
-//             greens.push(color);
-//         } else if (b > r && b >= g) {
-//             blues.push(color);
-//         } else {
-//             neutrals.push(color);
-//         }
-//     }
-
-//     return [reds, greens, blues, neutrals]
-// }
-
-

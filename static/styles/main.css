@@ -331,10 +331,10 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 }
 
 .ux-table-wrap table {
-    min-width: 0;
-    width: 100% !important;
-    max-width: 100% !important;
-    table-layout: fixed;
+    min-width: 100%;
+    width: max-content !important;
+    max-width: none !important;
+    table-layout: auto;
 }
 
 .ux-conflict-cell {
@@ -454,6 +454,7 @@ html[data-bs-theme="dark"] .ux-btn-primary {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
+    hyphens: auto;
 }
 
 .dataTables_wrapper table.dataTable tbody tr {
@@ -481,6 +482,18 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 .dataTables_wrapper table.dataTable tfoot th:first-child {
     width: 1%;
     white-space: nowrap;
+    min-width: 0;
+}
+
+.dataTables_wrapper table.dataTable tbody .ux-row-index {
+    white-space: nowrap;
+}
+
+.dataTables_wrapper table.dataTable tbody .ux-row-index>span {
+    display: inline-block;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .dataTables_wrapper table.dataTable tfoot tr.ux-summary-row .ux-summary-actions {
@@ -502,6 +515,7 @@ html[data-bs-theme="dark"] .ux-btn-primary {
     line-height: 1.2;
     white-space: normal;
     word-break: break-word;
+    font-size: 0.6rem;
 }
 
 .dataTables_wrapper .dataTables_paginate .paginate_button {
@@ -792,7 +806,13 @@ html[data-bs-theme="dark"] .vis-item {
     .dataTables_wrapper table.dataTable thead td,
     .dataTables_wrapper table.dataTable tbody td,
     .dataTables_wrapper table.dataTable tbody th {
-        white-space: nowrap;
+        min-width: 6ch;
+    }
+
+    .dataTables_wrapper table.dataTable thead th:first-child,
+    .dataTables_wrapper table.dataTable tbody td:first-child,
+    .dataTables_wrapper table.dataTable tfoot th:first-child {
+        min-width: 0;
     }
 
     .dataTables_wrapper .dataTables_paginate .paginate_button {
