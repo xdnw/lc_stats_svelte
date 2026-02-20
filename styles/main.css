@@ -105,6 +105,18 @@ a:not(.btn):hover {
     border-color: color-mix(in srgb, var(--ux-brand) 60%, var(--ux-border)) !important;
 }
 
+.ux-btn-danger {
+    color: var(--ux-text) !important;
+    background: color-mix(in srgb, var(--ux-danger) 18%, var(--ux-surface-alt)) !important;
+    border-color: color-mix(in srgb, var(--ux-danger) 62%, var(--ux-border)) !important;
+}
+
+.ux-btn-danger:hover {
+    color: var(--ux-text) !important;
+    background: color-mix(in srgb, var(--ux-danger) 26%, var(--ux-surface-alt)) !important;
+    border-color: color-mix(in srgb, var(--ux-danger) 76%, var(--ux-border)) !important;
+}
+
 .ux-btn.active,
 .ux-btn:active,
 .app-shell .btn.active.ux-btn,
