@@ -9,7 +9,7 @@ export type PresetCardKey =
     | "net-gap"
     | "c1-dealt"
     | "c2-dealt"
-    | "participation";
+    | "off-wars-per-nation";
 
 export type ScopeSnapshot = {
     allianceIds: number[];
@@ -114,7 +114,7 @@ const PRESET_CARD_KEYS: ReadonlySet<PresetCardKey> = new Set([
     "net-gap",
     "c1-dealt",
     "c2-dealt",
-    "participation",
+    "off-wars-per-nation",
 ]);
 
 const DEFAULT_SHARED_KPI_CONFIG: SharedKpiConfig = {

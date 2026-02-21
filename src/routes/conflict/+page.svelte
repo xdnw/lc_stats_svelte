@@ -179,6 +179,11 @@
         { id: "preset-duration", kind: "preset", key: "duration" },
         { id: "preset-total-dmg", kind: "preset", key: "damage-total" },
         { id: "preset-net-gap", kind: "preset", key: "net-gap" },
+        {
+            id: "preset-off-wars-per-nation",
+            kind: "preset",
+            key: "off-wars-per-nation",
+        },
     ];
 
     const DEFAULT_RANKING_CARDS: RankingCard[] = [
@@ -207,7 +212,7 @@
         "net-gap": "Damage gap",
         "c1-dealt": "Coalition 1 dealt",
         "c2-dealt": "Coalition 2 dealt",
-        participation: "Participation",
+        "off-wars-per-nation": "Offensive wars per nation",
     };
 
     const SCOPE_LABELS: Record<WidgetScope, string> = {
@@ -537,7 +542,7 @@
         ? Math.max(...coalitionSummary.map((c) => Math.abs(c.net)))
         : null;
 
-    $: participationStats = (() => {
+    $: offWarsPerNationStats = (() => {
         if (!_rawData) return null;
         const table = computeLayoutTableData(
             _rawData,
@@ -547,19 +552,16 @@
             "asc",
         );
         const offIdx = table.columns.indexOf("off:wars");
-        const defIdx = table.columns.indexOf("def:wars");
-        if (offIdx === -1 || defIdx === -1) return null;
-        const total = table.data.length;
-        if (total === 0) return null;
-        const active = table.data.filter((row) => {
-            const off = Number(row[offIdx]) || 0;
-            const def = Number(row[defIdx]) || 0;
-            return off + def > 0;
-        }).length;
+        if (offIdx === -1) return null;
+        const totalNations = table.data.length;
+        if (totalNations === 0) return null;
+        const totalOffWars = table.data.reduce((sum, row) => {
+            return sum + (Number(row[offIdx]) || 0);
+        }, 0);
         return {
-            active,
-            total,
-            pct: (active / total) * 100,
+            totalOffWars,
+            totalNations,
+            perNation: totalOffWars / totalNations,
         };
     })();
 
@@ -1720,19 +1722,26 @@
                                             coalitionSummary?.[1]?.dealt,
                                         )}
                                     </div>
-                                {:else if card.key === "participation"}
+                                {:else if card.key === "off-wars-per-nation"}
                                     <div class="small text-muted">
-                                        Participation
+                                        Offensive wars per nation
                                     </div>
                                     <div class="h6 m-0">
-                                        {participationStats
-                                            ? `${participationStats.pct.toFixed(1)}%`
+                                        {offWarsPerNationStats
+                                            ? offWarsPerNationStats.perNation.toFixed(
+                                                  2,
+                                              )
                                             : "N/A"}
                                     </div>
-                                    {#if participationStats}
+                                    {#if offWarsPerNationStats}
                                         <div class="small text-muted">
-                                            {participationStats.active}/{participationStats.total}
-                                            nations with at least one war
+                                            {formatKpiNumber(
+                                                offWarsPerNationStats.totalOffWars,
+                                            )}
+                                            offensive / {formatKpiNumber(
+                                                offWarsPerNationStats.totalNations,
+                                            )}
+                                            nations
                                         </div>
                                     {/if}
                                 {/if}
