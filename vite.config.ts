@@ -13,6 +13,9 @@ export default defineConfig({
         // })
         babel({
             babelHelpers: 'bundled',
+            // Do not transpile framework/runtime internals (breaks Svelte runes in Kit runtime).
+            include: ['src/**/*', 'workers/**/*'],
+            exclude: ['node_modules/**', '.svelte-kit/**'],
             presets: [
                 [
                     '@babel/preset-env',
