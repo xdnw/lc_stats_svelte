@@ -70,8 +70,13 @@
   let guildParam: string | null = null;
 
   let _allowedAllianceIds: Set<number> = new Set();
-  let showDiv = false; // State to toggle visibility
-  let searchQuery = ""; // State for search input
+  let showAllianceModal = false;
+  let allianceSearchQuery = "";
+  let draftAllowedAllianceIds: Set<number> = new Set();
+  let allianceRows: { id: number; label: string }[] = [];
+  $: filteredAllianceRows = allianceRows.filter((row) =>
+    row.label.toLowerCase().includes(allianceSearchQuery.trim().toLowerCase()),
+  );
 
   let categoryCounts: { [key: string]: number } = {};
   let selectedCategories: Set<string> = new Set();
@@ -83,12 +88,7 @@
     const allCategoriesSelected =
       selectedCategories.size === categories.length &&
       categories.every((category) => selectedCategories.has(category));
-    return (
-      !allAlliancesSelected ||
-      !!guildParam ||
-      searchQuery.trim().length > 0 ||
-      !allCategoriesSelected
-    );
+    return !allAlliancesSelected || !!guildParam || !allCategoriesSelected;
   })();
 
   const getVis = (): any => getVisGlobal();
@@ -438,6 +438,10 @@
               alliance_ids[i],
             );
           }
+          allianceRows = alliance_ids.map((id, index) => ({
+            id,
+            label: formatAllianceName(alliance_names[index], id),
+          }));
 
           let queryParams = getCurrentQueryParams();
 
@@ -802,24 +806,40 @@
     initializeTimeline(true);
   }
 
-  function setLayoutAlliance(id: number) {
-    if (_allowedAllianceIds.has(id)) {
-      _allowedAllianceIds.delete(id);
-    } else {
-      _allowedAllianceIds.add(id);
-    }
-    recalcAlliances();
+  function openAllianceModal() {
+    if (!_rawData) return;
+    draftAllowedAllianceIds = new Set(_allowedAllianceIds);
+    allianceSearchQuery = "";
+    showAllianceModal = true;
   }
 
-  function toggleAlliances() {
-    for (let i = 0; i < _rawData!.alliance_ids.length; i++) {
-      let id = _rawData!.alliance_ids[i];
-      if (_allowedAllianceIds.has(id)) {
-        _allowedAllianceIds.delete(id);
-      } else {
-        _allowedAllianceIds.add(id);
-      }
+  function closeAllianceModal() {
+    showAllianceModal = false;
+  }
+
+  function toggleDraftAlliance(id: number) {
+    const next = new Set(draftAllowedAllianceIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
     }
+    draftAllowedAllianceIds = next;
+  }
+
+  function selectAllDraftAlliances() {
+    if (!_rawData) return;
+    draftAllowedAllianceIds = new Set(_rawData.alliance_ids);
+  }
+
+  function clearDraftAlliances() {
+    draftAllowedAllianceIds = new Set();
+  }
+
+  function applyAllianceModal() {
+    if (draftAllowedAllianceIds.size === 0) return;
+    _allowedAllianceIds = new Set(draftAllowedAllianceIds);
+    showAllianceModal = false;
     recalcAlliances();
   }
 
@@ -840,7 +860,9 @@
     guildParam = null;
     currSource = ["All", 0];
     selectedCategories = new Set();
-    searchQuery = "";
+    allianceSearchQuery = "";
+    draftAllowedAllianceIds = new Set(_rawData.alliance_ids);
+    showAllianceModal = false;
     resetQueryParams(["ids", "guild", "guild_id"]);
     saveCurrentQueryParams();
     setupConflicts(_rawData, null);
@@ -1018,51 +1040,110 @@
     </div>
 
     <div class="d-flex flex-wrap gap-1 mb-2 align-items-center">
-      <button class="btn ux-btn" on:click={() => (showDiv = !showDiv)}>
-        Filter Alliances&nbsp;<i
-          class="bi"
-          class:bi-chevron-down={!showDiv}
-          class:bi-chevron-up={showDiv}
-        ></i>
+      <button class="btn ux-btn" on:click={openAllianceModal}>
+        Filter Alliances ({_allowedAllianceIds.size}/{_rawData.alliance_ids
+          .length})
       </button>
       <ShareResetBar onReset={resetFilters} resetDirty={isResetDirty} />
     </div>
-    {#if showDiv}
-      <input
-        type="text"
-        class="form-control mb-2"
-        placeholder="Search alliances..."
-        bind:value={searchQuery}
-      />
-      <div class="d-flex justify-content-left align-items-center ms-1">
-        <div class="ux-callout mb-2">
-          These will toggle the visiblity of conflicts which contain the
-          selected alliances. It does NOT affect the individual conflict stats.
+    {#if showAllianceModal}
+      <div
+        class="modal fade show d-block"
+        tabindex="-1"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filter alliances"
+        on:click|self={closeAllianceModal}
+        on:keydown={(event) => {
+          if (event.key === "Escape") closeAllianceModal();
+        }}
+      >
+        <div
+          class="modal-dialog modal-lg modal-dialog-scrollable"
+          role="document"
+        >
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Filter Alliances</h5>
+              <button
+                type="button"
+                class="btn-close"
+                aria-label="Close"
+                on:click={closeAllianceModal}
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div class="ux-callout mb-2">
+                Select alliances to include in conflict filtering. This does not
+                change individual conflict stats.
+              </div>
+              <input
+                type="text"
+                class="form-control mb-2"
+                placeholder="Search alliances..."
+                bind:value={allianceSearchQuery}
+              />
+              <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                <button
+                  class="btn ux-btn btn-sm"
+                  type="button"
+                  on:click={selectAllDraftAlliances}
+                >
+                  Select All
+                </button>
+                <button
+                  class="btn ux-btn btn-sm"
+                  type="button"
+                  on:click={clearDraftAlliances}
+                >
+                  Clear
+                </button>
+                <span class="small ux-muted"
+                  >Selected: {draftAllowedAllianceIds.size}</span
+                >
+              </div>
+              <div
+                class="ux-surface p-2"
+                style="max-height: 50vh; overflow: auto;"
+              >
+                {#if filteredAllianceRows.length === 0}
+                  <div class="ux-muted small">
+                    No alliances match your search.
+                  </div>
+                {:else}
+                  {#each filteredAllianceRows as row}
+                    <label
+                      class="form-check d-flex align-items-center gap-2 mb-1"
+                    >
+                      <input
+                        class="form-check-input mt-0"
+                        type="checkbox"
+                        checked={draftAllowedAllianceIds.has(row.id)}
+                        on:change={() => toggleDraftAlliance(row.id)}
+                      />
+                      <span>{row.label}</span>
+                    </label>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button
+                class="btn btn-outline-secondary"
+                on:click={closeAllianceModal}>Cancel</button
+              >
+              <button
+                class="btn ux-btn"
+                on:click={applyAllianceModal}
+                disabled={draftAllowedAllianceIds.size === 0}
+              >
+                Apply ({draftAllowedAllianceIds.size})
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="ux-surface p-2 mb-2">
-        <!-- Toggle all button -->
-        <button
-          class="btn ux-btn btn-sm ms-1 mb-1"
-          on:click={() => toggleAlliances()}
-        >
-          Toggle All
-        </button>
-        <br />
-        {#each _rawData.alliance_ids as id, index}
-          {#if formatAllianceName(_rawData.alliance_names[index], id)
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase())}
-            <button
-              class="btn ux-btn btn-sm ms-1 mb-1"
-              class:active={_allowedAllianceIds.has(id)}
-              on:click={() => setLayoutAlliance(id)}
-            >
-              {formatAllianceName(_rawData.alliance_names[index], id)}
-            </button>
-          {/if}
-        {/each}
-      </div>
+      <div class="modal-backdrop fade show"></div>
     {/if}
   {/if}
   <div id="conflictTable" class="inline-block"></div>
