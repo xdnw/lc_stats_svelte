@@ -1,1 +1,0 @@
-function u(r){return function(){for(var n=arguments.length,a=new Array(n),t=0;t<n;t++)a[t]=arguments[t];var e=a[0];return e.stopPropagation(),r==null?void 0:r.apply(this,a)}}function o(r){return function(){for(var n=arguments.length,a=new Array(n),t=0;t<n;t++)a[t]=arguments[t];var e=a[0];return e.preventDefault(),r==null?void 0:r.apply(this,a)}}export{o as p,u as s};

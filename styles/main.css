@@ -596,12 +596,60 @@ html[data-bs-theme="dark"] .ux-btn-primary {
 
 h1.ux-surface.ux-page-title {
     margin: 0 0 0.5rem 0 !important;
-    padding: 0.45rem 0.75rem !important;
-    line-height: 1.15;
-    min-height: 2.35rem;
+    padding: 0.35rem 0.65rem !important;
+    line-height: 1.1;
+    min-height: 2rem;
+    font-size: 1.12rem;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
     flex-wrap: wrap;
+}
+
+.ux-page-title-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+}
+
+.ux-page-title-main {
+    font-size: 1.05em;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.ux-breadcrumbs {
+    display: block;
+    margin: 0;
+}
+
+.ux-breadcrumbs .breadcrumb {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1;
+}
+
+.ux-breadcrumbs .breadcrumb-item+.breadcrumb-item::before {
+    padding-right: 0.35rem;
+    padding-left: 0.35rem;
+}
+
+.ux-navbar {
+    padding-top: 0.12rem;
+    padding-bottom: 0.12rem;
+}
+
+.ux-navbar .ux-surface {
+    padding-top: 0.08rem !important;
+    padding-bottom: 0.08rem !important;
+}
+
+.ux-navbar .btn,
+.ux-navbar .form-control {
+    min-height: 1.95rem;
+    padding-top: 0.24rem;
+    padding-bottom: 0.24rem;
 }
 
 .app-shell .input-group.ux-inputbar .input-group-text,
