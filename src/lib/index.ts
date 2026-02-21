@@ -71,4 +71,12 @@ export {
 } from './columnPresets';
 export { modal, modalStrWithCloseButton, modalWithCloseButton } from './modals';
 export { buildAavaSelectionRows, type AavaSelectionRow, type AavaSelectionSnapshot } from './aavaSelection';
+export {
+    toNumberSelection,
+    firstSelectedString,
+    validateSingleSelection,
+    buildStringSelectionItems,
+    buildCoalitionAllianceItems,
+    validateAtLeastOnePerCoalition,
+} from './selectionModalHelpers';
 export * from './types';

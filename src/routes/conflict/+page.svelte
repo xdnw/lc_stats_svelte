@@ -7,7 +7,9 @@
     import { onMount } from "svelte";
     import {
         addFormatters,
+        buildStringSelectionItems,
         decompressBson,
+        firstSelectedString,
         formatDate,
         setupContainer,
         computeLayoutTableData,
@@ -26,6 +28,7 @@
         formatDatasetProvenance,
         formatAllianceName,
         trimHeader,
+        validateSingleSelection,
         buildAavaSelectionRows,
         formatNationName,
         getConflictGraphDataUrl,
@@ -52,6 +55,11 @@
     import { getAavaMetricLabel } from "$lib/aava";
     import { getVisGlobal, setWindowGlobal } from "$lib/globals";
     import ColumnPresetManager from "../../components/ColumnPresetManager.svelte";
+    import SelectionModal from "../../components/SelectionModal.svelte";
+    import type {
+        SelectionId,
+        SelectionModalItem,
+    } from "../../components/selectionModalTypes";
     import { config } from "../+layout";
 
     const Layout = {
@@ -238,6 +246,7 @@
     let metricCards: MetricCard[] = [];
     let draggingWidgetId: string | null = null;
     let kpiCollapsed = false;
+    let showLayoutPresetModal = false;
 
     let selectedAllianceIdsForKpi = new Set<number>();
     let selectedNationIdsForKpi = new Set<number>();
@@ -1334,6 +1343,46 @@
         loadCurrentLayout();
     }
 
+    function applyLayoutPresetKey(key: string): void {
+        _layoutData.columns = layouts[key].columns;
+        _layoutData.sort = layouts[key].sort;
+        syncLayoutQueryState();
+        saveCurrentQueryParams();
+        loadCurrentLayout();
+    }
+
+    function buildLayoutPresetItems(): SelectionModalItem[] {
+        return buildStringSelectionItems(Object.keys(layouts));
+    }
+
+    function currentLayoutPresetKey(): string | null {
+        return (
+            Object.keys(layouts).find((key) => {
+                const layout = layouts[key];
+                return (
+                    layout.sort === _layoutData.sort &&
+                    layout.columns.length === _layoutData.columns.length &&
+                    layout.columns.every((col, idx) => col === _layoutData.columns[idx])
+                );
+            }) ?? null
+        );
+    }
+
+    function openLayoutPresetModal(): void {
+        showLayoutPresetModal = true;
+    }
+
+    function closeLayoutPresetModal(): void {
+        showLayoutPresetModal = false;
+    }
+
+    function applyLayoutPresetModal(event: CustomEvent<{ ids: SelectionId[] }>): void {
+        const key = firstSelectedString(event.detail.ids);
+        if (!key || !(key in layouts)) return;
+        applyLayoutPresetKey(key);
+        showLayoutPresetModal = false;
+    }
+
     function resetFilters() {
         _layoutData.layout = Layout.COALITION;
         _layoutData.columns = layouts.Summary.columns;
@@ -1472,24 +1521,12 @@
     <ul
         class="layout-picker-bar ux-floating-controls nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
     >
-        <li class="me-1">Layout Picker:</li>
-        {#each Object.keys(layouts) as key}
-            <li>
-                <button
-                    class="btn ux-btn btn-sm ms-1 fw-bold {_layoutData.columns ===
-                    layouts[key].columns
-                        ? 'active'
-                        : ''}"
-                    on:click={() => {
-                        _layoutData.columns = layouts[key].columns;
-                        _layoutData.sort = layouts[key].sort;
-                        syncLayoutQueryState();
-                        saveCurrentQueryParams();
-                        loadCurrentLayout();
-                    }}>{key}</button
-                >
-            </li>
-        {/each}
+        <li class="d-flex align-items-center gap-2 me-1">
+            <span>Layout Picker:</span>
+            <button class="btn ux-btn btn-sm fw-bold" on:click={openLayoutPresetModal}
+                >Choose layout preset</button
+            >
+        </li>
 
         <li>
             <ColumnPresetManager
@@ -1965,6 +2002,20 @@
             </div>
         </div>
     {/if}
+
+    <SelectionModal
+        open={showLayoutPresetModal}
+        title="Choose Layout Preset"
+        description="Pick a preset column layout for the current conflict table."
+        items={buildLayoutPresetItems()}
+        selectedIds={currentLayoutPresetKey() ? [currentLayoutPresetKey() as string] : []}
+        applyLabel="Use preset"
+        singleSelect={true}
+        searchPlaceholder="Search presets..."
+        on:close={closeLayoutPresetModal}
+        on:apply={applyLayoutPresetModal}
+        validateSelection={(ids) => validateSingleSelection(ids, "layout preset")}
+    />
 
     {#if !_loaded}
         <Progress />

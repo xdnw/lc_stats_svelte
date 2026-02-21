@@ -40,13 +40,12 @@ function ensureDTLoaded(deps: TableAdapterDeps): Promise<void> {
 }
 
 function addTable(container: HTMLElement, id: string, deps: TableAdapterDeps) {
-    const collapseId = `tblCol-${id}`;
+    const modalId = `tblColModal-${id}`;
     const dropdownId = `dropdownMenuButton-${id}`;
-    const searchId = `table-search-${id}`;
 
     container.appendChild(
         deps.htmlToElement(`<div class="ux-toolbar">
-    <button class="btn ux-btn" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+    <button class="btn ux-btn" type="button" data-bs-toggle="modal" data-bs-target="#${modalId}" aria-expanded="false" aria-controls="${modalId}">
     <i class="bi bi-layout-three-columns"></i>&nbsp;Customize Columns&nbsp;<i class="bi bi-chevron-down"></i></button>
     <div class="dropdown d-inline">
     <button class="btn ux-btn" type="button" id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
@@ -62,12 +61,31 @@ function addTable(container: HTMLElement, id: string, deps: TableAdapterDeps) {
     </div>`),
     );
     container.appendChild(
-        deps.htmlToElement(`<div class="collapse table-toggles mb-2" id="${collapseId}">
-    <input id="${searchId}" class="form-control-sm w-100 mb-2" type="search" placeholder="Search columns" aria-label="Search columns">
-    <div class="ux-callout mb-2">
-            Use the buttons at the bottom of the table to hide/show columns. Drag the header to reorder columns.
+        deps.htmlToElement(`<div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="${modalId}-label">Customize Columns</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="ux-callout mb-2">
+                    Search and toggle visible columns. Changes apply immediately.
+                </div>
+                <input class="form-control mb-2 ux-colmgr-search" type="search" placeholder="Search columns" aria-label="Search columns">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <button class="btn ux-btn btn-sm ux-colmgr-all" type="button">Show all</button>
+                    <button class="btn ux-btn btn-sm ux-colmgr-none" type="button">Hide all</button>
+                    <span class="small ux-muted ux-colmgr-count"></span>
+                </div>
+                <div class="ux-surface p-2 ux-colmgr-list" style="max-height:50vh;overflow:auto;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
     </div>
-    </div>`),
+</div>`),
     );
     container.appendChild(
         deps.htmlToElement(`<div class="ux-table-wrap"><table id="${id}" class="bg-body-secondary border table compact table-bordered table-striped d-none" style="width:100%">
@@ -76,25 +94,6 @@ function addTable(container: HTMLElement, id: string, deps: TableAdapterDeps) {
         <tfoot><tr></tr></tfoot>
     </table></div>`),
     );
-
-    const input = container.getElementsByTagName("input")[0];
-    input.addEventListener("input", function () {
-        const tableToggles = container.getElementsByClassName("table-toggles");
-        for (let i = 0; i < tableToggles.length; i++) {
-            const buttons = tableToggles[i].getElementsByTagName("button");
-            for (let j = 0; j < buttons.length; j++) {
-                if (
-                    buttons[j].textContent
-                        ?.toLowerCase()
-                        .includes(this.value.toLowerCase())
-                ) {
-                    buttons[j].classList.remove("d-none");
-                } else {
-                    buttons[j].classList.add("d-none");
-                }
-            }
-        }
-    });
 }
 
 function setupTable(
@@ -200,7 +199,6 @@ function setupTable(
 
         const thead = containerElem.querySelector("thead tr");
         const tfoot = containerElem.querySelector("tfoot tr");
-        const tableToggles = containerElem.querySelector(".table-toggles");
         function handleSearch(input: HTMLInputElement, _event: Event) {
             const th = input.closest("th");
             if (!th || tableArr[0] == null) return;
@@ -212,7 +210,7 @@ function setupTable(
         function stopPropagation(event: Event) {
             event.stopPropagation();
         }
-        if (thead && tfoot && tableToggles) {
+        if (thead && tfoot) {
             const theadFragment = document.createDocumentFragment();
             const tfootFragment = document.createDocumentFragment();
             const summaryRow = document.createElement("tr");
@@ -265,20 +263,7 @@ function setupTable(
                     } else {
                         th.textContent = title;
                     }
-
-                    if (i != 0) {
-                        const button = document.createElement("button");
-                        button.className = "toggle-vis ux-toggle-btn btn btn-sm fw-bold";
-                        button.dataset.column = (i + 1).toString();
-                        button.textContent = title;
-                        tf.appendChild(button);
-
-                        if (!columnInfo.visible) {
-                            button.classList.add("is-hidden");
-                            (button as any).oldParent = tf;
-                            tableToggles.appendChild(button);
-                        }
-                    }
+                    tf.textContent = i === 0 ? "" : title;
                 }
 
                 theadFragment.appendChild(th);
@@ -467,79 +452,112 @@ function setupTable(
                 table.draw(false);
             });
 
-            function stopPropagation(event: Event) {
-                event.stopPropagation();
+            function syncVisibleColumnsToQuery(tableApi: any): void {
+                const visibleColumns = tableApi
+                    .columns()
+                    .indexes()
+                    .filter((idx: number) => idx > 0 && tableApi.column(idx).visible())
+                    .map((idx: number) => dataColumns[idx - 1])
+                    .toArray();
+                deps.setQueryParam("columns", visibleColumns.join("."));
             }
 
-            function preventButtonPropagation() {
-                const localButtons = containerElem.querySelectorAll(
-                    ".table-toggles button, .dataTables_wrapper button",
-                );
-                localButtons.forEach((button) => {
-                    if (button.classList.contains("ux-select-visible-btn")) {
-                        return;
-                    }
-                    button.addEventListener("click", stopPropagation);
-                });
+            function setupColumnManager(tableApi: any): void {
+                const searchInput = containerElem.querySelector(
+                    ".ux-colmgr-search",
+                ) as HTMLInputElement | null;
+                const listElem = containerElem.querySelector(
+                    ".ux-colmgr-list",
+                ) as HTMLElement | null;
+                const countElem = containerElem.querySelector(
+                    ".ux-colmgr-count",
+                ) as HTMLElement | null;
+                const showAllBtn = containerElem.querySelector(
+                    ".ux-colmgr-all",
+                ) as HTMLButtonElement | null;
+                const hideAllBtn = containerElem.querySelector(
+                    ".ux-colmgr-none",
+                ) as HTMLButtonElement | null;
 
-                const localInputs = containerElem.querySelectorAll(
-                    ".table-toggles input, thead input, tfoot input",
-                );
-                localInputs.forEach((input) => {
-                    input.addEventListener("click", stopPropagation);
-                });
-            }
+                if (!searchInput || !listElem || !countElem || !showAllBtn || !hideAllBtn) {
+                    return;
+                }
 
-            function handleToggleVis(jqContainer: any, table: any) {
-                const toggles = jqContainer.querySelectorAll(".toggle-vis");
-                toggles.forEach((toggle: any) => {
-                    toggle.addEventListener("click", function (e: Event) {
-                        e.preventDefault();
-                        const target = e.currentTarget as HTMLElement;
-                        const column = table.column(target.getAttribute("data-column"));
+                const searchInputEl = searchInput;
+                const listElemEl = listElem;
+                const countElemEl = countElem;
+                const showAllBtnEl = showAllBtn;
+                const hideAllBtnEl = hideAllBtn;
 
-                        column.visible(!column.visible());
-                        target.classList.toggle("is-hidden", !column.visible());
+                function renderColumnManagerList(): void {
+                    const query = searchInputEl.value.trim().toLowerCase();
+                    listElemEl.innerHTML = "";
 
-                        if (
-                            target.parentElement &&
-                            target.parentElement.tagName === "TH"
-                        ) {
-                            (target as any).oldParent = target.parentElement;
-                            const tableToggles = jqContainer.querySelector(".table-toggles");
-                            tableToggles.appendChild(target);
+                    let visibleCount = 0;
+                    let matchedCount = 0;
+                    for (let i = 0; i < dataColumns.length; i++) {
+                        if (i === 0) continue;
+                        const title = dataColumns[i] ?? "";
+                        const isVisible = tableApi.column(i + 1).visible();
+                        if (isVisible) visibleCount++;
 
-                            const inputElem = tableToggles.querySelector(
-                                "input",
-                            ) as HTMLInputElement | null;
-                            const targetText = target.textContent ?? "";
-                            if (
-                                inputElem &&
-                                inputElem.value &&
-                                !targetText
-                                    .toLowerCase()
-                                    .includes(inputElem.value.toLowerCase())
-                            ) {
-                                target.classList.add("d-none");
-                            }
-                        } else {
-                            const oldParent = (target as any).oldParent;
-                            if (oldParent) {
-                                oldParent.appendChild(target);
-                            }
+                        if (query && !title.toLowerCase().includes(query)) {
+                            continue;
                         }
 
-                        const visibleColumns = table
-                            .columns()
-                            .indexes()
-                            .filter((idx: number) => idx > 0 && table.column(idx).visible())
-                            .map((idx: number) => dataColumns[idx - 1])
-                            .toArray();
-                        deps.setQueryParam("columns", visibleColumns.join("."));
+                        matchedCount++;
+                        const row = document.createElement("label");
+                        row.className = "form-check d-flex align-items-center gap-2 mb-1";
 
-                        table.columns.adjust().draw(false);
-                    });
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.className = "form-check-input mt-0";
+                        checkbox.checked = isVisible;
+                        checkbox.addEventListener("change", () => {
+                            tableApi.column(i + 1).visible(checkbox.checked);
+                            syncVisibleColumnsToQuery(tableApi);
+                            tableApi.columns.adjust().draw(false);
+                            renderColumnManagerList();
+                        });
+
+                        const label = document.createElement("span");
+                        label.textContent = title;
+
+                        row.appendChild(checkbox);
+                        row.appendChild(label);
+                        listElemEl.appendChild(row);
+                    }
+
+                    if (matchedCount === 0) {
+                        const empty = document.createElement("div");
+                        empty.className = "small ux-muted";
+                        empty.textContent = "No columns match your search.";
+                        listElemEl.appendChild(empty);
+                    }
+
+                    countElemEl.textContent = `Visible: ${visibleCount}/${Math.max(0, dataColumns.length - 1)}`;
+                }
+
+                searchInputEl.addEventListener("input", renderColumnManagerList);
+                showAllBtnEl.addEventListener("click", () => {
+                    for (let i = 1; i < dataColumns.length; i++) {
+                        tableApi.column(i + 1).visible(true, false);
+                    }
+                    syncVisibleColumnsToQuery(tableApi);
+                    tableApi.columns.adjust().draw(false);
+                    renderColumnManagerList();
                 });
+                hideAllBtnEl.addEventListener("click", () => {
+                    for (let i = 1; i < dataColumns.length; i++) {
+                        tableApi.column(i + 1).visible(false, false);
+                    }
+                    syncVisibleColumnsToQuery(tableApi);
+                    tableApi.columns.adjust().draw(false);
+                    renderColumnManagerList();
+                });
+
+                renderColumnManagerList();
+                tableApi.on("column-visibility", renderColumnManagerList);
             }
 
             function formatRowDetails(d: any) {
@@ -668,8 +686,7 @@ function setupTable(
                 });
             }
 
-            preventButtonPropagation();
-            handleToggleVis(containerElem, table);
+            setupColumnManager(table);
             addRowDetailsListener(tableElem, table);
             addRowSelectionListener(tableElem, table);
             addSummaryActionsListener(table);

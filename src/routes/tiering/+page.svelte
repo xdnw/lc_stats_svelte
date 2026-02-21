@@ -6,21 +6,28 @@
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
+    import SelectionModal from "../../components/SelectionModal.svelte";
+    import type {
+        SelectionId,
+        SelectionModalItem,
+    } from "../../components/selectionModalTypes";
     import { base } from "$app/paths";
     import type { API, Options } from "nouislider";
     import { Chart, registerables, type ChartConfiguration } from "chart.js";
     Chart.register(...registerables);
     import { onMount, onDestroy, tick } from "svelte";
     import {
+        buildCoalitionAllianceItems,
         decompressBson,
         formatTurnsToDate,
+        validateAtLeastOnePerCoalition,
         type GraphData,
         type TierMetric,
         arrayEquals,
         setQueryParam,
         getCurrentQueryParams,
         resolveMetricAccessors,
-        toggleCoalitionAllianceSelection,
+        toNumberSelection,
         getConflictDataUrl,
         getConflictGraphDataUrl,
         formatDaysToDate,
@@ -59,6 +66,7 @@
     }
 
     let _allowedAllianceIds: Set<number> = new Set();
+    let showAllianceModal = false;
 
     let dataSets: DataSet[];
     let chartInstanceRef: Chart | null = null;
@@ -147,21 +155,37 @@
         return true;
     }
 
-    function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
-        if (!_rawData) return;
-        _allowedAllianceIds = toggleCoalitionAllianceSelection(
-            _allowedAllianceIds,
-            _rawData.coalitions,
-            coalitionIndex,
-            allianceId,
+    function buildAllianceModalItems(): SelectionModalItem[] {
+        if (!_rawData) return [];
+        return buildCoalitionAllianceItems(_rawData.coalitions, formatAllianceName);
+    }
+
+    function validateAllianceSelection(ids: SelectionId[]): string | null {
+        if (!_rawData) return null;
+        return validateAtLeastOnePerCoalition(
+            ids,
+            [_rawData.coalitions[0], _rawData.coalitions[1]],
         );
-        if (_rawData) {
-            setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
-                replace: true,
-            });
-            saveCurrentQueryParams();
-            setupCharts(_rawData);
-        }
+    }
+
+    function openAllianceModal() {
+        showAllianceModal = true;
+    }
+
+    function closeAllianceModal() {
+        showAllianceModal = false;
+    }
+
+    function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+        if (!_rawData) return;
+        const nextIds = toNumberSelection(event.detail.ids);
+        _allowedAllianceIds = new Set(nextIds);
+        showAllianceModal = false;
+        setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
+            replace: true,
+        });
+        saveCurrentQueryParams();
+        setupCharts(_rawData);
     }
 
     function loadQueryParams(params: URLSearchParams) {
@@ -987,38 +1011,44 @@
                     <div
                         class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red"
                     >
-                        {_rawData?.coalitions[0].name}:
-                        {#each _rawData.coalitions[0].alliance_ids as id, index}
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="fw-bold">
+                                {_rawData?.coalitions[0].name} selected: {_rawData
+                                    .coalitions[0].alliance_ids.filter((id) =>
+                                        _allowedAllianceIds.has(id),
+                                    ).length}/{_rawData.coalitions[0].alliance_ids
+                                    .length}
+                            </span>
+                        </div>
+                        <div class="mt-2">
                             <button
-                                class="btn ux-btn btn-sm ms-1 mb-1"
-                                class:active={_allowedAllianceIds.has(id)}
-                                on:click={() => setLayoutAlliance(0, id)}
-                                >{formatAllianceName(
-                                    _rawData.coalitions[0].alliance_names[
-                                        index
-                                    ],
-                                    id,
-                                )}</button
+                                class="btn ux-btn btn-sm fw-bold"
+                                on:click={openAllianceModal}
                             >
-                        {/each}
+                                Edit alliances
+                            </button>
+                        </div>
                     </div>
                     <div
                         class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue"
                     >
-                        {_rawData?.coalitions[1].name}:
-                        {#each _rawData.coalitions[1].alliance_ids as id, index}
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="fw-bold">
+                                {_rawData?.coalitions[1].name} selected: {_rawData
+                                    .coalitions[1].alliance_ids.filter((id) =>
+                                        _allowedAllianceIds.has(id),
+                                    ).length}/{_rawData.coalitions[1].alliance_ids
+                                    .length}
+                            </span>
+                        </div>
+                        <div class="mt-2">
                             <button
-                                class="btn ux-btn btn-sm ms-1 mb-1"
-                                class:active={_allowedAllianceIds.has(id)}
-                                on:click={() => setLayoutAlliance(1, id)}
-                                >{formatAllianceName(
-                                    _rawData.coalitions[1].alliance_names[
-                                        index
-                                    ],
-                                    id,
-                                )}</button
+                                class="btn ux-btn btn-sm fw-bold"
+                                on:click={openAllianceModal}
                             >
-                        {/each}
+                                Edit alliances
+                            </button>
+                        </div>
                     </div>
                 {/if}
             </div>
@@ -1108,4 +1138,16 @@
     {#if datasetProvenance}
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
+
+    <SelectionModal
+        open={showAllianceModal}
+        title="Filter Alliances"
+        description="Select alliances from both coalitions to include in tiering charts."
+        items={buildAllianceModalItems()}
+        selectedIds={Array.from(_allowedAllianceIds)}
+        searchPlaceholder="Search alliances..."
+        on:close={closeAllianceModal}
+        on:apply={applyAllianceModal}
+        validateSelection={validateAllianceSelection}
+    />
 </div>

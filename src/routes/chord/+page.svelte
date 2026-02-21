@@ -2,7 +2,10 @@
     // @ts-nocheck
     import { base } from "$app/paths";
     import {
+        buildCoalitionAllianceItems,
+        buildStringSelectionItems,
         decompressBson,
+        firstSelectedString,
         type Conflict,
         rafDelay,
         getCurrentQueryParams,
@@ -21,6 +24,9 @@
         formatAllianceName,
         getDefaultWarWebHeader,
         resolveWarWebMetricMeta,
+        toNumberSelection,
+        validateAtLeastOnePerCoalition,
+        validateSingleSelection,
         yieldToMain,
     } from "$lib";
     import { onMount } from "svelte";
@@ -28,6 +34,11 @@
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
+    import SelectionModal from "../../components/SelectionModal.svelte";
+    import type {
+        SelectionId,
+        SelectionModalItem,
+    } from "../../components/selectionModalTypes";
     import * as d3 from "d3";
     import { config } from "../+layout";
 
@@ -37,6 +48,8 @@
     let _rawData: Conflict | null = null;
     let _allowedAllianceIds: Set<number> = new Set();
     let _currentHeaderName: string = "wars";
+    let showHeaderModal = false;
+    let showAllianceModal = false;
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
@@ -143,6 +156,25 @@
         setupWebWithCurrentLayout();
     }
 
+    function openHeaderModal() {
+        showHeaderModal = true;
+    }
+
+    function closeHeaderModal() {
+        showHeaderModal = false;
+    }
+
+    function applyHeaderModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+        const nextHeader = firstSelectedString(event.detail.ids);
+        if (!nextHeader) return;
+        setLayoutHeader(nextHeader);
+        showHeaderModal = false;
+    }
+
+    function buildHeaderItems(): SelectionModalItem[] {
+        return buildStringSelectionItems(_rawData?.war_web.headers ?? []);
+    }
+
     function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
         if (!_rawData) return;
         _allowedAllianceIds = toggleCoalitionAllianceSelection(
@@ -151,6 +183,36 @@
             coalitionIndex,
             allianceId,
         );
+        setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
+        saveCurrentQueryParams();
+        setupWebWithCurrentLayout();
+    }
+
+    function buildAllianceModalItems(): SelectionModalItem[] {
+        if (!_rawData) return [];
+        return buildCoalitionAllianceItems(_rawData.coalitions, formatAllianceName);
+    }
+
+    function validateAllianceSelection(ids: SelectionId[]): string | null {
+        if (!_rawData) return null;
+        return validateAtLeastOnePerCoalition(
+            ids,
+            [_rawData.coalitions[0], _rawData.coalitions[1]],
+        );
+    }
+
+    function openAllianceModal() {
+        showAllianceModal = true;
+    }
+
+    function closeAllianceModal() {
+        showAllianceModal = false;
+    }
+
+    function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+        const nextIds = toNumberSelection(event.detail.ids);
+        _allowedAllianceIds = new Set(nextIds);
+        showAllianceModal = false;
         setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
         saveCurrentQueryParams();
         setupWebWithCurrentLayout();
@@ -506,51 +568,60 @@
         {/if}
         {#if _rawData}
             <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="fw-bold">Layout Picker:</span>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="fw-bold">Metric header: {_currentHeaderName}</span>
+                    <button
+                        class="btn ux-btn btn-sm fw-bold"
+                        on:click={openHeaderModal}
+                    >
+                        Choose metric header
+                    </button>
+                </div>
                 <ShareResetBar
                     onReset={resetFilters}
                     resetDirty={isResetDirty}
                 />
             </div>
-            {#each _rawData.war_web.headers as header (header)}
-                <button
-                    class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
-                    class:active={_currentHeaderName === header}
-                    on:click={() => setLayoutHeader(header)}>{header}</button
-                >
-            {/each}
             <hr class="m-1" />
             <div
                 class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red"
             >
-                {_rawData?.coalitions[0].name}:
-                {#each _rawData.coalitions[0].alliance_ids as id, index}
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="fw-bold">
+                        {_rawData?.coalitions[0].name} selected: {_rawData
+                            .coalitions[0].alliance_ids.filter((id) =>
+                                _allowedAllianceIds.has(id),
+                            ).length}/{_rawData.coalitions[0].alliance_ids.length}
+                    </span>
+                </div>
+                <div class="mt-2">
                     <button
-                        class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
-                        class:active={_allowedAllianceIds.has(id)}
-                        on:click={() => setLayoutAlliance(0, id)}
-                        >{formatAllianceName(
-                            _rawData.coalitions[0].alliance_names[index],
-                            id,
-                        )}</button
+                        class="btn ux-btn btn-sm fw-bold"
+                        on:click={openAllianceModal}
                     >
-                {/each}
+                        Edit alliances
+                    </button>
+                </div>
             </div>
             <div
                 class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue"
             >
-                {_rawData?.coalitions[1].name}:
-                {#each _rawData.coalitions[1].alliance_ids as id, index}
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="fw-bold">
+                        {_rawData?.coalitions[1].name} selected: {_rawData
+                            .coalitions[1].alliance_ids.filter((id) =>
+                                _allowedAllianceIds.has(id),
+                            ).length}/{_rawData.coalitions[1].alliance_ids.length}
+                    </span>
+                </div>
+                <div class="mt-2">
                     <button
-                        class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
-                        class:active={_allowedAllianceIds.has(id)}
-                        on:click={() => setLayoutAlliance(1, id)}
-                        >{formatAllianceName(
-                            _rawData.coalitions[1].alliance_names[index],
-                            id,
-                        )}</button
+                        class="btn ux-btn btn-sm fw-bold"
+                        on:click={openAllianceModal}
                     >
-                {/each}
+                        Edit alliances
+                    </button>
+                </div>
             </div>
             <div class="small text-muted mt-2">
                 {resolveWarWebMetricMeta(_currentHeaderName).directionNote(
@@ -576,5 +647,29 @@
     {#if datasetProvenance}
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
+    <SelectionModal
+        open={showHeaderModal}
+        title="Choose Metric Header"
+        description="Pick the active header used to generate chord edges and flow tables."
+        items={buildHeaderItems()}
+        selectedIds={[_currentHeaderName]}
+        applyLabel="Use header"
+        singleSelect={true}
+        searchPlaceholder="Search layouts..."
+        on:close={closeHeaderModal}
+        on:apply={applyHeaderModal}
+        validateSelection={(ids) => validateSingleSelection(ids, "header")}
+    />
+    <SelectionModal
+        open={showAllianceModal}
+        title="Filter Alliances"
+        description="Select alliances from both coalitions to include in the chord graph."
+        items={buildAllianceModalItems()}
+        selectedIds={Array.from(_allowedAllianceIds)}
+        searchPlaceholder="Search alliances..."
+        on:close={closeAllianceModal}
+        on:apply={applyAllianceModal}
+        validateSelection={validateAllianceSelection}
+    />
     <br />
 </div>

@@ -4,14 +4,22 @@
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
+    import SelectionModal from "../../components/SelectionModal.svelte";
+    import type {
+        SelectionId,
+        SelectionModalItem,
+    } from "../../components/selectionModalTypes";
     import { base } from "$app/paths";
     import {
         addFormatters,
         applySavedQueryParamsIfMissing,
         buildAavaSelectionRows,
+        buildCoalitionAllianceItems,
+        buildStringSelectionItems,
         decompressBson,
         downloadTableElem,
         ExportTypes,
+        firstSelectedString,
         formatAllianceName,
         formatDatasetProvenance,
         getDefaultWarWebHeader,
@@ -24,8 +32,10 @@
         saveCurrentQueryParams,
         setQueryParam,
         setupContainer,
+        toNumberSelection,
         type Conflict,
         type TableData,
+        validateSingleSelection,
         yieldToMain,
     } from "$lib";
     import { setWindowGlobal } from "$lib/globals";
@@ -88,6 +98,9 @@
     let metricMetricToAdd = "net";
     let metricAggToAdd: "sum" | "avg" = "sum";
     let metricNormalizeByToAdd = "";
+    let showHeaderModal = false;
+    let showPrimaryAllianceModal = false;
+    let showVsAllianceModal = false;
     let rowsCache = new Map<string, any[]>();
     let renderQueued = false;
 
@@ -525,6 +538,25 @@
         scheduleRenderTable();
     }
 
+    function openHeaderModal() {
+        showHeaderModal = true;
+    }
+
+    function closeHeaderModal() {
+        showHeaderModal = false;
+    }
+
+    function applyHeaderModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+        const nextHeader = firstSelectedString(event.detail.ids);
+        if (!nextHeader) return;
+        setHeader(nextHeader);
+        showHeaderModal = false;
+    }
+
+    function buildHeaderItems(): SelectionModalItem[] {
+        return buildStringSelectionItems(_rawData?.war_web.headers ?? []);
+    }
+
     function swapPrimaryCoalition() {
         if (!_rawData) return;
         primaryCoalitionIndex = primaryCoalitionIndex === 0 ? 1 : 0;
@@ -533,59 +565,43 @@
         scheduleRenderTable();
     }
 
-    function setAllForPrimary() {
-        setCoalitionSelection(primaryCoalitionIndex as 0 | 1, [
-            ...normalizeAllianceIds(getPrimaryCoalition()?.alliance_ids ?? []),
-        ]);
-        syncQueryParams();
-        scheduleRenderTable();
+    function buildCoalitionModalItems(coalitionIndex: 0 | 1): SelectionModalItem[] {
+        const coalition = _rawData?.coalitions[coalitionIndex];
+        if (!coalition) return [];
+        return buildCoalitionAllianceItems([coalition], formatAllianceName);
     }
 
-    function setNoneForPrimary() {
-        setCoalitionSelection(primaryCoalitionIndex as 0 | 1, [], {
+    function openPrimaryAllianceModal() {
+        showPrimaryAllianceModal = true;
+    }
+
+    function openVsAllianceModal() {
+        showVsAllianceModal = true;
+    }
+
+    function closePrimaryAllianceModal() {
+        showPrimaryAllianceModal = false;
+    }
+
+    function closeVsAllianceModal() {
+        showVsAllianceModal = false;
+    }
+
+    function applyPrimaryAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+        const nextIds = toNumberSelection(event.detail.ids);
+        setCoalitionSelection(primaryCoalitionIndex as 0 | 1, nextIds, {
             allowEmpty: true,
         });
+        showPrimaryAllianceModal = false;
         syncQueryParams();
         scheduleRenderTable();
     }
 
-    function setAllForVs() {
+    function applyVsAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
         const vsIndex = (primaryCoalitionIndex === 0 ? 1 : 0) as 0 | 1;
-        setCoalitionSelection(vsIndex, [
-            ...normalizeAllianceIds(getVsCoalition()?.alliance_ids ?? []),
-        ]);
-        syncQueryParams();
-        scheduleRenderTable();
-    }
-
-    function setNoneForVs() {
-        const vsIndex = (primaryCoalitionIndex === 0 ? 1 : 0) as 0 | 1;
-        setCoalitionSelection(vsIndex, [], { allowEmpty: true });
-        syncQueryParams();
-        scheduleRenderTable();
-    }
-
-    function togglePrimaryAlliance(id: number) {
-        id = Number(id);
-        const currentPrimary = selectedByCoalition[primaryCoalitionIndex] ?? [];
-        const next = currentPrimary.includes(id)
-            ? currentPrimary.filter((x) => x !== id)
-            : [...currentPrimary, id];
-        setCoalitionSelection(primaryCoalitionIndex as 0 | 1, next, {
-            allowEmpty: true,
-        });
-        syncQueryParams();
-        scheduleRenderTable();
-    }
-
-    function toggleVsAlliance(id: number) {
-        id = Number(id);
-        const vsIndex = (primaryCoalitionIndex === 0 ? 1 : 0) as 0 | 1;
-        const currentVs = selectedByCoalition[vsIndex] ?? [];
-        const next = currentVs.includes(id)
-            ? currentVs.filter((x) => x !== id)
-            : [...currentVs, id];
-        setCoalitionSelection(vsIndex, next, { allowEmpty: true });
+        const nextIds = toNumberSelection(event.detail.ids);
+        setCoalitionSelection(vsIndex, nextIds, { allowEmpty: true });
+        showVsAllianceModal = false;
         syncQueryParams();
         scheduleRenderTable();
     }
@@ -927,14 +943,15 @@
 
         {#if _rawData}
             <div class="mb-2">
-                <div class="mb-1">Header:</div>
-                {#each _rawData.war_web.headers as header (header)}
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="fw-bold">Header: {currentHeader}</span>
                     <button
-                        class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
-                        class:active={currentHeader === header}
-                        on:click={() => setHeader(header)}>{header}</button
+                        class="btn ux-btn btn-sm fw-bold"
+                        on:click={openHeaderModal}
                     >
-                {/each}
+                        Choose metric header
+                    </button>
+                </div>
             </div>
 
             <div class="row g-2">
@@ -953,32 +970,19 @@
                                 {selectedPrimaryIds.length}/{getPrimaryCoalition()
                                     ?.alliance_ids.length ?? 0}
                             </strong>
-                            <div class="d-flex gap-1">
-                                <button
-                                    class="btn ux-btn btn-sm fw-bold"
-                                    on:click={setAllForPrimary}>All</button
-                                >
-                                <button
-                                    class="btn ux-btn btn-sm fw-bold"
-                                    on:click={setNoneForPrimary}>None</button
-                                >
-                            </div>
                         </div>
-                        {#each getPrimaryCoalition()?.alliance_ids ?? [] as id, i}
+                        <div class="small ux-muted">
+                            Use "Edit alliances" to search, bulk-select, or clear coalition
+                            alliances.
+                        </div>
+                        <div class="mt-2">
                             <button
-                                class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
-                                class:active={selectedPrimaryIds.includes(
-                                    Number(id),
-                                )}
-                                on:click={() =>
-                                    togglePrimaryAlliance(Number(id))}
+                                class="btn ux-btn btn-sm fw-bold"
+                                on:click={openPrimaryAllianceModal}
                             >
-                                {formatAllianceName(
-                                    getPrimaryCoalition()?.alliance_names[i],
-                                    Number(id),
-                                )}
+                                Edit alliances
                             </button>
-                        {/each}
+                        </div>
                     </div>
                 </div>
                 <div class="col-md-6">
@@ -996,31 +1000,19 @@
                                 {selectedVsIds.length}/{getVsCoalition()
                                     ?.alliance_ids.length ?? 0}
                             </strong>
-                            <div class="d-flex gap-1">
-                                <button
-                                    class="btn ux-btn btn-sm fw-bold"
-                                    on:click={setAllForVs}>All</button
-                                >
-                                <button
-                                    class="btn ux-btn btn-sm fw-bold"
-                                    on:click={setNoneForVs}>None</button
-                                >
-                            </div>
                         </div>
-                        {#each getVsCoalition()?.alliance_ids ?? [] as id, i}
+                        <div class="small ux-muted">
+                            Use "Edit alliances" to search, bulk-select, or clear coalition
+                            alliances.
+                        </div>
+                        <div class="mt-2">
                             <button
-                                class="btn ux-btn btn-sm ms-1 mb-1 fw-bold"
-                                class:active={selectedVsIds.includes(
-                                    Number(id),
-                                )}
-                                on:click={() => toggleVsAlliance(Number(id))}
+                                class="btn ux-btn btn-sm fw-bold"
+                                on:click={openVsAllianceModal}
                             >
-                                {formatAllianceName(
-                                    getVsCoalition()?.alliance_names[i],
-                                    Number(id),
-                                )}
+                                Edit alliances
                             </button>
-                        {/each}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1034,6 +1026,44 @@
             </div>
         {/if}
     </div>
+
+    <SelectionModal
+        open={showHeaderModal}
+        title="Choose Metric Header"
+        description="Pick the active war web header used for AAvA calculations."
+        items={buildHeaderItems()}
+        selectedIds={[currentHeader]}
+        applyLabel="Use header"
+        singleSelect={true}
+        searchPlaceholder="Search headers..."
+        on:close={closeHeaderModal}
+        on:apply={applyHeaderModal}
+        validateSelection={(ids) => validateSingleSelection(ids, "header")}
+    />
+
+    <SelectionModal
+        open={showPrimaryAllianceModal}
+        title={`Selected coalition: ${getPrimaryCoalition()?.name ?? ""}`}
+        description="Choose alliances to include in the selected coalition set."
+        items={buildCoalitionModalItems(primaryCoalitionIndex as 0 | 1)}
+        selectedIds={selectedPrimaryIds}
+        searchPlaceholder="Search selected coalition alliances..."
+        on:close={closePrimaryAllianceModal}
+        on:apply={applyPrimaryAllianceModal}
+    />
+
+    <SelectionModal
+        open={showVsAllianceModal}
+        title={`Compared coalition: ${getVsCoalition()?.name ?? ""}`}
+        description="Choose alliances to include in the compared coalition set."
+        items={buildCoalitionModalItems(
+            (primaryCoalitionIndex === 0 ? 1 : 0) as 0 | 1,
+        )}
+        selectedIds={selectedVsIds}
+        searchPlaceholder="Search compared coalition alliances..."
+        on:close={closeVsAllianceModal}
+        on:apply={applyVsAllianceModal}
+    />
 
     {#if _rawData && (selectedPrimaryIds.length === 0 || selectedVsIds.length === 0)}
         <div class="alert alert-warning fw-bold">

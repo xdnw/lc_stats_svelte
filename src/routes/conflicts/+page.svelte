@@ -7,6 +7,11 @@
   import Breadcrumbs from "../../components/Breadcrumbs.svelte";
   import ShareResetBar from "../../components/ShareResetBar.svelte";
   import Progress from "../../components/Progress.svelte";
+  import SelectionModal from "../../components/SelectionModal.svelte";
+  import type {
+    SelectionId,
+    SelectionModalItem,
+  } from "../../components/selectionModalTypes";
   import { onMount } from "svelte";
   import {
     decompressBson,
@@ -28,6 +33,7 @@
     formatAllianceName,
     getConflictDataUrl,
     getConflictGraphDataUrl,
+    toNumberSelection,
     yieldToMain,
   } from "$lib";
   import {
@@ -71,12 +77,7 @@
 
   let _allowedAllianceIds: Set<number> = new Set();
   let showAllianceModal = false;
-  let allianceSearchQuery = "";
-  let draftAllowedAllianceIds: Set<number> = new Set();
-  let allianceRows: { id: number; label: string }[] = [];
-  $: filteredAllianceRows = allianceRows.filter((row) =>
-    row.label.toLowerCase().includes(allianceSearchQuery.trim().toLowerCase()),
-  );
+  let allianceRows: SelectionModalItem[] = [];
 
   let categoryCounts: { [key: string]: number } = {};
   let selectedCategories: Set<string> = new Set();
@@ -807,9 +808,6 @@
   }
 
   function openAllianceModal() {
-    if (!_rawData) return;
-    draftAllowedAllianceIds = new Set(_allowedAllianceIds);
-    allianceSearchQuery = "";
     showAllianceModal = true;
   }
 
@@ -817,28 +815,10 @@
     showAllianceModal = false;
   }
 
-  function toggleDraftAlliance(id: number) {
-    const next = new Set(draftAllowedAllianceIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    draftAllowedAllianceIds = next;
-  }
-
-  function selectAllDraftAlliances() {
-    if (!_rawData) return;
-    draftAllowedAllianceIds = new Set(_rawData.alliance_ids);
-  }
-
-  function clearDraftAlliances() {
-    draftAllowedAllianceIds = new Set();
-  }
-
-  function applyAllianceModal() {
-    if (draftAllowedAllianceIds.size === 0) return;
-    _allowedAllianceIds = new Set(draftAllowedAllianceIds);
+  function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+    const nextIds = toNumberSelection(event.detail.ids);
+    if (nextIds.length === 0) return;
+    _allowedAllianceIds = new Set(nextIds);
     showAllianceModal = false;
     recalcAlliances();
   }
@@ -860,8 +840,6 @@
     guildParam = null;
     currSource = ["All", 0];
     selectedCategories = new Set();
-    allianceSearchQuery = "";
-    draftAllowedAllianceIds = new Set(_rawData.alliance_ids);
     showAllianceModal = false;
     resetQueryParams(["ids", "guild", "guild_id"]);
     saveCurrentQueryParams();
@@ -1046,105 +1024,18 @@
       </button>
       <ShareResetBar onReset={resetFilters} resetDirty={isResetDirty} />
     </div>
-    {#if showAllianceModal}
-      <div
-        class="modal fade show d-block"
-        tabindex="-1"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Filter alliances"
-        on:click|self={closeAllianceModal}
-        on:keydown={(event) => {
-          if (event.key === "Escape") closeAllianceModal();
-        }}
-      >
-        <div
-          class="modal-dialog modal-lg modal-dialog-scrollable"
-          role="document"
-        >
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Filter Alliances</h5>
-              <button
-                type="button"
-                class="btn-close"
-                aria-label="Close"
-                on:click={closeAllianceModal}
-              ></button>
-            </div>
-            <div class="modal-body">
-              <div class="ux-callout mb-2">
-                Select alliances to include in conflict filtering. This does not
-                change individual conflict stats.
-              </div>
-              <input
-                type="text"
-                class="form-control mb-2"
-                placeholder="Search alliances..."
-                bind:value={allianceSearchQuery}
-              />
-              <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <button
-                  class="btn ux-btn btn-sm"
-                  type="button"
-                  on:click={selectAllDraftAlliances}
-                >
-                  Select All
-                </button>
-                <button
-                  class="btn ux-btn btn-sm"
-                  type="button"
-                  on:click={clearDraftAlliances}
-                >
-                  Clear
-                </button>
-                <span class="small ux-muted"
-                  >Selected: {draftAllowedAllianceIds.size}</span
-                >
-              </div>
-              <div
-                class="ux-surface p-2"
-                style="max-height: 50vh; overflow: auto;"
-              >
-                {#if filteredAllianceRows.length === 0}
-                  <div class="ux-muted small">
-                    No alliances match your search.
-                  </div>
-                {:else}
-                  {#each filteredAllianceRows as row}
-                    <label
-                      class="form-check d-flex align-items-center gap-2 mb-1"
-                    >
-                      <input
-                        class="form-check-input mt-0"
-                        type="checkbox"
-                        checked={draftAllowedAllianceIds.has(row.id)}
-                        on:change={() => toggleDraftAlliance(row.id)}
-                      />
-                      <span>{row.label}</span>
-                    </label>
-                  {/each}
-                {/if}
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button
-                class="btn btn-outline-secondary"
-                on:click={closeAllianceModal}>Cancel</button
-              >
-              <button
-                class="btn ux-btn"
-                on:click={applyAllianceModal}
-                disabled={draftAllowedAllianceIds.size === 0}
-              >
-                Apply ({draftAllowedAllianceIds.size})
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="modal-backdrop fade show"></div>
-    {/if}
+    <SelectionModal
+      open={showAllianceModal}
+      title="Filter Alliances"
+      description="Select alliances to include in conflict filtering. This does not change individual conflict stats."
+      items={allianceRows}
+      selectedIds={Array.from(_allowedAllianceIds)}
+      searchPlaceholder="Search alliances..."
+      on:close={closeAllianceModal}
+      on:apply={applyAllianceModal}
+      validateSelection={(ids) =>
+        ids.length === 0 ? "Select at least one alliance." : null}
+    />
   {/if}
   <div id="conflictTable" class="inline-block"></div>
   <div class="ux-surface p-2 mt-2">
