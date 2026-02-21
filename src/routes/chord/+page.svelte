@@ -12,6 +12,7 @@
         commafy,
         toggleCoalitionAllianceSelection,
         getConflictDataUrl,
+        getConflictGraphDataUrl,
         applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
         resetQueryParams,
@@ -24,6 +25,7 @@
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
+    import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import * as d3 from "d3";
     import { config } from "../+layout";
 
@@ -104,6 +106,24 @@
                 setupWebWithCurrentLayout();
                 _loaded = true;
                 saveCurrentQueryParams();
+
+                // Warm graph payload cache so switching to Tiering/Bubble is faster.
+                const schedulePrefetch =
+                    typeof (window as any).requestIdleCallback === "function"
+                        ? (cb: () => void) =>
+                              (window as any).requestIdleCallback(cb, {
+                                  timeout: 2500,
+                              })
+                        : (cb: () => void) => window.setTimeout(cb, 300);
+                schedulePrefetch(() => {
+                    const graphUrl = getConflictGraphDataUrl(
+                        conflictId,
+                        config.version.graph_data,
+                    );
+                    decompressBson(graphUrl).catch(() => {
+                        // Best-effort prefetch only.
+                    });
+                });
             })
             .catch((error) => {
                 console.error("Failed to load chord web data", error);
@@ -440,9 +460,22 @@
 </svelte:head>
 <div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-        <a href="conflicts" aria-label="Back to conflicts"
-            ><i class="bi bi-arrow-left"></i></a
-        >&nbsp;Conflict: {conflictName}
+        <div class="ux-page-title-stack">
+            <Breadcrumbs
+                items={[
+                    { label: "Home", href: "/" },
+                    { label: "Conflicts", href: "/conflicts" },
+                    {
+                        label: conflictName || "Conflict",
+                        href: conflictId
+                            ? "/conflict?id=" + conflictId
+                            : undefined,
+                    },
+                    { label: "Chord" },
+                ]}
+            />
+            <span class="ux-page-title-main">Conflict: {conflictName}</span>
+        </div>
         {#if _rawData?.wiki}
             <a
                 class="btn ux-btn fw-bold"

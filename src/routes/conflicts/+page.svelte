@@ -4,6 +4,7 @@
    * This page is for viewing the table of all conflicts
    */
   import { base } from "$app/paths";
+  import Breadcrumbs from "../../components/Breadcrumbs.svelte";
   import ShareResetBar from "../../components/ShareResetBar.svelte";
   import Progress from "../../components/Progress.svelte";
   import { onMount } from "svelte";
@@ -933,12 +934,14 @@
 <!-- Add navbar component to page  -->
 <div class="container-fluid p-2 ux-page-body">
   <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-    <a href="{base}/" aria-label="Back to home"
-      ><i class="bi bi-arrow-left"></i></a
-    >
-    &nbsp;Conflict
+    <div class="ux-page-title-stack">
+      <Breadcrumbs
+        items={[{ label: "Home", href: `${base}/` }, { label: "Conflicts" }]}
+      />
+      <span class="ux-page-title-main">Conflicts</span>
+    </div>
     {#if _rawData && _rawData.source_names}
-      <div class="d-inline-block ms-2">
+      <div class="d-inline-block ms-auto">
         <div class="input-group ux-inputbar">
           <label for="source" class="fw-bold input-group-text">Source:</label>
           <select

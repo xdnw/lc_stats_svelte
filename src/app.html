@@ -72,8 +72,10 @@
 		href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css" />
 	<link rel="stylesheet" media="print" onload="this.media='all'" href="%sveltekit.assets%/styles/main.css" />
 	%sveltekit.head%
-	<script defer>
-		var systemColorMode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+	<script>
+		var isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+		var isLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+		var systemColorMode = isDark ? "dark" : (isLight ? "light" : "dark");
 		var cookieVal = document.cookie.split('; ').find(row => row.startsWith('halfmoonColorMode='));
 		var setColorMode = cookieVal ? cookieVal.split('=')[1] : systemColorMode;
 		document.documentElement.setAttribute("data-bs-theme", setColorMode);

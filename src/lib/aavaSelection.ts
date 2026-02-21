@@ -18,18 +18,26 @@ export type AavaSelectionRow = {
     abs_net: number;
 };
 
-export function buildAavaSelectionRows(
-    data: Conflict,
-    snapshot: AavaSelectionSnapshot,
-): AavaSelectionRow[] {
+type AavaIndexCache = {
+    allAllianceIds: number[];
+    indexByAllianceId: Map<number, number>;
+    allianceNameById: Record<number, string>;
+};
+
+const aavaIndexCache = new WeakMap<Conflict, AavaIndexCache>();
+
+function getAavaIndexCache(data: Conflict): AavaIndexCache {
+    const cached = aavaIndexCache.get(data);
+    if (cached) return cached;
+
     const c1Ids = data.coalitions[0].alliance_ids;
     const c2Ids = data.coalitions[1].alliance_ids;
     const allAllianceIds = [...c1Ids, ...c2Ids];
+    const indexByAllianceId = new Map<number, number>();
+    for (let i = 0; i < allAllianceIds.length; i++) {
+        indexByAllianceId.set(allAllianceIds[i], i);
+    }
 
-    const headerIndex = data.war_web.headers.indexOf(snapshot.header);
-    if (headerIndex < 0) return [];
-
-    const matrix = data.war_web.data[headerIndex] as number[][];
     const allianceNameById: Record<number, string> = {};
     data.coalitions.forEach((coalition) => {
         coalition.alliance_ids.forEach((id, i) => {
@@ -40,11 +48,32 @@ export function buildAavaSelectionRows(
         });
     });
 
+    const next: AavaIndexCache = {
+        allAllianceIds,
+        indexByAllianceId,
+        allianceNameById,
+    };
+    aavaIndexCache.set(data, next);
+    return next;
+}
+
+export function buildAavaSelectionRows(
+    data: Conflict,
+    snapshot: AavaSelectionSnapshot,
+): AavaSelectionRow[] {
+    const { allAllianceIds, indexByAllianceId, allianceNameById } =
+        getAavaIndexCache(data);
+
+    const headerIndex = data.war_web.headers.indexOf(snapshot.header);
+    if (headerIndex < 0) return [];
+
+    const matrix = data.war_web.data[headerIndex] as number[][];
+
     const pIndices = snapshot.primaryIds
-        .map((id) => allAllianceIds.indexOf(id))
+        .map((id) => indexByAllianceId.get(id) ?? -1)
         .filter((i) => i >= 0);
     const vIndices = snapshot.vsIds
-        .map((id) => allAllianceIds.indexOf(id))
+        .map((id) => indexByAllianceId.get(id) ?? -1)
         .filter((i) => i >= 0);
 
     const rows: AavaSelectionRow[] = [];

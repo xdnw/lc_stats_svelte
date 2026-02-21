@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { getQueryParam } from "$lib";
   import { config } from "./+layout";
 
@@ -88,6 +88,7 @@
     },
   ];
   let _guildId: string = "";
+  let matrixAnimationFrame: number | null = null;
 
   // The matrix background animation
   onMount(() => {
@@ -176,9 +177,16 @@
         }
       }
       // Call the next frame
-      requestAnimationFrame(draw);
+      matrixAnimationFrame = requestAnimationFrame(draw);
     }
     draw();
+  });
+
+  onDestroy(() => {
+    if (matrixAnimationFrame != null) {
+      cancelAnimationFrame(matrixAnimationFrame);
+      matrixAnimationFrame = null;
+    }
   });
 </script>
 

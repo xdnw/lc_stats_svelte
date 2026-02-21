@@ -33,12 +33,12 @@
 </script>
 
 <nav
-  class="navbar navbar-expand-md border-bottom bg-body-subtle shadow-sm sticky-top"
+  class="navbar ux-navbar navbar-expand-md border-bottom bg-body-subtle shadow-sm sticky-top"
 >
-  <div class="container-fluid py-1">
-    <div class="row d-flex w-100 g-1 align-items-center">
+  <div class="container-fluid py-0">
+    <div class="row d-flex w-100 g-0 align-items-center">
       <div class="col-auto">
-        <div class="btn-group ux-surface p-1">
+        <div class="btn-group ux-surface p-0">
           <button
             class="btn ux-btn d-md-block"
             aria-label="Toggle dark mode"
@@ -46,7 +46,7 @@
           >
             <i class="bi bi-moon-stars-fill"></i>
           </button>
-          <div class="d-inline text-truncate mt-1 ux-muted">
+          <div class="d-inline text-truncate mt-0 ux-muted">
             <!-- @for (Map.Entry<String, String> entry : ws.getPathLinks().entrySet())
                             <span class="mx-1">/</span>
                             <a href="${entry.getValue()}/" class="simple-link fw-bold">${entry.getKey()}</a>
@@ -56,7 +56,7 @@
       </div>
       <div class="col">
         <form
-          class="d-flex ux-surface p-1"
+          class="d-flex ux-surface p-0"
           role="search"
           id="navbar-search-form"
           on:submit={handleSearch}

@@ -7,6 +7,8 @@ const extUnpackr = new Unpackr({
     int64AsType: 'number',
 });
 
+const decompressedCache = new Map<string, Promise<any>>();
+
 async function streamToUint8Array(readableStream: ReadableStream): Promise<Uint8Array> {
     const reader = readableStream.getReader();
     const chunks: Uint8Array[] = [];
@@ -37,9 +39,28 @@ const decompress = async (url: string) => {
     return await new Response(streamIn).blob();
 };
 
-export const decompressBson = async (url: string) => {
-    let result = await decompress(url);
-    let stream: ReadableStream<Uint8Array> = result.stream();
-    let uint8Array = await streamToUint8Array(stream);
-    return extUnpackr.unpack(uint8Array);
+export const decompressBson = async (
+    url: string,
+    options?: { forceRefresh?: boolean },
+) => {
+    if (options?.forceRefresh) {
+        decompressedCache.delete(url);
+    }
+
+    let cached = decompressedCache.get(url);
+    if (!cached) {
+        cached = (async () => {
+            let result = await decompress(url);
+            let stream: ReadableStream<Uint8Array> = result.stream();
+            let uint8Array = await streamToUint8Array(stream);
+            return extUnpackr.unpack(uint8Array);
+        })().catch((error) => {
+            // Failed requests should not poison future calls.
+            decompressedCache.delete(url);
+            throw error;
+        });
+        decompressedCache.set(url, cached);
+    }
+
+    return cached;
 };

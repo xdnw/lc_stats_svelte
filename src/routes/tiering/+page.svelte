@@ -5,10 +5,11 @@
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
+    import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import type { API, Options } from "nouislider";
     import { Chart, registerables, type ChartConfiguration } from "chart.js";
     Chart.register(...registerables);
-    import { onMount, tick } from "svelte";
+    import { onMount, onDestroy, tick } from "svelte";
     import {
         decompressBson,
         formatTurnsToDate,
@@ -19,6 +20,7 @@
         getCurrentQueryParams,
         resolveMetricAccessors,
         toggleCoalitionAllianceSelection,
+        getConflictDataUrl,
         getConflictGraphDataUrl,
         formatDaysToDate,
         Palette,
@@ -57,6 +59,11 @@
     let _allowedAllianceIds: Set<number> = new Set();
 
     let dataSets: DataSet[];
+    let chartInstanceRef: Chart | null = null;
+    let dataSetByConfigCache = new Map<string, DataSetResponse>();
+    let tieringWorker: Worker | null = null;
+    let workerRequestId = 0;
+    let latestSetupRunId = 0;
 
     /**
      * The raw data for the conflict, uninitialized until setupChartData is called
@@ -177,6 +184,19 @@
     // onMount runs when this component (i.e. the page) is loaded
     // This gets the conflict id from the url query string, fetches the data from s3 and creates the charts
     onMount(() => {
+        try {
+            tieringWorker = new Worker(
+                new URL("../../workers/tieringDataWorker.ts", import.meta.url),
+                { type: "module" },
+            );
+        } catch (error) {
+            tieringWorker = null;
+            console.warn(
+                "Tiering worker unavailable, using main-thread fallback",
+                error,
+            );
+        }
+
         applySavedQueryParamsIfMissing(
             ["selected", "normalize", "unicolor", "ids"],
             ["id"],
@@ -195,6 +215,18 @@
         }
     });
 
+    onDestroy(() => {
+        latestSetupRunId++;
+        if (tieringWorker) {
+            tieringWorker.terminate();
+            tieringWorker = null;
+        }
+        if (chartInstanceRef) {
+            chartInstanceRef.destroy();
+            chartInstanceRef = null;
+        }
+    });
+
     /**
      * Fetches data for a conflict
      * Sets the conflict name
@@ -204,6 +236,7 @@
     function setupChartData(conflictId: string) {
         _loadError = null;
         _loaded = false;
+        dataSetByConfigCache.clear();
         let url = getConflictGraphDataUrl(
             conflictId,
             config.version.graph_data,
@@ -219,6 +252,24 @@
                 setupCharts(_rawData);
                 _loaded = true;
                 saveCurrentQueryParams();
+
+                // Warm conflict detail cache so switching back to table pages is faster.
+                const schedulePrefetch =
+                    typeof (window as any).requestIdleCallback === "function"
+                        ? (cb: () => void) =>
+                              (window as any).requestIdleCallback(cb, {
+                                  timeout: 2500,
+                              })
+                        : (cb: () => void) => window.setTimeout(cb, 300);
+                schedulePrefetch(() => {
+                    const detailUrl = getConflictDataUrl(
+                        conflictId,
+                        config.version.conflict_data,
+                    );
+                    decompressBson(detailUrl).catch(() => {
+                        // Best-effort prefetch only.
+                    });
+                });
             })
             .catch((error) => {
                 console.error("Failed to load tiering graph data", error);
@@ -339,8 +390,9 @@
         }
     }
 
-    function setupCharts(data: GraphData) {
+    async function setupCharts(data: GraphData) {
         if (!data) return;
+        const runId = ++latestSetupRunId;
         // if selected_metrics is empty, set to default
         if (selected_metrics.length == 0) {
             selected_metrics = ["dealt:loss_value"].map((name) => {
@@ -369,7 +421,19 @@
             coalition.alliance_ids.filter((id) => _allowedAllianceIds.has(id)),
         );
 
-        let response = getDataSetsByTime(_rawData, metrics, alliance_ids);
+        const cacheKey = getDataSetCacheKey(metrics, alliance_ids);
+        let response = dataSetByConfigCache.get(cacheKey);
+        if (!response) {
+            const computed = await computeDataSetsByTime(
+                _rawData,
+                metrics,
+                alliance_ids,
+            );
+            if (runId !== latestSetupRunId) return;
+            if (!computed) return;
+            response = computed;
+            dataSetByConfigCache.set(cacheKey, response);
+        }
         if (!response) return;
 
         turnValues = isAnyCumulative ? response.time : [response.time[0]];
@@ -430,11 +494,16 @@
         const chartElem = document.getElementById(
             "myChart",
         ) as HTMLCanvasElement;
-        let chartInstance = Chart.getChart(chartElem);
-        if (chartInstance) {
-            chartInstance.destroy();
+        if (chartInstanceRef) {
+            chartInstanceRef.data.labels = labels;
+            chartInstanceRef.data.datasets = trace as any;
+            if (chartInstanceRef.options?.plugins?.title) {
+                chartInstanceRef.options.plugins.title.text = title;
+            }
+            chartInstanceRef.update("none");
+        } else {
+            chartInstanceRef = new Chart(chartElem, chartConfig);
         }
-        new Chart(chartElem, chartConfig);
 
         let format = response.is_turn ? formatTurnsToDate : formatDaysToDate;
         let density = response.is_turn ? 60 : 5;
@@ -470,7 +539,7 @@
         noUiSlider.create(sliderElement, config);
 
         getSliderApi()?.on("set", (values: string[]) => {
-            let myChart = Chart.getChart(chartElem);
+            let myChart = chartInstanceRef ?? Chart.getChart(chartElem);
             if (!myChart) return;
             const sliderApi = getSliderApi();
             let stepSize = sliderApi.options.step || 1;
@@ -493,18 +562,100 @@
         data: number[][];
     }
 
+    interface DataSetResponse {
+        data: DataSet[];
+        city_range: [number, number];
+        time: [number, number];
+        is_turn: boolean;
+    }
+
+    type TieringWorkerRequest = {
+        id: number;
+        data: GraphData;
+        metrics: TierMetric[];
+        alliance_ids: number[][];
+        useSingleColor: boolean;
+    };
+
+    type TieringWorkerResponse =
+        | { id: number; ok: true; result: DataSetResponse | null }
+        | { id: number; ok: false; error: string };
+
+    function computeDataSetsByTime(
+        data: GraphData,
+        metrics: TierMetric[],
+        alliance_ids: number[][],
+    ): Promise<DataSetResponse | null> {
+        if (!tieringWorker) {
+            return Promise.resolve(
+                getDataSetsByTime(data, metrics, alliance_ids),
+            );
+        }
+
+        return new Promise<DataSetResponse | null>((resolve, reject) => {
+            const worker = tieringWorker;
+            if (!worker) {
+                resolve(getDataSetsByTime(data, metrics, alliance_ids));
+                return;
+            }
+            const requestId = ++workerRequestId;
+            const onMessage = (event: MessageEvent<TieringWorkerResponse>) => {
+                const response = event.data;
+                if (!response || response.id !== requestId) return;
+                worker.removeEventListener("message", onMessage);
+                worker.removeEventListener("error", onError);
+                if (response.ok) {
+                    resolve(response.result);
+                } else {
+                    reject(new Error(response.error));
+                }
+            };
+            const onError = (event: ErrorEvent) => {
+                worker.removeEventListener("message", onMessage);
+                worker.removeEventListener("error", onError);
+                reject(event.error ?? new Error(event.message));
+            };
+
+            worker.addEventListener("message", onMessage);
+            worker.addEventListener("error", onError, { once: true });
+            const payload: TieringWorkerRequest = {
+                id: requestId,
+                data,
+                metrics,
+                alliance_ids,
+                useSingleColor,
+            };
+            worker.postMessage(payload);
+        }).catch((error) => {
+            console.warn(
+                "Tiering worker compute failed, falling back to main thread",
+                error,
+            );
+            return getDataSetsByTime(data, metrics, alliance_ids);
+        });
+    }
+
+    function getDataSetCacheKey(
+        metrics: TierMetric[],
+        alliance_ids: number[][],
+    ): string {
+        const metricKey = metrics
+            .map(
+                (m) =>
+                    `${m.name}:${m.normalize ? 1 : 0}:${m.cumulative ? 1 : 0}`,
+            )
+            .join("|");
+        const allianceKey = alliance_ids.map((ids) => ids.join(".")).join("|");
+        return `${conflictId ?? "-"}|${metricKey}|${allianceKey}|${useSingleColor ? 1 : 0}`;
+    }
+
     // Convert the raw json data from S3 to a Chart.js dataset (for the specific metrics and turn/day range)
     // Normalization will divide by the number of units per city (see UNITS_PER_CITY)
     function getDataSetsByTime(
         data: GraphData,
         metrics: TierMetric[],
         alliance_ids: number[][],
-    ): {
-        data: DataSet[];
-        city_range: [number, number];
-        time: [number, number];
-        is_turn: boolean;
-    } | null {
+    ): DataSetResponse | null {
         let minCity = Number.MAX_SAFE_INTEGER;
         let maxCity = 0;
         for (let i = 0; i < data.coalitions.length; i++) {
@@ -786,9 +937,24 @@
 </svelte:head>
 <div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-        <a href="conflicts" aria-label="Back to conflicts"
-            ><i class="bi bi-arrow-left"></i></a
-        >&nbsp;Conflict Tiering: {conflictName}
+        <div class="ux-page-title-stack">
+            <Breadcrumbs
+                items={[
+                    { label: "Home", href: "/" },
+                    { label: "Conflicts", href: "/conflicts" },
+                    {
+                        label: conflictName || "Conflict",
+                        href: conflictId
+                            ? "/conflict?id=" + conflictId
+                            : undefined,
+                    },
+                    { label: "Tiering" },
+                ]}
+            />
+            <span class="ux-page-title-main"
+                >Conflict Tiering: {conflictName}</span
+            >
+        </div>
     </h1>
     <ConflictRouteTabs {conflictId} active="tiering" />
     <div

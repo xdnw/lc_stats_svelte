@@ -2,6 +2,7 @@
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
+    import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import { onMount } from "svelte";
     import {
         addFormatters,
@@ -26,6 +27,7 @@
         trimHeader,
         buildAavaSelectionRows,
         formatNationName,
+        getConflictGraphDataUrl,
     } from "$lib";
     import {
         makeKpiId,
@@ -214,6 +216,12 @@
         "c2-dealt": "Coalition 2 dealt",
         "off-wars-per-nation": "Offensive wars per nation",
     };
+    $: currentLayoutLabel =
+        _layoutData.layout === Layout.ALLIANCE
+            ? "Alliance"
+            : _layoutData.layout === Layout.NATION
+              ? "Nation"
+              : "Coalition";
 
     const SCOPE_LABELS: Record<WidgetScope, string> = {
         all: "All",
@@ -249,15 +257,19 @@
     let metricAggToAdd: "sum" | "avg" = "sum";
     let metricNormalizeByToAdd = "";
 
-    $: presetCards = kpiWidgets.filter(
-        (w): w is PresetCard => w.kind === "preset",
-    );
-    $: rankingCards = kpiWidgets.filter(
-        (w): w is RankingCard => w.kind === "ranking",
-    );
-    $: metricCards = kpiWidgets.filter(
-        (w): w is MetricCard => w.kind === "metric",
-    );
+    $: {
+        const nextPresetCards: PresetCard[] = [];
+        const nextRankingCards: RankingCard[] = [];
+        const nextMetricCards: MetricCard[] = [];
+        for (const widget of kpiWidgets) {
+            if (widget.kind === "preset") nextPresetCards.push(widget);
+            else if (widget.kind === "ranking") nextRankingCards.push(widget);
+            else if (widget.kind === "metric") nextMetricCards.push(widget);
+        }
+        presetCards = nextPresetCards;
+        rankingCards = nextRankingCards;
+        metricCards = nextMetricCards;
+    }
 
     const kpiCollapseStorageKey = () => `${getPageStorageKey()}:kpi-collapsed`;
 
@@ -495,16 +507,30 @@
         return formatDuration(Math.max(0, Math.round((end - start) / 1000)));
     })();
 
+    $: summaryCoalitionTable = _rawData
+        ? computeLayoutTableData(
+              _rawData,
+              Layout.COALITION,
+              layouts.Summary.columns,
+              "name",
+              "asc",
+          )
+        : null;
+
+    $: summaryNationTable = _rawData
+        ? computeLayoutTableData(
+              _rawData,
+              Layout.NATION,
+              layouts.Summary.columns,
+              "name",
+              "asc",
+          )
+        : null;
+
     $: coalitionSummary = (() => {
-        if (!_rawData) return null;
+        if (!_rawData || !summaryCoalitionTable) return null;
         const raw = _rawData;
-        const table = computeLayoutTableData(
-            raw,
-            Layout.COALITION,
-            layouts.Summary.columns,
-            "name",
-            "asc",
-        );
+        const table = summaryCoalitionTable;
         const dealtIdx = table.columns.indexOf("dealt:damage");
         const lossIdx = table.columns.indexOf("loss:damage");
         const netIdx = table.columns.indexOf("net:damage");
@@ -543,14 +569,8 @@
         : null;
 
     $: offWarsPerNationStats = (() => {
-        if (!_rawData) return null;
-        const table = computeLayoutTableData(
-            _rawData,
-            Layout.NATION,
-            layouts.Summary.columns,
-            "name",
-            "asc",
-        );
+        if (!summaryNationTable) return null;
+        const table = summaryNationTable;
         const offIdx = table.columns.indexOf("off:wars");
         if (offIdx === -1) return null;
         const totalNations = table.data.length;
@@ -610,6 +630,31 @@
         }
     }
 
+    let scopedRowsCache = new Map<string, any[]>();
+    let rankingRowsCache = new Map<string, RankingViewRow[]>();
+    let metricValueCache = new Map<string, number | null>();
+
+    function clearKpiCaches() {
+        scopedRowsCache.clear();
+        rankingRowsCache.clear();
+        metricValueCache.clear();
+    }
+
+    $: {
+        _rawData;
+        kpiAllianceTable;
+        nationMetricTable;
+        kpiWidgets;
+        clearKpiCaches();
+    }
+
+    function snapshotCacheKey(snapshot?: ScopeSnapshot): string {
+        if (!snapshot) return "-";
+        const allianceIds = snapshot.allianceIds?.join(".") ?? "";
+        const nationIds = snapshot.nationIds?.join(".") ?? "";
+        return `${allianceIds}|${nationIds}`;
+    }
+
     function getEntityTable(entity: WidgetEntity): TableData | null {
         return entity === "alliance"
             ? (kpiAllianceTable as TableData | null)
@@ -661,41 +706,54 @@
         table: TableData,
         snapshot?: ScopeSnapshot,
     ): any[] {
+        const cacheKey = `${entity}|${scope}|${snapshotCacheKey(snapshot)}`;
+        const cached = scopedRowsCache.get(cacheKey);
+        if (cached) return cached;
+
+        let rows: any[];
         if (scope === "all") return table.data;
 
         if (scope === "selection") {
             const allianceIds = new Set<number>(snapshot?.allianceIds ?? []);
             const nationIds = new Set<number>(snapshot?.nationIds ?? []);
             if (entity === "alliance") {
-                if (allianceIds.size === 0) return [];
-                return table.data.filter((row) => {
-                    const allianceId = Number(row[0]?.[1]);
-                    return allianceIds.has(allianceId);
-                });
-            }
-            if (nationIds.size > 0) {
-                return table.data.filter((row) => {
+                if (allianceIds.size === 0) {
+                    rows = [];
+                } else {
+                    rows = table.data.filter((row) => {
+                        const allianceId = Number(row[0]?.[1]);
+                        return allianceIds.has(allianceId);
+                    });
+                }
+            } else if (nationIds.size > 0) {
+                rows = table.data.filter((row) => {
                     const nationId = Number(row[0]?.[1]);
                     return nationIds.has(nationId);
                 });
-            }
-            if (allianceIds.size > 0) {
-                return table.data.filter((row) => {
+            } else if (allianceIds.size > 0) {
+                rows = table.data.filter((row) => {
                     const nationAllianceId = Number(row[0]?.[2]);
                     return allianceIds.has(nationAllianceId);
                 });
+            } else {
+                rows = [];
             }
-            return [];
+            scopedRowsCache.set(cacheKey, rows);
+            return rows;
         }
 
-        if (!_rawData) return table.data;
+        if (!_rawData) {
+            rows = table.data;
+            scopedRowsCache.set(cacheKey, rows);
+            return rows;
+        }
 
         const coalitionAllianceIds =
             scope === "coalition1"
                 ? new Set<number>(_rawData.coalitions[0]?.alliance_ids ?? [])
                 : new Set<number>(_rawData.coalitions[1]?.alliance_ids ?? []);
 
-        return table.data.filter((row) => {
+        rows = table.data.filter((row) => {
             if (entity === "alliance") {
                 const allianceId = Number(row[0]?.[1]);
                 return coalitionAllianceIds.has(allianceId);
@@ -703,13 +761,19 @@
             const nationAllianceId = Number(row[0]?.[2]);
             return coalitionAllianceIds.has(nationAllianceId);
         });
+        scopedRowsCache.set(cacheKey, rows);
+        return rows;
     }
 
     function getRankingRows(card: RankingCard): RankingViewRow[] {
+        const cached = rankingRowsCache.get(card.id);
+        if (cached) return cached;
+
+        let rowsForCard: RankingViewRow[];
         if (card.source === "aava") {
             if (!card.aavaSnapshot || card.entity !== "alliance") return [];
             if (!_rawData) return [];
-            return buildAavaSelectionRows(_rawData, {
+            rowsForCard = buildAavaSelectionRows(_rawData, {
                 header: card.aavaSnapshot.header,
                 primaryIds: card.aavaSnapshot.primaryIds,
                 vsIds: card.aavaSnapshot.vsIds,
@@ -725,6 +789,8 @@
                     valueText: formatMetricValue(null, -1, row.value, true),
                 }))
                 .slice(0, Math.max(1, card.limit));
+            rankingRowsCache.set(card.id, rowsForCard);
+            return rowsForCard;
         }
 
         const table = getEntityTable(card.entity);
@@ -738,7 +804,7 @@
             table,
             card.snapshot,
         );
-        return rows
+        rowsForCard = rows
             .map((row) => {
                 if (card.entity === "alliance") {
                     const allianceId = Number(row[0]?.[1]);
@@ -767,9 +833,15 @@
                 valueText: formatMetricValue(table, metricIndex, row.value),
             }))
             .slice(0, Math.max(1, card.limit));
+        rankingRowsCache.set(card.id, rowsForCard);
+        return rowsForCard;
     }
 
     function getMetricCardValue(card: MetricCard): number | null {
+        const cached = metricValueCache.get(card.id);
+        if (cached !== undefined) return cached;
+
+        let value: number | null = null;
         if (card.source === "aava") {
             if (!card.aavaSnapshot || card.entity !== "alliance") return null;
             if (!_rawData) return null;
@@ -790,7 +862,9 @@
                 if (card.aggregation === "sum") {
                     const numerator = vals.reduce((a, b) => a + b, 0);
                     const denominator = denoms.reduce((a, b) => a + b, 0);
-                    return denominator === 0 ? null : numerator / denominator;
+                    value = denominator === 0 ? null : numerator / denominator;
+                    metricValueCache.set(card.id, value);
+                    return value;
                 }
                 const ratios = vals
                     .map((value, idx) => {
@@ -798,12 +872,19 @@
                         return denominator === 0 ? null : value / denominator;
                     })
                     .filter((value): value is number => value != null);
-                if (ratios.length === 0) return null;
-                return ratios.reduce((a, b) => a + b, 0) / ratios.length;
+                if (ratios.length === 0) {
+                    metricValueCache.set(card.id, null);
+                    return null;
+                }
+                value = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+                metricValueCache.set(card.id, value);
+                return value;
             }
 
             const sum = vals.reduce((a, b) => a + b, 0);
-            return card.aggregation === "avg" ? sum / vals.length : sum;
+            value = card.aggregation === "avg" ? sum / vals.length : sum;
+            metricValueCache.set(card.id, value);
+            return value;
         }
 
         const table = getEntityTable(card.entity);
@@ -826,7 +907,9 @@
             if (card.aggregation === "sum") {
                 const numerator = vals.reduce((a, b) => a + b, 0);
                 const denominator = denoms.reduce((a, b) => a + b, 0);
-                return denominator === 0 ? null : numerator / denominator;
+                value = denominator === 0 ? null : numerator / denominator;
+                metricValueCache.set(card.id, value);
+                return value;
             }
             const ratios = vals
                 .map((value, idx) => {
@@ -834,12 +917,19 @@
                     return denominator === 0 ? null : value / denominator;
                 })
                 .filter((value): value is number => value != null);
-            if (ratios.length === 0) return null;
-            return ratios.reduce((a, b) => a + b, 0) / ratios.length;
+            if (ratios.length === 0) {
+                metricValueCache.set(card.id, null);
+                return null;
+            }
+            value = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+            metricValueCache.set(card.id, value);
+            return value;
         }
 
         const sum = vals.reduce((a, b) => a + b, 0);
-        return card.aggregation === "avg" ? sum / vals.length : sum;
+        value = card.aggregation === "avg" ? sum / vals.length : sum;
+        metricValueCache.set(card.id, value);
+        return value;
     }
 
     function metricLabel(metric: string): string {
@@ -1103,6 +1193,24 @@
                     loadPosts(data.posts);
                 _loaded = true;
                 saveCurrentQueryParams();
+
+                // Warm graph payload cache so Tiering/Bubble route switches are faster.
+                const schedulePrefetch =
+                    typeof (window as any).requestIdleCallback === "function"
+                        ? (cb: () => void) =>
+                              (window as any).requestIdleCallback(cb, {
+                                  timeout: 2500,
+                              })
+                        : (cb: () => void) => window.setTimeout(cb, 300);
+                schedulePrefetch(() => {
+                    const graphUrl = getConflictGraphDataUrl(
+                        conflictId,
+                        config.version.graph_data,
+                    );
+                    decompressBson(graphUrl).catch(() => {
+                        // Best-effort prefetch; ignore failures and keep normal route behavior.
+                    });
+                });
             })
             .catch((error) => {
                 console.error("Failed to load conflict data", error);
@@ -1329,9 +1437,22 @@
 
 <div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-        <a href="conflicts" aria-label="Back to conflicts"
-            ><i class="bi bi-arrow-left"></i></a
-        >&nbsp;Conflict: {conflictName}
+        <div class="ux-page-title-stack">
+            <Breadcrumbs
+                items={[
+                    { label: "Home", href: "/" },
+                    { label: "Conflicts", href: "/conflicts" },
+                    {
+                        label: conflictName || "Conflict",
+                        href: conflictId
+                            ? "/conflict?id=" + conflictId
+                            : undefined,
+                    },
+                    { label: currentLayoutLabel },
+                ]}
+            />
+            <span class="ux-page-title-main">Conflict: {conflictName}</span>
+        </div>
         {#if _rawData?.wiki}
             <a
                 class="btn ux-btn fw-bold"

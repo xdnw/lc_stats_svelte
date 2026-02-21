@@ -3,6 +3,7 @@
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
+    import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import {
         addFormatters,
         applySavedQueryParamsIfMissing,
@@ -14,6 +15,7 @@
         formatDatasetProvenance,
         getDefaultWarWebHeader,
         getConflictDataUrl,
+        getConflictGraphDataUrl,
         getCurrentQueryParams,
         normalizeAllianceIds,
         resetQueryParams,
@@ -84,6 +86,12 @@
     let metricMetricToAdd = "net";
     let metricAggToAdd: "sum" | "avg" = "sum";
     let metricNormalizeByToAdd = "";
+    let rowsCache = new Map<string, any[]>();
+    let renderQueued = false;
+
+    function clearRowsCache() {
+        rowsCache.clear();
+    }
 
     $: selectedPrimaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
     $: selectedVsIds =
@@ -426,11 +434,16 @@
         vsIds: number[],
     ) {
         if (!_rawData) return [] as any[];
-        return buildAavaSelectionRows(_rawData, {
+        const cacheKey = `${header}|${primaryIds.join(".")}|${vsIds.join(".")}`;
+        const cached = rowsCache.get(cacheKey);
+        if (cached) return cached;
+        const rows = buildAavaSelectionRows(_rawData, {
             header,
             primaryIds,
             vsIds,
         });
+        rowsCache.set(cacheKey, rows);
+        return rows;
     }
 
     function buildRows() {
@@ -442,6 +455,7 @@
     }
 
     function renderTable() {
+        renderQueued = false;
         const container = document.getElementById("aava-table");
         if (!container) return;
         container.innerHTML = "";
@@ -497,10 +511,16 @@
         setupContainer(container, rowData);
     }
 
+    function scheduleRenderTable() {
+        if (renderQueued) return;
+        renderQueued = true;
+        requestAnimationFrame(() => renderTable());
+    }
+
     function setHeader(header: string) {
         currentHeader = header;
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function swapPrimaryCoalition() {
@@ -508,7 +528,7 @@
         primaryCoalitionIndex = primaryCoalitionIndex === 0 ? 1 : 0;
 
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function setAllForPrimary() {
@@ -516,7 +536,7 @@
             ...normalizeAllianceIds(getPrimaryCoalition()?.alliance_ids ?? []),
         ]);
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function setNoneForPrimary() {
@@ -524,7 +544,7 @@
             allowEmpty: true,
         });
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function setAllForVs() {
@@ -533,14 +553,14 @@
             ...normalizeAllianceIds(getVsCoalition()?.alliance_ids ?? []),
         ]);
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function setNoneForVs() {
         const vsIndex = (primaryCoalitionIndex === 0 ? 1 : 0) as 0 | 1;
         setCoalitionSelection(vsIndex, [], { allowEmpty: true });
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function togglePrimaryAlliance(id: number) {
@@ -553,7 +573,7 @@
             allowEmpty: true,
         });
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function toggleVsAlliance(id: number) {
@@ -565,7 +585,7 @@
             : [...currentVs, id];
         setCoalitionSelection(vsIndex, next, { allowEmpty: true });
         syncQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function resetFilters() {
@@ -590,7 +610,7 @@
             ["id"],
         );
         saveCurrentQueryParams();
-        renderTable();
+        scheduleRenderTable();
     }
 
     function retryLoad() {
@@ -630,6 +650,7 @@
     function loadConflict(id: string) {
         _loadError = null;
         _loaded = false;
+        clearRowsCache();
         const url = getConflictDataUrl(id, config.version.conflict_data);
         decompressBson(url)
             .then(async (data: Conflict) => {
@@ -644,6 +665,24 @@
                 renderTable();
                 _loaded = true;
                 saveCurrentQueryParams();
+
+                // Warm graph payload cache so switching to Tiering/Bubble is faster.
+                const schedulePrefetch =
+                    typeof (window as any).requestIdleCallback === "function"
+                        ? (cb: () => void) =>
+                              (window as any).requestIdleCallback(cb, {
+                                  timeout: 2500,
+                              })
+                        : (cb: () => void) => window.setTimeout(cb, 300);
+                schedulePrefetch(() => {
+                    const graphUrl = getConflictGraphDataUrl(
+                        id,
+                        config.version.graph_data,
+                    );
+                    decompressBson(graphUrl).catch(() => {
+                        // Best-effort prefetch only.
+                    });
+                });
             })
             .catch((error) => {
                 console.error("Failed to load AAvA data", error);
@@ -699,9 +738,22 @@
 
 <div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-        <a href="conflicts" aria-label="Back to conflicts"
-            ><i class="bi bi-arrow-left"></i></a
-        >&nbsp;Conflict: {conflictName}
+        <div class="ux-page-title-stack">
+            <Breadcrumbs
+                items={[
+                    { label: "Home", href: "/" },
+                    { label: "Conflicts", href: "/conflicts" },
+                    {
+                        label: conflictName || "Conflict",
+                        href: conflictId
+                            ? "/conflict?id=" + conflictId
+                            : undefined,
+                    },
+                    { label: "AAvA" },
+                ]}
+            />
+            <span class="ux-page-title-main">Conflict: {conflictName}</span>
+        </div>
         {#if _rawData?.wiki}
             <a
                 class="btn ux-btn fw-bold"

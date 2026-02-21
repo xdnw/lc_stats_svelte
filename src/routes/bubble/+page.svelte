@@ -4,6 +4,7 @@
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
+    import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import noUiSlider from "nouislider";
     import * as d3 from "d3";
     import {
@@ -18,6 +19,7 @@
         arrayEquals,
         type TierMetric,
         resolveMetricAccessors,
+        getConflictDataUrl,
         getConflictGraphDataUrl,
         ensureScriptsLoaded,
         applySavedQueryParamsIfMissing,
@@ -51,6 +53,11 @@
     let sliderSetListener: ((values: string[]) => void) | null = null;
     let plotlyAnimatedListener: (() => void) | null = null;
     let plotlySliderChangeListener: ((sliderData: any) => void) | null = null;
+    let traceCache = new Map<string, TraceBuildResult>();
+    let graphUpdateQueued = false;
+    let bubbleWorker: Worker | null = null;
+    let workerRequestId = 0;
+    let latestGraphRunId = 0;
 
     const defaultMetricSelection = [
         "dealt:loss_value",
@@ -109,7 +116,7 @@
             selected_metrics.map((metric) => metric.value).join("."),
         );
         saveCurrentQueryParams();
-        setupGraphData(_rawData);
+        scheduleGraphUpdate();
     }
 
     async function handleCheckbox(): Promise<boolean> {
@@ -124,7 +131,7 @@
             replace: true,
         });
         saveCurrentQueryParams();
-        setupGraphData(_rawData);
+        scheduleGraphUpdate();
         return true;
     }
 
@@ -159,7 +166,7 @@
         }
 
         if (_rawData) {
-            setupGraphData(_rawData);
+            scheduleGraphUpdate();
         }
     }
 
@@ -199,6 +206,19 @@
     }
     let graphDiv: HTMLDivElement;
     onMount(async () => {
+        try {
+            bubbleWorker = new Worker(
+                new URL("../../workers/bubbleTraceWorker.ts", import.meta.url),
+                { type: "module" },
+            );
+        } catch (error) {
+            bubbleWorker = null;
+            console.warn(
+                "Bubble worker unavailable, using main-thread fallback",
+                error,
+            );
+        }
+
         applySavedQueryParamsIfMissing(
             ["city_min", "city_max", "time", "normalize", "selected"],
             ["id"],
@@ -247,12 +267,17 @@
                 { replace: true },
             );
             saveCurrentQueryParams();
-            setupGraphData(_rawData);
+            scheduleGraphUpdate();
         };
         getSliderApi()?.on("set", sliderSetListener);
     });
 
     onDestroy(() => {
+        latestGraphRunId++;
+        if (bubbleWorker) {
+            bubbleWorker.terminate();
+            bubbleWorker = null;
+        }
         const sliderApi = getSliderApi();
         if (sliderApi) {
             if (sliderSetListener) {
@@ -287,6 +312,7 @@
             .then((data) => {
                 conflictName = data.name;
                 _rawData = data;
+                traceCache.clear();
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
                     (data as any).update_ms,
@@ -295,6 +321,24 @@
                 setupGraphData(_rawData);
                 _loaded = true;
                 saveCurrentQueryParams();
+
+                // Warm conflict detail cache so switching to table pages is faster.
+                const schedulePrefetch =
+                    typeof (window as any).requestIdleCallback === "function"
+                        ? (cb: () => void) =>
+                              (window as any).requestIdleCallback(cb, {
+                                  timeout: 2500,
+                              })
+                        : (cb: () => void) => window.setTimeout(cb, 300);
+                schedulePrefetch(() => {
+                    const detailUrl = getConflictDataUrl(
+                        conflictId,
+                        config.version.conflict_data,
+                    );
+                    decompressBson(detailUrl).catch(() => {
+                        // Best-effort prefetch only.
+                    });
+                });
             })
             .catch((error) => {
                 console.error("Failed to load bubble graph data", error);
@@ -328,6 +372,125 @@
         start: number;
         end: number;
         is_turn: boolean;
+    }
+
+    interface TraceBuildResult {
+        traces: { [key: number]: { [key: number]: Trace } };
+        times: Timeframe;
+        ranges: Range;
+    }
+
+    type BubbleWorkerRequest = {
+        id: number;
+        data: GraphData;
+        metrics: [TierMetric, TierMetric, TierMetric];
+        minCity: number;
+        maxCity: number;
+    };
+
+    type BubbleWorkerResponse =
+        | { id: number; ok: true; result: TraceBuildResult | null }
+        | { id: number; ok: false; error: string };
+
+    function computeTraces(
+        data: GraphData,
+        metrics: [TierMetric, TierMetric, TierMetric],
+        minCity: number,
+        maxCity: number,
+    ): Promise<TraceBuildResult | null> {
+        if (!bubbleWorker) {
+            return Promise.resolve(
+                generateTraces(
+                    data,
+                    metrics[0],
+                    metrics[1],
+                    metrics[2],
+                    minCity,
+                    maxCity,
+                ),
+            );
+        }
+
+        return new Promise<TraceBuildResult | null>((resolve, reject) => {
+            const worker = bubbleWorker;
+            if (!worker) {
+                resolve(
+                    generateTraces(
+                        data,
+                        metrics[0],
+                        metrics[1],
+                        metrics[2],
+                        minCity,
+                        maxCity,
+                    ),
+                );
+                return;
+            }
+            const requestId = ++workerRequestId;
+            const onMessage = (event: MessageEvent<BubbleWorkerResponse>) => {
+                const response = event.data;
+                if (!response || response.id !== requestId) return;
+                worker.removeEventListener("message", onMessage);
+                worker.removeEventListener("error", onError);
+                if (response.ok) {
+                    resolve(response.result);
+                } else {
+                    reject(new Error(response.error));
+                }
+            };
+            const onError = (event: ErrorEvent) => {
+                worker.removeEventListener("message", onMessage);
+                worker.removeEventListener("error", onError);
+                reject(event.error ?? new Error(event.message));
+            };
+
+            worker.addEventListener("message", onMessage);
+            worker.addEventListener("error", onError, { once: true });
+            const payload: BubbleWorkerRequest = {
+                id: requestId,
+                data,
+                metrics,
+                minCity,
+                maxCity,
+            };
+            worker.postMessage(payload);
+        }).catch((error) => {
+            console.warn(
+                "Bubble worker compute failed, falling back to main thread",
+                error,
+            );
+            return generateTraces(
+                data,
+                metrics[0],
+                metrics[1],
+                metrics[2],
+                minCity,
+                maxCity,
+            );
+        });
+    }
+
+    function getTraceCacheKey(
+        metrics: [TierMetric, TierMetric, TierMetric],
+        minCity: number,
+        maxCity: number,
+    ): string {
+        const metricKey = metrics
+            .map(
+                (m) =>
+                    `${m.name}:${m.normalize ? 1 : 0}:${m.cumulative ? 1 : 0}`,
+            )
+            .join("|");
+        return `${conflictId ?? "-"}|${metricKey}|${minCity}-${maxCity}`;
+    }
+
+    function scheduleGraphUpdate() {
+        if (graphUpdateQueued) return;
+        graphUpdateQueued = true;
+        requestAnimationFrame(() => {
+            graphUpdateQueued = false;
+            void setupGraphData(_rawData);
+        });
     }
 
     function getFullName(metric: TierMetric): string {
@@ -523,8 +686,9 @@
         return { traces: lookup, times, ranges };
     }
 
-    function setupGraphData(data: GraphData) {
+    async function setupGraphData(data: GraphData) {
         if (!data) return;
+        const runId = ++latestGraphRunId;
         let metrics_copy = selected_metrics.map((metric) => metric.value);
         if (metrics_copy.length != 3) return;
         let metric_x: TierMetric = {
@@ -542,23 +706,33 @@
             cumulative: metrics_copy[2].includes(":"),
             normalize: normalize_z,
         };
-        let tracesTime = generateTraces(
-            data,
-            metric_x,
-            metric_y,
-            metric_size,
-            cityValues[0],
-            cityValues[1],
-        );
-        if (!tracesTime) return;
-        let coalition_names = data.coalitions.map(
-            (coalition) => coalition.name,
-        );
-        let metrics: [TierMetric, TierMetric, TierMetric] = [
+        const metrics: [TierMetric, TierMetric, TierMetric] = [
             metric_x,
             metric_y,
             metric_size,
         ];
+        const cacheKey = getTraceCacheKey(
+            metrics,
+            cityValues[0],
+            cityValues[1],
+        );
+        let tracesTime = traceCache.get(cacheKey);
+        if (!tracesTime) {
+            const computed = await computeTraces(
+                data,
+                metrics,
+                cityValues[0],
+                cityValues[1],
+            );
+            if (runId !== latestGraphRunId) return;
+            if (!computed) return;
+            tracesTime = computed;
+            traceCache.set(cacheKey, tracesTime);
+        }
+        if (!tracesTime) return;
+        let coalition_names = data.coalitions.map(
+            (coalition) => coalition.name,
+        );
         createGraph(
             tracesTime.traces,
             tracesTime.times,
@@ -937,9 +1111,22 @@
 </svelte:head>
 <div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
-        <a href="conflicts" aria-label="Back to conflicts"
-            ><i class="bi bi-arrow-left"></i></a
-        >&nbsp;Conflict: {conflictName}
+        <div class="ux-page-title-stack">
+            <Breadcrumbs
+                items={[
+                    { label: "Home", href: "/" },
+                    { label: "Conflicts", href: "/conflicts" },
+                    {
+                        label: conflictName || "Conflict",
+                        href: conflictId
+                            ? "/conflict?id=" + conflictId
+                            : undefined,
+                    },
+                    { label: "Bubble" },
+                ]}
+            />
+            <span class="ux-page-title-main">Conflict: {conflictName}</span>
+        </div>
         {#if (_rawData as any)?.wiki}
             <a
                 class="btn ux-btn fw-bold"
