@@ -6,6 +6,7 @@
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
+    import { base } from "$app/paths";
     import type { API, Options } from "nouislider";
     import { Chart, registerables, type ChartConfiguration } from "chart.js";
     Chart.register(...registerables);
@@ -942,12 +943,12 @@
         <div class="ux-page-title-stack">
             <Breadcrumbs
                 items={[
-                    { label: "Home", href: "/" },
-                    { label: "Conflicts", href: "/conflicts" },
+                    { label: "Home", href: `${base}/` },
+                    { label: "Conflicts", href: `${base}/conflicts` },
                     {
                         label: conflictName || "Conflict",
                         href: conflictId
-                            ? "/conflict?id=" + conflictId
+                            ? `${base}/conflict?id=` + conflictId
                             : undefined,
                     },
                     { label: "Tiering" },

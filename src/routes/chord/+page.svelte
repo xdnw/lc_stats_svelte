@@ -1,5 +1,6 @@
 <script lang="ts">
     // @ts-nocheck
+    import { base } from "$app/paths";
     import {
         decompressBson,
         type Conflict,
@@ -465,12 +466,12 @@
         <div class="ux-page-title-stack">
             <Breadcrumbs
                 items={[
-                    { label: "Home", href: "/" },
-                    { label: "Conflicts", href: "/conflicts" },
+                    { label: "Home", href: `${base}/` },
+                    { label: "Conflicts", href: `${base}/conflicts` },
                     {
                         label: conflictName || "Conflict",
                         href: conflictId
-                            ? "/conflict?id=" + conflictId
+                            ? `${base}/conflict?id=` + conflictId
                             : undefined,
                     },
                     { label: "Chord" },
