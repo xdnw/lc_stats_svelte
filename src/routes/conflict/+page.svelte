@@ -28,6 +28,7 @@
         buildAavaSelectionRows,
         formatNationName,
         getConflictGraphDataUrl,
+        yieldToMain,
     } from "$lib";
     import {
         makeKpiId,
@@ -181,11 +182,6 @@
         { id: "preset-duration", kind: "preset", key: "duration" },
         { id: "preset-total-dmg", kind: "preset", key: "damage-total" },
         { id: "preset-net-gap", kind: "preset", key: "net-gap" },
-        {
-            id: "preset-off-wars-per-nation",
-            kind: "preset",
-            key: "off-wars-per-nation",
-        },
     ];
 
     const DEFAULT_RANKING_CARDS: RankingCard[] = [
@@ -1174,7 +1170,7 @@
         _loaded = false;
         let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
         decompressBson(url)
-            .then((data: Conflict) => {
+            .then(async (data: Conflict) => {
                 _rawData = data;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.conflict_data,
@@ -1188,6 +1184,7 @@
                     data.coalitions[1].alliance_ids,
                     data.coalitions[1].alliance_names,
                 );
+                await yieldToMain();
                 loadCurrentLayout();
                 if (data.posts && Object.keys(data.posts).length)
                     loadPosts(data.posts);

@@ -1,4 +1,9 @@
 import { Unpackr } from 'msgpackr';
+import type {
+    DecompressRequest,
+    DecompressSuccessResponse,
+    DecompressErrorResponse,
+} from '../workers/decompressWorker';
 
 const extUnpackr = new Unpackr({
     largeBigIntToFloat: true,
@@ -9,35 +14,70 @@ const extUnpackr = new Unpackr({
 
 const decompressedCache = new Map<string, Promise<any>>();
 
-async function streamToUint8Array(readableStream: ReadableStream): Promise<Uint8Array> {
-    const reader = readableStream.getReader();
-    const chunks: Uint8Array[] = [];
-    let result;
-    while (!result?.done) {
-        result = await reader.read();
-        if (!result.done) {
-            chunks.push(new Uint8Array(result.value));
-        }
+// ---------- worker-based decompression ----------
+let decompressWorker: Worker | null = null;
+let decompressWorkerFailed = false;
+let workerRequestId = 0;
+
+function getDecompressWorker(): Worker | null {
+    if (decompressWorkerFailed) return null;
+    if (decompressWorker) return decompressWorker;
+    try {
+        decompressWorker = new Worker(
+            new URL('../workers/decompressWorker.ts', import.meta.url),
+            { type: 'module' },
+        );
+        return decompressWorker;
+    } catch {
+        decompressWorkerFailed = true;
+        return null;
     }
-    let totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
-    let resultArray = new Uint8Array(totalLength);
-    let offset = 0;
-    for (let chunk of chunks) {
-        resultArray.set(chunk, offset);
-        offset += chunk.length;
-    }
-    return resultArray;
 }
 
-const decompress = async (url: string) => {
+function decompressViaWorker(url: string): Promise<any> {
+    const worker = getDecompressWorker();
+    if (!worker) {
+        return decompressMainThread(url);
+    }
+    return new Promise<any>((resolve, reject) => {
+        const requestId = ++workerRequestId;
+        const onMessage = (event: MessageEvent<DecompressSuccessResponse | DecompressErrorResponse>) => {
+            const response = event.data;
+            if (!response || response.id !== requestId) return;
+            worker.removeEventListener('message', onMessage);
+            worker.removeEventListener('error', onError);
+            if (response.ok) {
+                resolve(response.result);
+            } else {
+                reject(new Error(response.error));
+            }
+        };
+        const onError = (event: ErrorEvent) => {
+            worker.removeEventListener('message', onMessage);
+            worker.removeEventListener('error', onError);
+            reject(event.error ?? new Error(event.message));
+        };
+        worker.addEventListener('message', onMessage);
+        worker.addEventListener('error', onError, { once: true });
+        const payload: DecompressRequest = { id: requestId, url };
+        worker.postMessage(payload);
+    }).catch((error) => {
+        // Fallback to main-thread on worker failure.
+        console.warn('Decompress worker failed, falling back to main thread', error);
+        return decompressMainThread(url);
+    });
+}
+
+async function decompressMainThread(url: string): Promise<any> {
     const ds = new DecompressionStream('gzip');
     const response = await fetch(url);
     if (!response.body) {
         throw new Error('Response body is null');
     }
-    const streamIn = response.body.pipeThrough(ds);
-    return await new Response(streamIn).blob();
-};
+    const decompressed = response.body.pipeThrough(ds);
+    const arrayBuffer = await new Response(decompressed).arrayBuffer();
+    return extUnpackr.unpack(new Uint8Array(arrayBuffer));
+}
 
 export const decompressBson = async (
     url: string,
@@ -49,12 +89,7 @@ export const decompressBson = async (
 
     let cached = decompressedCache.get(url);
     if (!cached) {
-        cached = (async () => {
-            let result = await decompress(url);
-            let stream: ReadableStream<Uint8Array> = result.stream();
-            let uint8Array = await streamToUint8Array(stream);
-            return extUnpackr.unpack(uint8Array);
-        })().catch((error) => {
+        cached = decompressViaWorker(url).catch((error) => {
             // Failed requests should not poison future calls.
             decompressedCache.delete(url);
             throw error;

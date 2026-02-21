@@ -26,6 +26,9 @@
     resetQueryParams,
     formatDatasetProvenance,
     formatAllianceName,
+    getConflictDataUrl,
+    getConflictGraphDataUrl,
+    yieldToMain,
   } from "$lib";
   import {
     getBootstrapModalInstance,
@@ -326,6 +329,18 @@
         `;
 
           modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
+
+          // Prefetch this conflict's data so navigating to it is instant.
+          const detailUrl = getConflictDataUrl(
+            String(conflictId),
+            config.version.conflict_data,
+          );
+          decompressBson(detailUrl).catch(() => {});
+          const graphUrl = getConflictGraphDataUrl(
+            String(conflictId),
+            config.version.graph_data,
+          );
+          decompressBson(graphUrl).catch(() => {});
         },
       );
 
@@ -383,7 +398,7 @@
       let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
 
       decompressBson(url)
-        .then((result: RawData) => {
+        .then(async (result: RawData) => {
           _loadError = null;
           _rawData = result;
           datasetProvenance = formatDatasetProvenance(
@@ -439,6 +454,7 @@
 
           guildParam = queryParams.get("guild") || queryParams.get("guild_id");
 
+          await yieldToMain();
           setupConflicts(result, guildParam);
           _loaded = true;
           saveCurrentQueryParams();

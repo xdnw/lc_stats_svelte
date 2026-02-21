@@ -62,9 +62,7 @@ function generateTraces(
         y: [0, Number.MIN_SAFE_INTEGER],
         z: [0, Number.MIN_SAFE_INTEGER],
     };
-    let rangesKeys: (keyof typeof ranges)[] = Object.keys(
-        ranges,
-    ) as (keyof typeof ranges)[];
+    const rangesKeys: (keyof typeof ranges)[] = ['x', 'y', 'z'];
 
     let metrics = [x_axis, y_axis, size];
     const metricAccessors = resolveMetricAccessors(data, metrics);
@@ -74,6 +72,8 @@ function generateTraces(
     let metric_normalize = metricAccessors.metric_normalize;
     let isAnyTurn = metricAccessors.isAnyTurn;
     let lookup: { [key: number]: { [key: number]: Trace } } = {};
+    let lookupMin = Infinity;
+    let lookupMax = -Infinity;
 
     for (let i = 0; i < data.coalitions.length; i++) {
         let coalition = data.coalitions[i];
@@ -99,6 +99,8 @@ function generateTraces(
             let buffer: number[] = [0, 0, 0];
             let lastDay = -1;
             for (let turnOrDay = start; turnOrDay <= end; turnOrDay++) {
+                if (turnOrDay < lookupMin) lookupMin = turnOrDay;
+                if (turnOrDay > lookupMax) lookupMax = turnOrDay;
                 let traceByCol = lookup[turnOrDay];
                 if (!traceByCol) {
                     traceByCol = {};
@@ -136,7 +138,7 @@ function generateTraces(
                     }
                     let value_by_city =
                         value_by_day[is_turn ? turn - turn_start : day - day_start];
-                    if (!value_by_city || Object.keys(value_by_city).length == 0) {
+                    if (!value_by_city || value_by_city.length == 0) {
                         continue;
                     }
                     let total = 0.0;
@@ -184,8 +186,8 @@ function generateTraces(
             }
         }
     }
-    let start = Math.min(...Object.keys(lookup).map(Number));
-    let end = Math.max(...Object.keys(lookup).map(Number));
+    let start = lookupMin;
+    let end = lookupMax;
     let times: Timeframe = { start: start, end: end, is_turn: isAnyTurn };
     return { traces: lookup, times, ranges };
 }

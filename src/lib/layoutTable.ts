@@ -61,10 +61,11 @@ export function computeLayoutTableData(
     const sortIndex = Math.max(0, columns.indexOf(sortBy));
     let sort: [number, string] = [sortIndex, sortDir];
 
+    const layoutSet = new Set(layout);
     cell_format['formatNumber'] = [];
     cell_format['formatMoney'] = [];
     for (let i = 0; i < columns.length; i++) {
-        if (layout.includes(columns[i])) {
+        if (layoutSet.has(columns[i])) {
             visible.push(i);
         }
         if (i > 0) {

@@ -27,6 +27,7 @@
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
+        yieldToMain,
     } from "$lib";
     import { getPlotlyGlobal } from "$lib/globals";
     import { config } from "../+layout";
@@ -309,7 +310,7 @@
             config.version.graph_data,
         );
         decompressBson(url)
-            .then((data) => {
+            .then(async (data) => {
                 conflictName = data.name;
                 _rawData = data;
                 traceCache.clear();
@@ -318,6 +319,7 @@
                     (data as any).update_ms,
                 );
                 _loadError = null;
+                await yieldToMain();
                 setupGraphData(_rawData);
                 _loaded = true;
                 saveCurrentQueryParams();

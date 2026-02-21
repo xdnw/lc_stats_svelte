@@ -25,6 +25,7 @@
         setupContainer,
         type Conflict,
         type TableData,
+        yieldToMain,
     } from "$lib";
     import { setWindowGlobal } from "$lib/globals";
     import { AAVA_METRIC_KEYS, getAavaMetricLabels } from "$lib/aava";
@@ -662,6 +663,7 @@
                 );
                 hydrateStateFromQuery(data);
                 await tick();
+                await yieldToMain();
                 renderTable();
                 _loaded = true;
                 saveCurrentQueryParams();

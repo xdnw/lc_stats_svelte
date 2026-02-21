@@ -31,6 +31,7 @@
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
+        yieldToMain,
     } from "$lib";
     import { config } from "../+layout";
     import Select from "svelte-select";
@@ -242,13 +243,14 @@
             config.version.graph_data,
         );
         decompressBson(url)
-            .then((data) => {
+            .then(async (data) => {
                 _rawData = data;
                 conflictName = _rawData.name;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
                     (data as any).update_ms,
                 );
+                await yieldToMain();
                 setupCharts(_rawData);
                 _loaded = true;
                 saveCurrentQueryParams();

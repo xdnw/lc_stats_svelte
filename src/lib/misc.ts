@@ -15,3 +15,16 @@ export function htmlToElement(html: string): HTMLElement {
 export function arrayEquals(a: any[], b: any[]) {
     return a.length === b.length && a.every((val, index) => val === b[index]);
 }
+
+/**
+ * Yield control to the browser so it can paint pending UI changes (e.g. skeletons).
+ * Prefer scheduler.yield() (Chrome 129+), fall back to a rAF+setTimeout combo.
+ */
+export function yieldToMain(): Promise<void> {
+    if (typeof (globalThis as any).scheduler?.yield === 'function') {
+        return (globalThis as any).scheduler.yield();
+    }
+    return new Promise((resolve) => {
+        requestAnimationFrame(() => setTimeout(resolve, 0));
+    });
+}

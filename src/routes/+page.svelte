@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { getQueryParam } from "$lib";
+  import { getQueryParam, decompressBson } from "$lib";
   import { config } from "./+layout";
 
   type AdTemplate = {
@@ -180,6 +180,17 @@
       matrixAnimationFrame = requestAnimationFrame(draw);
     }
     draw();
+
+    // Prefetch conflicts index data so the Conflicts page loads faster.
+    const schedulePrefetch =
+      typeof (window as any).requestIdleCallback === "function"
+        ? (cb: () => void) =>
+            (window as any).requestIdleCallback(cb, { timeout: 3000 })
+        : (cb: () => void) => window.setTimeout(cb, 500);
+    schedulePrefetch(() => {
+      const url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
+      decompressBson(url).catch(() => {});
+    });
   });
 
   onDestroy(() => {

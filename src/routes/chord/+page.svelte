@@ -20,6 +20,7 @@
         formatAllianceName,
         getDefaultWarWebHeader,
         resolveWarWebMetricMeta,
+        yieldToMain,
     } from "$lib";
     import { onMount } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
@@ -68,7 +69,7 @@
         _loaded = false;
         let url = getConflictDataUrl(conflictId, config.version.conflict_data);
         decompressBson(url)
-            .then((data) => {
+            .then(async (data) => {
                 _rawData = data;
                 conflictName = data.name;
                 datasetProvenance = formatDatasetProvenance(
@@ -103,6 +104,7 @@
                         ]);
                     }
                 }
+                await yieldToMain();
                 setupWebWithCurrentLayout();
                 _loaded = true;
                 saveCurrentQueryParams();
