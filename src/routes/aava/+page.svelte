@@ -112,6 +112,8 @@
     let rowsCache = new Map<string, any[]>();
     let renderQueued = false;
     let sharedKpiWidgets: ConflictKPIWidget[] = [];
+    let primaryCoalition: Conflict["coalitions"][number] | undefined;
+    let vsCoalition: Conflict["coalitions"][number] | undefined;
 
     function clearRowsCache() {
         rowsCache.clear();
@@ -120,6 +122,8 @@
     $: selectedPrimaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
     $: selectedVsIds =
         selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
+    $: primaryCoalition = _rawData?.coalitions[primaryCoalitionIndex];
+    $: vsCoalition = _rawData?.coalitions[primaryCoalitionIndex === 0 ? 1 : 0];
     $: aavaMetricLabels = getAavaMetricLabels(currentHeader);
     $: isResetDirty = (() => {
         if (!_rawData) return false;
@@ -143,18 +147,6 @@
             sameC1
         );
     })();
-
-    function getCoalition(index: number) {
-        return _rawData?.coalitions[index];
-    }
-
-    function getPrimaryCoalition() {
-        return getCoalition(primaryCoalitionIndex);
-    }
-
-    function getVsCoalition() {
-        return getCoalition(primaryCoalitionIndex === 0 ? 1 : 0);
-    }
 
     function getColumnLabels(header: string): Record<ColumnKey, string> {
         const meta = resolveWarWebMetricMeta(header);
@@ -390,8 +382,8 @@
     }
 
     function makeSelectionSnapshot(): AavaScopeSnapshot {
-        const selectedName = getPrimaryCoalition()?.name ?? "Selected";
-        const comparedName = getVsCoalition()?.name ?? "Compared";
+        const selectedName = primaryCoalition?.name ?? "Selected";
+        const comparedName = vsCoalition?.name ?? "Compared";
         return {
             header: currentHeader,
             primaryCoalitionIndex: primaryCoalitionIndex as 0 | 1,
@@ -985,8 +977,8 @@
                                 <span class="badge text-bg-danger ms-1"
                                     >Selected coalition</span
                                 >
-                                ({getPrimaryCoalition()?.name})
-                                {selectedPrimaryIds.length}/{getPrimaryCoalition()
+                                ({primaryCoalition?.name})
+                                {selectedPrimaryIds.length}/{primaryCoalition
                                     ?.alliance_ids.length ?? 0}
                             </strong>
                         </div>
@@ -1015,8 +1007,8 @@
                                 <span class="badge text-bg-primary ms-1"
                                     >Compared coalition</span
                                 >
-                                ({getVsCoalition()?.name})
-                                {selectedVsIds.length}/{getVsCoalition()
+                                ({vsCoalition?.name})
+                                {selectedVsIds.length}/{vsCoalition
                                     ?.alliance_ids.length ?? 0}
                             </strong>
                         </div>
@@ -1100,7 +1092,7 @@
 
     <SelectionModal
         open={showPrimaryAllianceModal}
-        title={`Selected coalition: ${getPrimaryCoalition()?.name ?? ""}`}
+        title={`Selected coalition: ${primaryCoalition?.name ?? ""}`}
         description="Choose alliances to include in the selected coalition set."
         items={primaryAllianceModalItems}
         selectedIds={selectedPrimaryIds}
@@ -1111,7 +1103,7 @@
 
     <SelectionModal
         open={showVsAllianceModal}
-        title={`Compared coalition: ${getVsCoalition()?.name ?? ""}`}
+        title={`Compared coalition: ${vsCoalition?.name ?? ""}`}
         description="Choose alliances to include in the compared coalition set."
         items={vsAllianceModalItems}
         selectedIds={selectedVsIds}
