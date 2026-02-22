@@ -270,6 +270,7 @@
             fetchConflictGraphData(conflictId);
         } else {
             _loadError = "Missing conflict id in URL";
+            _loaded = true;
         }
         noUiSlider.create(sliderElement, {
             start: cityValues,
@@ -651,7 +652,7 @@
                             ];
                         if (
                             !value_by_city ||
-                            Object.keys(value_by_city).length == 0
+                            value_by_city.length == 0
                         ) {
                             continue;
                         }
@@ -791,7 +792,9 @@
         metrics: [TierMetric, TierMetric, TierMetric],
     ) {
         // Get the group names:
-        var years: number[] = Object.keys(lookup).map(Number);
+        const years: number[] = Object.keys(lookup)
+            .map(Number)
+            .sort((a, b) => a - b);
         if (years.length === 0) return;
         // In this case, every year includes every continent, so we
         // can just infer the continents from the *first* year:
@@ -799,13 +802,14 @@
             Math.max(graphSliderIndex, 0),
             Math.max(years.length - 1, 0),
         );
-        var firstYear = lookup[time.start + graphSliderIndex];
+        const selectedYear = years[graphSliderIndex];
+        const firstYear = lookup[selectedYear];
         if (!firstYear) return;
-        var coalitions: number[] = Object.keys(firstYear).map(Number);
+        const coalitions: number[] = Object.keys(firstYear).map(Number);
 
         let maxZbyTime: number[] = [];
-        for (let i = time.start; i <= time.end; i++) {
-            let lookupByTime = lookup[i];
+        for (const year of years) {
+            let lookupByTime = lookup[year];
             if (!lookupByTime) {
                 continue;
             }
@@ -1159,7 +1163,7 @@
             0,
             Math.min(graphSliderIndex, Math.max(keys.length - 1, 0)),
         );
-        const activeTime = times.start + frameIndex;
+        const activeTime = keys[frameIndex];
         const frameByCoalition = traces[activeTime] ?? {};
         const timeFormat = times.is_turn ? formatTurnsToDate : formatDaysToDate;
 

@@ -469,14 +469,22 @@
         backgroundColor: string;
         stack: string;
     }[] {
-        const [startIndex, endIndex] =
-            slider.length > 1
-                ? slider[0] === 0
-                    ? [slider[1], slider[1]]
-                    : [slider[0], slider[1]]
-                : [slider[0], slider[0]];
+        const isPointSelection =
+            slider.length === 1 || (slider.length === 2 && slider[0] === 0);
+        const pointIndex = slider.length > 1 ? slider[1] : slider[0];
+        const startIndex = slider[0] ?? 0;
+        const endIndex = slider[1] ?? slider[0] ?? 0;
 
         return data.map((dataSet) => {
+            if (isPointSelection) {
+                return {
+                    label: dataSet.label,
+                    data: dataSet.data[pointIndex] ?? [],
+                    backgroundColor: dataSet.color,
+                    stack: "" + dataSet.group,
+                };
+            }
+
             const endRow = dataSet.data[endIndex] ?? [];
             const startRow = dataSet.data[startIndex] ?? [];
             const len = Math.max(endRow.length, startRow.length);
@@ -738,7 +746,7 @@
 
         let format = response.is_turn ? formatTurnsToDate : formatDaysToDate;
         let density = response.is_turn ? 60 : 5;
-        let config: Options = {
+        let sliderConfig: Options = {
             start: turnValues,
             connect: true,
             step: 1,
@@ -767,7 +775,7 @@
         if (sliderOrNull) {
             sliderOrNull.destroy();
         }
-        noUiSlider.create(sliderElement, config);
+        noUiSlider.create(sliderElement, sliderConfig);
 
         getSliderApi()?.on("set", (values: string[]) => {
             let myChart = chartInstanceRef ?? Chart.getChart(chartElem);
@@ -962,10 +970,9 @@
         let metric_is_turn = metricAccessors.metric_is_turn;
         let metric_normalize = metricAccessors.metric_normalize;
         let isAnyTurn = metricAccessors.isAnyTurn;
-        let len =
-            metrics.length == 1
-                ? alliance_ids.length
-                : data.coalitions.length * metrics.length;
+        let len = stackByAlliance
+            ? alliance_ids.reduce((sum, ids) => sum + ids.length, 0)
+            : data.coalitions.length * metrics.length;
         let allianceSets: Set<number>[] = alliance_ids.map((id) => new Set(id));
 
         let dataBeforeNormalize: [
@@ -1099,7 +1106,7 @@
                             }
                             let nation_counts = nation_counts_by_day[dayI];
                             if (nation_counts && !updatedCounts) {
-                                // updatedCounts = true;
+                                updatedCounts = true;
                                 for (let l = 0; l < nation_counts.length; l++) {
                                     let value = nation_counts[l];
                                     let city = coalition.cities[l];
@@ -1110,20 +1117,12 @@
                             }
                             if (normalize == 0) {
                                 for (let l = 0; l < countsBuffer.length; l++) {
-                                    let city = coalition.cities[l];
-                                    let value = countsBuffer[l];
-                                    if (value != null) {
-                                        counts[city - minCity] += value;
-                                    }
+                                    counts[l] += countsBuffer[l];
                                 }
                             } else {
                                 for (let l = 0; l < countsBuffer.length; l++) {
-                                    let city = coalition.cities[l];
-                                    let value = countsBuffer[l];
-                                    if (value != null) {
-                                        counts[city - minCity] +=
-                                            value * city * normalize;
-                                    }
+                                    counts[l] +=
+                                        countsBuffer[l] * (l + minCity) * normalize;
                                 }
                             }
                         }

@@ -105,10 +105,9 @@ function getDataSetsByTime(
     let metric_is_turn = metricAccessors.metric_is_turn;
     let metric_normalize = metricAccessors.metric_normalize;
     let isAnyTurn = metricAccessors.isAnyTurn;
-    let len =
-        metrics.length == 1
-            ? alliance_ids.length
-            : data.coalitions.length * metrics.length;
+    let len = stackByAlliance
+        ? alliance_ids.reduce((sum, ids) => sum + ids.length, 0)
+        : data.coalitions.length * metrics.length;
     let allianceSets: Set<number>[] = alliance_ids.map((id) => new Set(id));
 
     let dataBeforeNormalize: [
@@ -247,19 +246,11 @@ function getDataSetsByTime(
                         }
                         if (normalize == 0) {
                             for (let l = 0; l < countsBuffer.length; l++) {
-                                let city = coalition.cities[l];
-                                let value = countsBuffer[l];
-                                if (value != null) {
-                                    counts[city - minCity] += value;
-                                }
+                                counts[l] += countsBuffer[l];
                             }
                         } else {
                             for (let l = 0; l < countsBuffer.length; l++) {
-                                let city = coalition.cities[l];
-                                let value = countsBuffer[l];
-                                if (value != null) {
-                                    counts[city - minCity] += value * city * normalize;
-                                }
+                                counts[l] += countsBuffer[l] * (l + minCity) * normalize;
                             }
                         }
                     }
