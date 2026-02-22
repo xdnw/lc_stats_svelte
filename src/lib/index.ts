@@ -55,12 +55,24 @@ export {
     resolveWarWebMetricMeta,
 } from './warWeb';
 export type { WarWebMetricMeta } from './warWeb';
-export type { ExportType } from './dataExport';
+export type {
+    ExportType,
+    ExportFormat,
+    ExportTarget,
+    ExportDatasetOption,
+    ExportTableDataset,
+    ExportBundle,
+    ExportBundleRequest,
+    ExportCell,
+    ExportSettingsValue,
+} from './dataExport';
 export {
     ExportTypes,
     downloadTableData,
     downloadTableElem,
     downloadCells,
+    buildSettingsRows,
+    exportBundleData,
     copyShareLink,
 } from './dataExport';
 export type { ColumnPreset } from './columnPresets';

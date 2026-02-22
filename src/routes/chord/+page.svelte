@@ -27,9 +27,13 @@
         toNumberSelection,
         validateSingleSelection,
         yieldToMain,
+        buildSettingsRows,
+        exportBundleData,
+        type ExportDatasetOption,
     } from "$lib";
     import { onMount } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
+    import ExportDataMenu from "../../components/ExportDataMenu.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
@@ -38,6 +42,7 @@
         SelectionId,
         SelectionModalItem,
     } from "../../components/selectionModalTypes";
+    import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import * as d3 from "d3";
     import { config } from "../+layout";
 
@@ -56,6 +61,37 @@
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
+    let selectedChordExportDataset = "matrix";
+    let chordExportState: {
+        header: string;
+        labels: string[];
+        allianceIds: number[];
+        coalitionIds: number[];
+        matrix: number[][];
+    } | null = null;
+    const chordExportDatasets: ExportDatasetOption[] = [
+        {
+            key: "matrix",
+            label: "Full directed matrix",
+        },
+        {
+            key: "edges",
+            label: "Edge list (non-zero)",
+        },
+        {
+            key: "settings",
+            label: "Current filter settings",
+        },
+    ];
+    const chordEdgeExportColumns = [
+        "from_alliance",
+        "from_alliance_id",
+        "from_coalition",
+        "to_alliance",
+        "to_alliance_id",
+        "to_coalition",
+        "value",
+    ];
     $: isResetDirty = (() => {
         if (!_rawData) return false;
         const defaultHeader = getDefaultWarWebHeader(_rawData);
@@ -330,7 +366,88 @@
         matrix = matrix.map((row) =>
             row.map((value) => (isNaN(value) || value < 0 ? 0 : value)),
         );
+        chordExportState = {
+            header,
+            labels: labels.slice(),
+            allianceIds: alliance_ids.slice(),
+            coalitionIds: coalition_ids.slice(),
+            matrix: matrix.map((row) => row.slice()),
+        };
         setupChord(matrix, labels, colors, alliance_ids, coalition_ids);
+    }
+
+    function handleChordExport(action: ExportMenuAction): void {
+        if (!chordExportState) return;
+
+        const { labels, allianceIds, coalitionIds, matrix, header } =
+            chordExportState;
+        const matrixRows: (string | number)[][] = [];
+        const edgeRows: (string | number)[][] = [];
+
+        for (let from = 0; from < matrix.length; from++) {
+            for (let to = 0; to < matrix[from].length; to++) {
+                const value = matrix[from][to] ?? 0;
+                const row: (string | number)[] = [
+                    labels[from] ?? `AA:${allianceIds[from]}`,
+                    allianceIds[from] ?? -1,
+                    coalitionIds[from] ?? -1,
+                    labels[to] ?? `AA:${allianceIds[to]}`,
+                    allianceIds[to] ?? -1,
+                    coalitionIds[to] ?? -1,
+                    value,
+                ];
+                matrixRows.push(row);
+                if (value > 0) {
+                    edgeRows.push(row);
+                }
+            }
+        }
+
+        const settingsRows = buildSettingsRows([
+            ["conflict_id", conflictId ?? ""],
+            ["conflict_name", conflictName],
+            ["header", header],
+            ["selected_alliance_count", allianceIds.length],
+            ["selected_alliance_ids", allianceIds],
+        ]);
+
+        const bundle = {
+            baseFileName: `chord-${conflictId ?? "conflict"}`,
+            meta: {
+                conflictId,
+                conflictName,
+                header,
+                selectedAllianceIds: allianceIds,
+                coalitionIds,
+            },
+            tables: [
+                {
+                    key: "matrix",
+                    label: "Full directed matrix",
+                    columns: chordEdgeExportColumns,
+                    rows: matrixRows,
+                },
+                {
+                    key: "edges",
+                    label: "Edge list (non-zero)",
+                    columns: chordEdgeExportColumns,
+                    rows: edgeRows,
+                },
+                {
+                    key: "settings",
+                    label: "Current filter settings",
+                    columns: ["key", "value"],
+                    rows: settingsRows,
+                },
+            ],
+        };
+
+        exportBundleData({
+            bundle,
+            datasetKey: action.datasetKey,
+            format: action.format,
+            target: action.target,
+        });
     }
 
     function setupChord(
@@ -601,6 +718,13 @@
                 <ShareResetBar
                     onReset={resetFilters}
                     resetDirty={isResetDirty}
+                />
+            </div>
+            <div class="d-flex justify-content-end mb-2">
+                <ExportDataMenu
+                    datasets={chordExportDatasets}
+                    bind:selectedDatasetKey={selectedChordExportDataset}
+                    onExport={handleChordExport}
                 />
             </div>
             <hr class="m-1" />

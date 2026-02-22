@@ -3,6 +3,7 @@
      * This page is for viewing tiering charts for a conflict
      */
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
+    import ExportDataMenu from "../../components/ExportDataMenu.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
@@ -11,6 +12,7 @@
         SelectionId,
         SelectionModalItem,
     } from "../../components/selectionModalTypes";
+    import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { base } from "$app/paths";
     import type { API, Options } from "nouislider";
     import { Chart, registerables, type ChartConfiguration } from "chart.js";
@@ -39,6 +41,10 @@
         formatDatasetProvenance,
         formatAllianceName,
         yieldToMain,
+        exportBundleData,
+        buildSettingsRows,
+        type ExportBundle,
+        type ExportDatasetOption,
     } from "$lib";
     import { config } from "../+layout";
     import Select from "svelte-select";
@@ -80,6 +86,22 @@
     let tieringWorker: Worker | null = null;
     let workerRequestId = 0;
     let latestSetupRunId = 0;
+    let selectedTieringExportDataset = "snapshot";
+
+    const tieringExportDatasets: ExportDatasetOption[] = [
+        {
+            key: "snapshot",
+            label: "Current slider snapshot",
+        },
+        {
+            key: "timeseries",
+            label: "Full timeline by city",
+        },
+        {
+            key: "settings",
+            label: "Current filter settings",
+        },
+    ];
 
     /**
      * The raw data for the conflict, uninitialized until setupChartData is called
@@ -447,29 +469,152 @@
         backgroundColor: string;
         stack: string;
     }[] {
-        if (slider[0] == 0 && slider.length == 2) {
-            slider = [slider[1]];
-        }
-        if (slider.length == 1) {
-            return data.map((dataSet) => ({
+        const [startIndex, endIndex] =
+            slider.length > 1
+                ? slider[0] === 0
+                    ? [slider[1], slider[1]]
+                    : [slider[0], slider[1]]
+                : [slider[0], slider[0]];
+
+        return data.map((dataSet) => {
+            const endRow = dataSet.data[endIndex] ?? [];
+            const startRow = dataSet.data[startIndex] ?? [];
+            const len = Math.max(endRow.length, startRow.length);
+            const values = new Array<number>(len);
+            for (let j = 0; j < len; j++) {
+                values[j] = (endRow[j] ?? 0) - (startRow[j] ?? 0);
+            }
+            return {
                 label: dataSet.label,
-                data: dataSet.data[slider[0]],
+                data: values,
                 backgroundColor: dataSet.color,
                 stack: "" + dataSet.group,
-            }));
-        } else {
-            return data.map((dataSet) => {
-                let data = dataSet.data[slider[1]].map(
-                    (value, j) => value - (dataSet.data[slider[0]][j] | 0),
-                );
-                return {
-                    label: dataSet.label,
-                    data: data,
-                    backgroundColor: dataSet.color,
-                    stack: "" + dataSet.group,
-                };
-            });
+            };
+        });
+    }
+
+    function getTieringSliderIndices(): number[] {
+        const sliderApi: API | null = getSliderApi();
+        if (!sliderApi || !turnValues || !dataSets || dataSets.length === 0) {
+            return [0];
         }
+        const raw = sliderApi.get();
+        const values = Array.isArray(raw) ? raw : [raw];
+        const timeMin = turnValues[0];
+        const maxIndex = Math.max(0, (dataSets[0]?.data.length ?? 1) - 1);
+        const indices = values.map((value) =>
+            Math.max(
+                0,
+                Math.min(
+                    maxIndex,
+                    Math.round(Number(value) - timeMin),
+                ),
+            ),
+        );
+        return indices;
+    }
+
+    function buildTieringExportBundle(): ExportBundle | null {
+        if (!_rawData || !dataSets || !turnValues || dataSets.length === 0) {
+            return null;
+        }
+
+        const cityLabels = (chartInstanceRef?.data.labels as (string | number)[]) ??
+            [];
+        const sliderIndices = getTieringSliderIndices();
+        const sliderSnapshot = getGraphDataAtTime(dataSets, sliderIndices);
+        const sliderTimeLabels = sliderIndices.map(
+            (index) => turnValues[0] + index,
+        );
+
+        const snapshotRows = sliderSnapshot.flatMap((trace) =>
+            (trace.data ?? []).map((value, cityIndex) => [
+                trace.label,
+                trace.stack,
+                cityLabels[cityIndex] ?? cityIndex,
+                value,
+            ]),
+        );
+
+        const timeRows: (string | number)[][] = [];
+        for (const dataSet of dataSets) {
+            for (let timeIndex = 0; timeIndex < dataSet.data.length; timeIndex++) {
+                const timeValue = turnValues[0] + timeIndex;
+                const cityRow = dataSet.data[timeIndex] ?? [];
+                for (let cityIndex = 0; cityIndex < cityRow.length; cityIndex++) {
+                    timeRows.push([
+                        dataSet.label,
+                        dataSet.group,
+                        timeValue,
+                        cityLabels[cityIndex] ?? cityIndex,
+                        cityRow[cityIndex] ?? 0,
+                    ]);
+                }
+            }
+        }
+
+        const settingsRows = buildSettingsRows([
+            ["conflict_id", conflictId ?? ""],
+            ["conflict_name", conflictName],
+            ["selected_metrics", selected_metrics.map((m) => m.value)],
+            ["normalize", normalize ? 1 : 0],
+            ["single_color", useSingleColor ? 1 : 0],
+            ["city_band_size", cityBandSize],
+            ["selected_alliance_count", _allowedAllianceIds.size],
+            ["slider_selection", sliderTimeLabels],
+        ]);
+
+        return {
+            baseFileName: `tiering-${conflictId ?? "conflict"}`,
+            meta: {
+                conflictId,
+                conflictName,
+                selectedMetrics: selected_metrics.map((m) => m.value),
+                normalize,
+                useSingleColor,
+                cityBandSize,
+                selectedAllianceIds: Array.from(_allowedAllianceIds),
+                sliderIndices,
+                sliderTimeLabels,
+            },
+            tables: [
+                {
+                    key: "snapshot",
+                    label: "Current slider snapshot",
+                    columns: ["dataset", "coalition_stack", "city", "value"],
+                    rows: snapshotRows,
+                },
+                {
+                    key: "timeseries",
+                    label: "Full timeline by city",
+                    columns: [
+                        "dataset",
+                        "coalition_stack",
+                        "time",
+                        "city",
+                        "value",
+                    ],
+                    rows: timeRows,
+                },
+                {
+                    key: "settings",
+                    label: "Current filter settings",
+                    columns: ["key", "value"],
+                    rows: settingsRows,
+                },
+            ],
+        };
+    }
+
+    function handleTieringExport(action: ExportMenuAction): void {
+        const bundle = buildTieringExportBundle();
+        if (!bundle) return;
+        exportBundleData({
+            bundle,
+            datasetKey: action.datasetKey,
+            format: action.format,
+            target: action.target,
+        });
     }
 
     async function setupCharts(data: GraphData) {
@@ -685,7 +830,12 @@
             const worker = tieringWorker;
             if (!worker) {
                 resolve(
-                    getDataSetsByTime(data, metrics, alliance_ids, cityBandSize),
+                    getDataSetsByTime(
+                        data,
+                        metrics,
+                        alliance_ids,
+                        cityBandSize,
+                    ),
                 );
                 return;
             }
@@ -765,7 +915,8 @@
         const grouped = new Array<number>(bandCount).fill(0);
         if (!row || row.length === 0) return grouped;
         for (let cityOffset = 0; cityOffset < row.length; cityOffset++) {
-            grouped[Math.floor(cityOffset / cityBandSize)] += row[cityOffset] || 0;
+            grouped[Math.floor(cityOffset / cityBandSize)] +=
+                row[cityOffset] || 0;
         }
         return grouped;
     }
@@ -777,7 +928,11 @@
     ): number[][] {
         const groupedRows = new Array<number[]>(rows.length);
         for (let t = 0; t < rows.length; t++) {
-            groupedRows[t] = groupRowByCityBand(rows[t], bandCount, cityBandSize);
+            groupedRows[t] = groupRowByCityBand(
+                rows[t],
+                bandCount,
+                cityBandSize,
+            );
         }
         return groupedRows;
     }
@@ -1035,7 +1190,11 @@
             if (shouldGroupByBand) {
                 data = groupRowsByCityBand(data, bandCount, cityBandSize);
                 if (counts) {
-                    counts = groupRowsByCityBand(counts, bandCount, cityBandSize);
+                    counts = groupRowsByCityBand(
+                        counts,
+                        bandCount,
+                        cityBandSize,
+                    );
                 }
             }
             // iterate data, and set each array to previous value if empty
@@ -1196,6 +1355,11 @@
                 class="ux-control-strip mb-1"
                 style="position: relative; z-index: 2;"
             >
+                <ExportDataMenu
+                    datasets={tieringExportDatasets}
+                    bind:selectedDatasetKey={selectedTieringExportDataset}
+                    onExport={handleTieringExport}
+                />
                 <ShareResetBar
                     onReset={resetFilters}
                     resetDirty={isResetDirty}

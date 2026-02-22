@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
     import Select from "svelte-select";
+    import ExportDataMenu from "../../components/ExportDataMenu.svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
@@ -29,7 +30,12 @@
         formatDatasetProvenance,
         formatAllianceName,
         yieldToMain,
+        buildSettingsRows,
+        exportBundleData,
+        type ExportBundle,
+        type ExportDatasetOption,
     } from "$lib";
+    import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { getPlotlyGlobal } from "$lib/globals";
     import { config } from "../+layout";
 
@@ -60,6 +66,34 @@
     let bubbleWorker: Worker | null = null;
     let workerRequestId = 0;
     let latestGraphRunId = 0;
+    let latestTraceBuildResult: TraceBuildResult | null = null;
+    let latestTraceMetrics: [TierMetric, TierMetric, TierMetric] | null = null;
+    let selectedBubbleExportDataset = "frame";
+
+    const bubbleExportDatasets: ExportDatasetOption[] = [
+        {
+            key: "frame",
+            label: "Current time frame points",
+        },
+        {
+            key: "timeline",
+            label: "Full timeline points",
+        },
+        {
+            key: "settings",
+            label: "Current filter settings",
+        },
+    ];
+    const bubblePointExportColumns = [
+        "coalition",
+        "alliance",
+        "alliance_id",
+        "time",
+        "time_label",
+        "x",
+        "y",
+        "size",
+    ];
 
     const defaultMetricSelection = [
         "dealt:loss_value",
@@ -735,6 +769,8 @@
             traceCache.set(cacheKey, tracesTime);
         }
         if (!tracesTime) return;
+        latestTraceBuildResult = tracesTime;
+        latestTraceMetrics = metrics;
         let coalition_names = data.coalitions.map(
             (coalition) => coalition.name,
         );
@@ -1106,6 +1142,127 @@
             graphDivAny.on?.("plotly_sliderchange", plotlySliderChangeListener);
         });
     }
+
+    function buildBubbleExportBundle(): ExportBundle | null {
+        if (!_rawData || !latestTraceBuildResult || !latestTraceMetrics) {
+            return null;
+        }
+
+        const { traces, times } = latestTraceBuildResult;
+        const coalitionNames = _rawData.coalitions.map((c) => c.name);
+        const keys = Object.keys(traces)
+            .map(Number)
+            .sort((a, b) => a - b);
+        if (keys.length === 0) return null;
+
+        const frameIndex = Math.max(
+            0,
+            Math.min(graphSliderIndex, Math.max(keys.length - 1, 0)),
+        );
+        const activeTime = times.start + frameIndex;
+        const frameByCoalition = traces[activeTime] ?? {};
+        const timeFormat = times.is_turn ? formatTurnsToDate : formatDaysToDate;
+
+        const frameRows: (string | number)[][] = [];
+        for (const [coalitionIdStr, trace] of Object.entries(frameByCoalition)) {
+            const coalitionId = Number(coalitionIdStr);
+            for (let i = 0; i < trace.id.length; i++) {
+                frameRows.push([
+                    coalitionNames[coalitionId] ?? `Coalition ${coalitionId + 1}`,
+                    trace.text[i] ?? `AA:${trace.id[i]}`,
+                    trace.id[i],
+                    activeTime,
+                    timeFormat(activeTime),
+                    trace.x[i] ?? 0,
+                    trace.y[i] ?? 0,
+                    trace.customdata[i] ?? 0,
+                ]);
+            }
+        }
+
+        const timelineRows: (string | number)[][] = [];
+        for (const time of keys) {
+            const rowByCoalition = traces[time] ?? {};
+            for (const [coalitionIdStr, trace] of Object.entries(rowByCoalition)) {
+                const coalitionId = Number(coalitionIdStr);
+                for (let i = 0; i < trace.id.length; i++) {
+                    timelineRows.push([
+                        coalitionNames[coalitionId] ?? `Coalition ${coalitionId + 1}`,
+                        trace.text[i] ?? `AA:${trace.id[i]}`,
+                        trace.id[i],
+                        time,
+                        timeFormat(time),
+                        trace.x[i] ?? 0,
+                        trace.y[i] ?? 0,
+                        trace.customdata[i] ?? 0,
+                    ]);
+                }
+            }
+        }
+
+        const settingsRows = buildSettingsRows([
+            ["conflict_id", conflictId ?? ""],
+            ["conflict_name", conflictName ?? ""],
+            ["selected_metrics", selected_metrics.map((m) => m.value)],
+            ["city_min", cityValues[0]],
+            ["city_max", cityValues[1]],
+            ["normalize_x", normalize_x ? 1 : 0],
+            ["normalize_y", normalize_y ? 1 : 0],
+            ["normalize_z", normalize_z ? 1 : 0],
+            ["time_index", frameIndex],
+            ["time_value", activeTime],
+            ["time_label", timeFormat(activeTime)],
+        ]);
+
+        return {
+            baseFileName: `bubble-${conflictId ?? "conflict"}`,
+            meta: {
+                conflictId,
+                conflictName,
+                selectedMetrics: latestTraceMetrics,
+                cityRange: cityValues,
+                normalize: {
+                    x: normalize_x,
+                    y: normalize_y,
+                    z: normalize_z,
+                },
+                activeTime,
+                activeTimeLabel: timeFormat(activeTime),
+                isTurn: times.is_turn,
+            },
+            tables: [
+                {
+                    key: "frame",
+                    label: "Current time frame points",
+                    columns: bubblePointExportColumns,
+                    rows: frameRows,
+                },
+                {
+                    key: "timeline",
+                    label: "Full timeline points",
+                    columns: bubblePointExportColumns,
+                    rows: timelineRows,
+                },
+                {
+                    key: "settings",
+                    label: "Current filter settings",
+                    columns: ["key", "value"],
+                    rows: settingsRows,
+                },
+            ],
+        };
+    }
+
+    function handleBubbleExport(action: ExportMenuAction): void {
+        const bundle = buildBubbleExportBundle();
+        if (!bundle) return;
+        exportBundleData({
+            bundle,
+            datasetKey: action.datasetKey,
+            format: action.format,
+            target: action.target,
+        });
+    }
 </script>
 
 <svelte:head>
@@ -1186,6 +1343,13 @@
                     <ShareResetBar
                         onReset={resetFilters}
                         resetDirty={isResetDirty}
+                    />
+                </div>
+                <div class="d-flex justify-content-end mb-2">
+                    <ExportDataMenu
+                        datasets={bubbleExportDatasets}
+                        bind:selectedDatasetKey={selectedBubbleExportDataset}
+                        onExport={handleBubbleExport}
                     />
                 </div>
                 <div
