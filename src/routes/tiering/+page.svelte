@@ -57,6 +57,10 @@
     let useSingleColor: boolean = false;
     let previous_useSingleColor: boolean = false;
 
+    // 0/1 means no grouping; values >1 group cities into fixed-width bands.
+    let cityBandSize: number = 0;
+    let previous_cityBandSize: number = 0;
+
     let sliderElement: HTMLDivElement;
     let turnValues: number[];
 
@@ -101,7 +105,13 @@
             : 0;
         const allSelected =
             !_rawData || _allowedAllianceIds.size === allAllianceCount;
-        return normalize || useSingleColor || !sameSelected || !allSelected;
+        return (
+            normalize ||
+            useSingleColor ||
+            cityBandSize > 1 ||
+            !sameSelected ||
+            !allSelected
+        );
     })();
 
     $: maxItems = selected_metrics?.length === 4;
@@ -159,18 +169,27 @@
         return true;
     }
 
-    function buildAllianceModalItems(
-        coalitionIndex: 0 | 1,
-    ): SelectionModalItem[] {
-        if (!_rawData) return [];
-        const coalition = _rawData.coalitions[coalitionIndex];
-        if (!coalition) return [];
-        return buildCoalitionAllianceItems([coalition], formatAllianceName);
+    async function handleCityBandChange(): Promise<boolean> {
+        await tick();
+        cityBandSize = Math.max(0, Math.floor(Number(cityBandSize) || 0));
+        if (previous_cityBandSize === cityBandSize) return false;
+        previous_cityBandSize = cityBandSize;
+        if (_rawData) {
+            setQueryParam("cityband", cityBandSize > 1 ? cityBandSize : null, {
+                replace: true,
+            });
+            saveCurrentQueryParams();
+            setupCharts(_rawData);
+        }
+        return true;
     }
 
-    $: allianceModalItems = buildAllianceModalItems(
-        activeAllianceCoalitionIndex,
-    );
+    $: allianceModalItems = (() => {
+        if (!_rawData) return [];
+        const coalition = _rawData.coalitions[activeAllianceCoalitionIndex];
+        if (!coalition) return [];
+        return buildCoalitionAllianceItems([coalition], formatAllianceName);
+    })();
     $: allianceModalSelectedIds = (() => {
         if (!_rawData) return [];
         return _rawData.coalitions[
@@ -184,7 +203,6 @@
 
     function openAllianceModal(coalitionIndex: 0 | 1) {
         activeAllianceCoalitionIndex = coalitionIndex;
-        allianceModalItems = buildAllianceModalItems(coalitionIndex);
         if (_rawData)
             allianceModalSelectedIds = _rawData.coalitions[
                 coalitionIndex
@@ -231,6 +249,12 @@
         if (unicolorStr && !isNaN(+unicolorStr)) {
             useSingleColor = +unicolorStr == 1;
         }
+        let cityBandStr = params.get("cityband");
+        if (cityBandStr && !isNaN(+cityBandStr)) {
+            const parsed = Math.max(0, Math.floor(+cityBandStr));
+            cityBandSize = parsed > 1 ? parsed : 0;
+        }
+        previous_cityBandSize = cityBandSize;
     }
 
     // onMount runs when this component (i.e. the page) is loaded
@@ -250,7 +274,7 @@
         }
 
         applySavedQueryParamsIfMissing(
-            ["selected", "normalize", "unicolor", "ids"],
+            ["selected", "normalize", "unicolor", "cityband", "ids"],
             ["id"],
         );
         // Get the conflict id from the url query string
@@ -396,13 +420,18 @@
         previous_normalize = false;
         useSingleColor = false;
         previous_useSingleColor = false;
+        cityBandSize = 0;
+        previous_cityBandSize = 0;
         selected_metrics = ["nation"].map((name) => ({
             value: name,
             label: name,
         }));
         previous_selected = selected_metrics.slice();
         _allowedAllianceIds = new Set();
-        resetQueryParams(["selected", "normalize", "unicolor", "ids"], ["id"]);
+        resetQueryParams(
+            ["selected", "normalize", "unicolor", "cityband", "ids"],
+            ["id"],
+        );
         saveCurrentQueryParams();
         if (_rawData) {
             setupCharts(_rawData);
@@ -481,6 +510,7 @@
                 _rawData,
                 metrics,
                 alliance_ids,
+                cityBandSize,
             );
             if (runId !== latestSetupRunId) return;
             if (!computed) return;
@@ -502,12 +532,15 @@
             isAnyCumulative ? [0, response.time[1] - response.time[0]] : [0],
         );
 
-        let minCity = response.city_range[0];
-        let maxCity = response.city_range[1];
-        let labels = Array.from(
-            { length: maxCity - minCity + 1 },
-            (_, i) => i + minCity,
-        );
+        let labels = response.city_labels;
+        if (!labels) {
+            let minCity = response.city_range[0];
+            let maxCity = response.city_range[1];
+            labels = Array.from(
+                { length: maxCity - minCity + 1 },
+                (_, i) => i + minCity,
+            );
+        }
         const chartData = {
             labels: labels,
             datasets: trace,
@@ -618,6 +651,7 @@
     interface DataSetResponse {
         data: DataSet[];
         city_range: [number, number];
+        city_labels?: (string | number)[];
         time: [number, number];
         is_turn: boolean;
     }
@@ -628,6 +662,7 @@
         metrics: TierMetric[];
         alliance_ids: number[][];
         useSingleColor: boolean;
+        cityBandSize: number;
     };
 
     type TieringWorkerResponse =
@@ -638,17 +673,20 @@
         data: GraphData,
         metrics: TierMetric[],
         alliance_ids: number[][],
+        cityBandSize: number,
     ): Promise<DataSetResponse | null> {
         if (!tieringWorker) {
             return Promise.resolve(
-                getDataSetsByTime(data, metrics, alliance_ids),
+                getDataSetsByTime(data, metrics, alliance_ids, cityBandSize),
             );
         }
 
         return new Promise<DataSetResponse | null>((resolve, reject) => {
             const worker = tieringWorker;
             if (!worker) {
-                resolve(getDataSetsByTime(data, metrics, alliance_ids));
+                resolve(
+                    getDataSetsByTime(data, metrics, alliance_ids, cityBandSize),
+                );
                 return;
             }
             const requestId = ++workerRequestId;
@@ -677,6 +715,7 @@
                 metrics,
                 alliance_ids,
                 useSingleColor,
+                cityBandSize,
             };
             worker.postMessage(payload);
         }).catch((error) => {
@@ -684,7 +723,7 @@
                 "Tiering worker compute failed, falling back to main thread",
                 error,
             );
-            return getDataSetsByTime(data, metrics, alliance_ids);
+            return getDataSetsByTime(data, metrics, alliance_ids, cityBandSize);
         });
     }
 
@@ -699,7 +738,48 @@
             )
             .join("|");
         const allianceKey = alliance_ids.map((ids) => ids.join(".")).join("|");
-        return `${conflictId ?? "-"}|${metricKey}|${allianceKey}|${useSingleColor ? 1 : 0}`;
+        return `${conflictId ?? "-"}|${metricKey}|${allianceKey}|${useSingleColor ? 1 : 0}|band:${cityBandSize > 1 ? cityBandSize : 0}`;
+    }
+
+    function buildCityBandLabels(
+        minCity: number,
+        maxCity: number,
+        cityBandSize: number,
+    ): string[] {
+        const cityCount = maxCity - minCity + 1;
+        const bandCount = Math.ceil(cityCount / cityBandSize);
+        const labels = new Array<string>(bandCount);
+        for (let i = 0; i < bandCount; i++) {
+            const start = minCity + i * cityBandSize;
+            const end = Math.min(start + cityBandSize - 1, maxCity);
+            labels[i] = `${start}-${end}`;
+        }
+        return labels;
+    }
+
+    function groupRowByCityBand(
+        row: number[] | undefined,
+        bandCount: number,
+        cityBandSize: number,
+    ): number[] {
+        const grouped = new Array<number>(bandCount).fill(0);
+        if (!row || row.length === 0) return grouped;
+        for (let cityOffset = 0; cityOffset < row.length; cityOffset++) {
+            grouped[Math.floor(cityOffset / cityBandSize)] += row[cityOffset] || 0;
+        }
+        return grouped;
+    }
+
+    function groupRowsByCityBand(
+        rows: number[][],
+        bandCount: number,
+        cityBandSize: number,
+    ): number[][] {
+        const groupedRows = new Array<number[]>(rows.length);
+        for (let t = 0; t < rows.length; t++) {
+            groupedRows[t] = groupRowByCityBand(rows[t], bandCount, cityBandSize);
+        }
+        return groupedRows;
     }
 
     // Convert the raw json data from S3 to a Chart.js dataset (for the specific metrics and turn/day range)
@@ -708,6 +788,7 @@
         data: GraphData,
         metrics: TierMetric[],
         alliance_ids: number[][],
+        cityBandSize: number,
     ): DataSetResponse | null {
         let minCity = Number.MAX_SAFE_INTEGER;
         let maxCity = 0;
@@ -942,9 +1023,21 @@
             }
         }
 
+        const shouldGroupByBand = cityBandSize > 1;
+        const cityCount = maxCity - minCity + 1;
+        const bandCount = shouldGroupByBand
+            ? Math.ceil(cityCount / cityBandSize)
+            : cityCount;
+
         let response: DataSet[] = new Array(len);
         for (let i = 0; i < dataBeforeNormalize.length; i++) {
             let [col, label, color, data, counts] = dataBeforeNormalize[i];
+            if (shouldGroupByBand) {
+                data = groupRowsByCityBand(data, bandCount, cityBandSize);
+                if (counts) {
+                    counts = groupRowsByCityBand(counts, bandCount, cityBandSize);
+                }
+            }
             // iterate data, and set each array to previous value if empty
             let normalized: number[][] = new Array(data.length);
             let dataPrev: number[] | null = null;
@@ -977,6 +1070,9 @@
             time: [time_min, time_max],
             is_turn: isAnyTurn,
             city_range: [minCity, maxCity],
+            city_labels: shouldGroupByBand
+                ? buildCityBandLabels(minCity, maxCity, cityBandSize)
+                : undefined,
         };
     }
 </script>
@@ -1125,6 +1221,20 @@
                         bind:checked={useSingleColor}
                         on:change={handleColorCheck}
                     />
+                </label>
+                <label for="cityBandSelect" class="ux-toggle-chip">
+                    <span>City Bands</span>
+                    <select
+                        id="cityBandSelect"
+                        class="form-select form-select-sm"
+                        bind:value={cityBandSize}
+                        on:change={handleCityBandChange}
+                    >
+                        <option value={0}>Off (per city)</option>
+                        <option value={5}>5-city bands</option>
+                        <option value={10}>10-city bands</option>
+                        <option value={20}>20-city bands</option>
+                    </select>
                 </label>
                 <button
                     type="button"

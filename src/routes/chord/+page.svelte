@@ -191,18 +191,12 @@
         setupWebWithCurrentLayout();
     }
 
-    function buildAllianceModalItems(
-        coalitionIndex: 0 | 1,
-    ): SelectionModalItem[] {
+    $: allianceModalItems = (() => {
         if (!_rawData) return [];
-        const coalition = _rawData.coalitions[coalitionIndex];
+        const coalition = _rawData.coalitions[activeAllianceCoalitionIndex];
         if (!coalition) return [];
         return buildCoalitionAllianceItems([coalition], formatAllianceName);
-    }
-
-    $: allianceModalItems = buildAllianceModalItems(
-        activeAllianceCoalitionIndex,
-    );
+    })();
     $: allianceModalSelectedIds = (() => {
         if (!_rawData) return [];
         return _rawData.coalitions[
@@ -216,7 +210,6 @@
 
     function openAllianceModal(coalitionIndex: 0 | 1) {
         activeAllianceCoalitionIndex = coalitionIndex;
-        allianceModalItems = buildAllianceModalItems(coalitionIndex);
         if (_rawData)
             allianceModalSelectedIds = _rawData.coalitions[
                 coalitionIndex

@@ -14,6 +14,7 @@ type DataSet = {
 type DataSetResponse = {
     data: DataSet[];
     city_range: [number, number];
+    city_labels?: (string | number)[];
     time: [number, number];
     is_turn: boolean;
 };
@@ -24,7 +25,49 @@ type WorkerRequest = {
     metrics: TierMetric[];
     alliance_ids: number[][];
     useSingleColor: boolean;
+    cityBandSize: number;
 };
+
+function buildCityBandLabels(
+    minCity: number,
+    maxCity: number,
+    cityBandSize: number,
+): string[] {
+    const cityCount = maxCity - minCity + 1;
+    const bandCount = Math.ceil(cityCount / cityBandSize);
+    const labels = new Array<string>(bandCount);
+    for (let i = 0; i < bandCount; i++) {
+        const start = minCity + i * cityBandSize;
+        const end = Math.min(start + cityBandSize - 1, maxCity);
+        labels[i] = `${start}-${end}`;
+    }
+    return labels;
+}
+
+function groupRowByCityBand(
+    row: number[] | undefined,
+    bandCount: number,
+    cityBandSize: number,
+): number[] {
+    const grouped = new Array<number>(bandCount).fill(0);
+    if (!row || row.length === 0) return grouped;
+    for (let cityOffset = 0; cityOffset < row.length; cityOffset++) {
+        grouped[Math.floor(cityOffset / cityBandSize)] += row[cityOffset] || 0;
+    }
+    return grouped;
+}
+
+function groupRowsByCityBand(
+    rows: number[][],
+    bandCount: number,
+    cityBandSize: number,
+): number[][] {
+    const groupedRows = new Array<number[]>(rows.length);
+    for (let t = 0; t < rows.length; t++) {
+        groupedRows[t] = groupRowByCityBand(rows[t], bandCount, cityBandSize);
+    }
+    return groupedRows;
+}
 
 type WorkerSuccessResponse = {
     id: number;
@@ -43,6 +86,7 @@ function getDataSetsByTime(
     metrics: TierMetric[],
     alliance_ids: number[][],
     useSingleColor: boolean,
+    cityBandSize: number,
 ): DataSetResponse | null {
     let minCity = Number.MAX_SAFE_INTEGER;
     let maxCity = 0;
@@ -262,9 +306,21 @@ function getDataSetsByTime(
         }
     }
 
+    const shouldGroupByBand = cityBandSize > 1;
+    const cityCount = maxCity - minCity + 1;
+    const bandCount = shouldGroupByBand
+        ? Math.ceil(cityCount / cityBandSize)
+        : cityCount;
+
     let response: DataSet[] = new Array(len);
     for (let i = 0; i < dataBeforeNormalize.length; i++) {
         let [col, label, color, dataByTime, counts] = dataBeforeNormalize[i];
+        if (shouldGroupByBand) {
+            dataByTime = groupRowsByCityBand(dataByTime, bandCount, cityBandSize);
+            if (counts) {
+                counts = groupRowsByCityBand(counts, bandCount, cityBandSize);
+            }
+        }
         let normalized: number[][] = new Array(dataByTime.length);
         let dataPrev: number[] | null = null;
         for (let k = 0; k < dataByTime.length; k++) {
@@ -296,17 +352,22 @@ function getDataSetsByTime(
         time: [time_min, time_max],
         is_turn: isAnyTurn,
         city_range: [minCity, maxCity],
+        city_labels: shouldGroupByBand
+            ? buildCityBandLabels(minCity, maxCity, cityBandSize)
+            : undefined,
     };
 }
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-    const { id, data, metrics, alliance_ids, useSingleColor } = event.data;
+    const { id, data, metrics, alliance_ids, useSingleColor, cityBandSize } =
+        event.data;
     try {
         const result = getDataSetsByTime(
             data,
             metrics,
             alliance_ids,
             useSingleColor,
+            cityBandSize,
         );
         const response: WorkerSuccessResponse = { id, ok: true, result };
         self.postMessage(response);
