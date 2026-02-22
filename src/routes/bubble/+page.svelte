@@ -650,10 +650,7 @@
                             value_by_day[
                                 is_turn ? turn - turn_start : day - day_start
                             ];
-                        if (
-                            !value_by_city ||
-                            value_by_city.length == 0
-                        ) {
+                        if (!value_by_city || value_by_city.length == 0) {
                             continue;
                         }
                         let total = 0.0;
@@ -1168,11 +1165,14 @@
         const timeFormat = times.is_turn ? formatTurnsToDate : formatDaysToDate;
 
         const frameRows: (string | number)[][] = [];
-        for (const [coalitionIdStr, trace] of Object.entries(frameByCoalition)) {
+        for (const [coalitionIdStr, trace] of Object.entries(
+            frameByCoalition,
+        )) {
             const coalitionId = Number(coalitionIdStr);
             for (let i = 0; i < trace.id.length; i++) {
                 frameRows.push([
-                    coalitionNames[coalitionId] ?? `Coalition ${coalitionId + 1}`,
+                    coalitionNames[coalitionId] ??
+                        `Coalition ${coalitionId + 1}`,
                     trace.text[i] ?? `AA:${trace.id[i]}`,
                     trace.id[i],
                     activeTime,
@@ -1187,11 +1187,14 @@
         const timelineRows: (string | number)[][] = [];
         for (const time of keys) {
             const rowByCoalition = traces[time] ?? {};
-            for (const [coalitionIdStr, trace] of Object.entries(rowByCoalition)) {
+            for (const [coalitionIdStr, trace] of Object.entries(
+                rowByCoalition,
+            )) {
                 const coalitionId = Number(coalitionIdStr);
                 for (let i = 0; i < trace.id.length; i++) {
                     timelineRows.push([
-                        coalitionNames[coalitionId] ?? `Coalition ${coalitionId + 1}`,
+                        coalitionNames[coalitionId] ??
+                            `Coalition ${coalitionId + 1}`,
                         trace.text[i] ?? `AA:${trace.id[i]}`,
                         trace.id[i],
                         time,

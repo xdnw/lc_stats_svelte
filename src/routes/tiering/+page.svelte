@@ -513,10 +513,7 @@
         const indices = values.map((value) =>
             Math.max(
                 0,
-                Math.min(
-                    maxIndex,
-                    Math.round(Number(value) - timeMin),
-                ),
+                Math.min(maxIndex, Math.round(Number(value) - timeMin)),
             ),
         );
         return indices;
@@ -527,8 +524,8 @@
             return null;
         }
 
-        const cityLabels = (chartInstanceRef?.data.labels as (string | number)[]) ??
-            [];
+        const cityLabels =
+            (chartInstanceRef?.data.labels as (string | number)[]) ?? [];
         const sliderIndices = getTieringSliderIndices();
         const sliderSnapshot = getGraphDataAtTime(dataSets, sliderIndices);
         const sliderTimeLabels = sliderIndices.map(
@@ -546,10 +543,18 @@
 
         const timeRows: (string | number)[][] = [];
         for (const dataSet of dataSets) {
-            for (let timeIndex = 0; timeIndex < dataSet.data.length; timeIndex++) {
+            for (
+                let timeIndex = 0;
+                timeIndex < dataSet.data.length;
+                timeIndex++
+            ) {
                 const timeValue = turnValues[0] + timeIndex;
                 const cityRow = dataSet.data[timeIndex] ?? [];
-                for (let cityIndex = 0; cityIndex < cityRow.length; cityIndex++) {
+                for (
+                    let cityIndex = 0;
+                    cityIndex < cityRow.length;
+                    cityIndex++
+                ) {
                     timeRows.push([
                         dataSet.label,
                         dataSet.group,
@@ -1122,7 +1127,9 @@
                             } else {
                                 for (let l = 0; l < countsBuffer.length; l++) {
                                     counts[l] +=
-                                        countsBuffer[l] * (l + minCity) * normalize;
+                                        countsBuffer[l] *
+                                        (l + minCity) *
+                                        normalize;
                                 }
                             }
                         }
