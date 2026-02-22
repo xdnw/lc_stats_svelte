@@ -56,6 +56,7 @@
     import { getVisGlobal, setWindowGlobal } from "$lib/globals";
     import ColumnPresetManager from "../../components/ColumnPresetManager.svelte";
     import SelectionModal from "../../components/SelectionModal.svelte";
+    import KpiBuilderModal from "../../components/KpiBuilderModal.svelte";
     import type {
         SelectionId,
         SelectionModalItem,
@@ -221,6 +222,17 @@
         "c2-dealt": "Coalition 2 dealt",
         "off-wars-per-nation": "Offensive wars per nation",
     };
+
+    const PRESET_CARD_DESCRIPTIONS: Record<PresetCardKey, string> = {
+        duration: "Elapsed time for the conflict from start to now/end.",
+        wars: "Maximum wars tracked by either coalition in the summary.",
+        "damage-total": "Combined damage dealt by both coalitions.",
+        "net-gap": "Absolute net-damage lead of the currently leading side.",
+        "c1-dealt": "Raw total damage dealt by Coalition 1.",
+        "c2-dealt": "Raw total damage dealt by Coalition 2.",
+        "off-wars-per-nation":
+            "Average offensive wars launched per nation across summary rows.",
+    };
     $: currentLayoutLabel =
         _layoutData.layout === Layout.ALLIANCE
             ? "Alliance"
@@ -247,6 +259,7 @@
     let draggingWidgetId: string | null = null;
     let kpiCollapsed = false;
     let showLayoutPresetModal = false;
+    let showKpiBuilderModal = false;
 
     let selectedAllianceIdsForKpi = new Set<number>();
     let selectedNationIdsForKpi = new Set<number>();
@@ -395,6 +408,12 @@
             selectedAllianceIdsForKpi.size > 0 ||
             selectedNationIdsForKpi.size > 0
         );
+    }
+
+    function kpiAddReasonForScope(scope: WidgetScope): string {
+        if (scope !== "selection") return "";
+        if (hasSelectionForScope(scope)) return "";
+        return "Selection scope requires at least one selected alliance or nation row in the current table.";
     }
 
     function hasPresetCard(key: PresetCardKey): boolean {
@@ -942,6 +961,22 @@
         return trimHeader(metric);
     }
 
+    function metricDescription(metric: string): string {
+        const label = metricLabel(metric);
+        const [prefix] = metric.split(":", 1);
+        if (prefix === "net")
+            return `${label}: dealt value minus received value.`;
+        if (prefix === "dealt")
+            return `${label}: value dealt by the selected entity.`;
+        if (prefix === "loss")
+            return `${label}: value received/lost by the selected entity.`;
+        if (prefix === "off")
+            return `${label}: offensive activity count for the selected entity.`;
+        if (prefix === "def")
+            return `${label}: defensive activity count for the selected entity.`;
+        return `${label}: summed or averaged over the selected scope.`;
+    }
+
     function widgetMetricLabel(widget: RankingCard | MetricCard): string {
         if (widget.source === "aava") {
             const header = widget.aavaSnapshot?.header ?? "wars";
@@ -1378,6 +1413,14 @@
         showLayoutPresetModal = false;
     }
 
+    function openKpiBuilderModal(): void {
+        showKpiBuilderModal = true;
+    }
+
+    function closeKpiBuilderModal(): void {
+        showKpiBuilderModal = false;
+    }
+
     function applyLayoutPresetModal(
         event: CustomEvent<{ ids: SelectionId[] }>,
     ): void {
@@ -1581,210 +1624,10 @@
             </li>
         {/if}
 
-        <li class="dropdown ms-auto" data-bs-auto-close="outside">
-            <button
-                class="btn ux-btn btn-sm"
-                type="button"
-                id="kpiManagerDropdown"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
+        <li class="ms-auto">
+            <button class="btn ux-btn btn-sm" on:click={openKpiBuilderModal}
+                >KPI Builder</button
             >
-                KPI widgets&nbsp;<i class="bi bi-chevron-down"></i>
-            </button>
-            <div
-                class="dropdown-menu p-2"
-                aria-labelledby="kpiManagerDropdown"
-                style="min-width: 340px;"
-            >
-                <div class="small text-muted mb-1">KPI cards</div>
-                {#if kpiWidgets.length === 0}
-                    <div class="small text-muted mb-2">No cards</div>
-                {/if}
-                {#each kpiWidgets as card, idx}
-                    <div
-                        class="d-flex align-items-center justify-content-between gap-2 mb-1"
-                    >
-                        <span class="small text-truncate"
-                            >{widgetManagerLabel(card)}</span
-                        >
-                        <div class="d-flex gap-1">
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-outline-secondary"
-                                on:click|preventDefault|stopPropagation={() =>
-                                    moveWidget(card.id, -1)}
-                                disabled={idx === 0}>↑</button
-                            >
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-outline-secondary"
-                                on:click|preventDefault|stopPropagation={() =>
-                                    moveWidget(card.id, 1)}
-                                disabled={idx === kpiWidgets.length - 1}
-                                >↓</button
-                            >
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-outline-danger"
-                                on:click|preventDefault|stopPropagation={() =>
-                                    removeWidget(card.id)}>Remove</button
-                            >
-                        </div>
-                    </div>
-                {/each}
-
-                <hr class="dropdown-divider" />
-                <div class="small text-muted mb-1">Preset cards</div>
-                <div class="d-flex flex-wrap gap-1 mb-2">
-                    {#each Object.keys(PRESET_CARD_LABELS) as key}
-                        {@const presetKey = key as PresetCardKey}
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-outline-secondary"
-                            on:click|preventDefault|stopPropagation={() =>
-                                addPresetCard(presetKey)}
-                            disabled={hasPresetCard(presetKey)}
-                            >+ {PRESET_CARD_LABELS[presetKey]}</button
-                        >
-                    {/each}
-                </div>
-
-                <hr class="dropdown-divider" />
-                <div class="small text-muted mb-1">Ranking cards</div>
-                <div class="row g-1 mb-2">
-                    <div class="col-4">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={rankingEntityToAdd}
-                        >
-                            <option value="alliance">Alliance</option>
-                            <option value="nation">Nation</option>
-                        </select>
-                    </div>
-                    <div class="col-4">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={rankingScopeToAdd}
-                        >
-                            <option value="all">All</option>
-                            <option value="coalition1">Coalition 1</option>
-                            <option value="coalition2">Coalition 2</option>
-                            <option value="selection"
-                                >Selection snapshot ({selectedSnapshotLabel})</option
-                            >
-                        </select>
-                    </div>
-                    <div class="col-4">
-                        <input
-                            class="form-control form-control-sm"
-                            type="number"
-                            min="1"
-                            bind:value={rankingLimitToAdd}
-                        />
-                    </div>
-                    <div class="col-12">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={rankingMetricToAdd}
-                        >
-                            {#each metricsOptions as metric}
-                                <option value={metric}
-                                    >{metricLabel(metric)}</option
-                                >
-                            {/each}
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-outline-secondary w-100"
-                            on:click|preventDefault|stopPropagation={addRankingCard}
-                            disabled={!hasSelectionForScope(rankingScopeToAdd)}
-                            >+ Add ranking card</button
-                        >
-                    </div>
-                </div>
-
-                <hr class="dropdown-divider" />
-                <div class="small text-muted mb-1">Metric cards</div>
-
-                <div class="row g-1">
-                    <div class="col-4">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={metricEntityToAdd}
-                        >
-                            <option value="alliance">Alliance</option>
-                            <option value="nation">Nation</option>
-                        </select>
-                    </div>
-                    <div class="col-4">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={metricScopeToAdd}
-                        >
-                            <option value="all">All</option>
-                            <option value="coalition1">Coalition 1</option>
-                            <option value="coalition2">Coalition 2</option>
-                            <option value="selection"
-                                >Selection snapshot ({selectedSnapshotLabel})</option
-                            >
-                        </select>
-                    </div>
-                    <div class="col-4">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={metricAggToAdd}
-                        >
-                            <option value="sum">Sum</option>
-                            <option value="avg">Avg</option>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={metricMetricToAdd}
-                        >
-                            {#each metricsOptions as metric}
-                                <option value={metric}
-                                    >{metricLabel(metric)}</option
-                                >
-                            {/each}
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <select
-                            class="form-select form-select-sm"
-                            bind:value={metricNormalizeByToAdd}
-                        >
-                            <option value="">No normalization</option>
-                            {#each metricsOptions as metric}
-                                <option value={metric}
-                                    >Per {metricLabel(metric)}</option
-                                >
-                            {/each}
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-outline-secondary w-100"
-                            on:click|preventDefault|stopPropagation={addMetricCard}
-                            disabled={!hasSelectionForScope(metricScopeToAdd)}
-                            >+ Add metric card</button
-                        >
-                    </div>
-                </div>
-
-                <hr class="dropdown-divider" />
-                {#if conflictId}
-                    <a
-                        class="btn btn-sm btn-outline-secondary w-100 mt-1"
-                        href={`aava?id=${conflictId}`}
-                        >Add AAvA widgets from the AAvA page</a
-                    >
-                {/if}
-            </div>
         </li>
 
         <li class="d-flex flex-wrap gap-1 justify-content-end">
@@ -2023,6 +1866,48 @@
         on:apply={applyLayoutPresetModal}
         validateSelection={(ids) =>
             validateSingleSelection(ids, "layout preset")}
+    />
+
+    <KpiBuilderModal
+        open={showKpiBuilderModal}
+        title="KPI Builder"
+        description="Add and arrange KPI widgets."
+        widgets={kpiWidgets}
+        presetCardLabels={PRESET_CARD_LABELS}
+        presetCardDescriptions={PRESET_CARD_DESCRIPTIONS}
+        scopeOptions={[
+            { value: "all", label: "All" },
+            { value: "coalition1", label: "Coalition 1" },
+            { value: "coalition2", label: "Coalition 2" },
+            { value: "selection", label: "Selection snapshot" },
+        ]}
+        {metricsOptions}
+        {selectedSnapshotLabel}
+        canAddRanking={hasSelectionForScope(rankingScopeToAdd)}
+        canAddMetric={hasSelectionForScope(metricScopeToAdd)}
+        canAddRankingReason={kpiAddReasonForScope(rankingScopeToAdd)}
+        canAddMetricReason={kpiAddReasonForScope(metricScopeToAdd)}
+        {widgetManagerLabel}
+        {metricLabel}
+        {metricDescription}
+        showAavaHint={!!conflictId}
+        aavaHref={conflictId ? `aava?id=${conflictId}` : null}
+        on:close={closeKpiBuilderModal}
+        on:removeWidget={(event) => removeWidget(event.detail.id)}
+        on:moveWidget={(event) =>
+            moveWidget(event.detail.id, event.detail.delta)}
+        on:addPreset={(event) => addPresetCard(event.detail.key)}
+        on:addRanking={addRankingCard}
+        on:addMetric={addMetricCard}
+        bind:rankingEntityToAdd
+        bind:rankingMetricToAdd
+        bind:rankingScopeToAdd
+        bind:rankingLimitToAdd
+        bind:metricEntityToAdd
+        bind:metricMetricToAdd
+        bind:metricScopeToAdd
+        bind:metricAggToAdd
+        bind:metricNormalizeByToAdd
     />
 
     {#if !_loaded}

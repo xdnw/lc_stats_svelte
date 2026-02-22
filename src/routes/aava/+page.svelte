@@ -5,6 +5,7 @@
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import SelectionModal from "../../components/SelectionModal.svelte";
+    import KpiBuilderModal from "../../components/KpiBuilderModal.svelte";
     import type {
         SelectionId,
         SelectionModalItem,
@@ -42,9 +43,11 @@
     import { AAVA_METRIC_KEYS, getAavaMetricLabels } from "$lib/aava";
     import {
         makeKpiId,
+        moveWidgetByDelta,
         readSharedKpiConfig,
         saveSharedKpiConfig,
         type AavaScopeSnapshot,
+        type ConflictKPIWidget,
     } from "$lib/kpi";
     import { config } from "../+layout";
 
@@ -98,6 +101,7 @@
     let metricMetricToAdd = "net";
     let metricAggToAdd: "sum" | "avg" = "sum";
     let metricNormalizeByToAdd = "";
+    let showKpiBuilderModal = false;
     let showHeaderModal = false;
     let showPrimaryAllianceModal = false;
     let showVsAllianceModal = false;
@@ -106,6 +110,7 @@
     let vsAllianceModalItems: SelectionModalItem[] = [];
     let rowsCache = new Map<string, any[]>();
     let renderQueued = false;
+    let sharedKpiWidgets: ConflictKPIWidget[] = [];
 
     function clearRowsCache() {
         rowsCache.clear();
@@ -414,6 +419,7 @@
             },
         ];
         saveSharedKpiConfig(conflictId, config);
+        refreshSharedKpiWidgets();
     }
 
     function addAavaMetricWidget() {
@@ -436,6 +442,100 @@
             },
         ];
         saveSharedKpiConfig(conflictId, config);
+        refreshSharedKpiWidgets();
+    }
+
+    function refreshSharedKpiWidgets() {
+        if (!conflictId) {
+            sharedKpiWidgets = [];
+            return;
+        }
+        const config = readSharedKpiConfig(conflictId);
+        sharedKpiWidgets = Array.isArray(config.widgets) ? config.widgets : [];
+    }
+
+    function removeSharedWidget(id: string) {
+        if (!conflictId) return;
+        const config = readSharedKpiConfig(conflictId);
+        config.widgets = (config.widgets ?? []).filter(
+            (widget) => widget.id !== id,
+        );
+        saveSharedKpiConfig(conflictId, config);
+        refreshSharedKpiWidgets();
+    }
+
+    function moveSharedWidget(id: string, delta: number) {
+        if (!conflictId) return;
+        const config = readSharedKpiConfig(conflictId);
+        config.widgets = moveWidgetByDelta(config.widgets ?? [], id, delta);
+        saveSharedKpiConfig(conflictId, config);
+        refreshSharedKpiWidgets();
+    }
+
+    function openKpiBuilderModal() {
+        refreshSharedKpiWidgets();
+        showKpiBuilderModal = true;
+    }
+
+    function closeKpiBuilderModal() {
+        showKpiBuilderModal = false;
+    }
+
+    function metricDescription(metric: string): string {
+        const labels = getAavaMetricLabels(currentHeader);
+        const label = labels[metric as keyof typeof labels] ?? metric;
+        if (metric === "primary_to_row") {
+            return `${label}: selected coalition value toward each compared alliance.`;
+        }
+        if (metric === "row_to_primary") {
+            return `${label}: compared coalition value toward the selected coalition.`;
+        }
+        if (metric === "net") {
+            return `${label}: selected minus compared (positive favors selected).`;
+        }
+        if (metric === "total") {
+            return `${label}: selected plus compared values.`;
+        }
+        if (metric === "primary_share_pct") {
+            return `${label}: selected coalition share percentage by row.`;
+        }
+        if (metric === "row_share_pct") {
+            return `${label}: compared coalition share percentage by row.`;
+        }
+        if (metric === "abs_net") {
+            return `${label}: absolute net magnitude, ignoring direction.`;
+        }
+        return `${label}: AAvA snapshot metric for selected alliances.`;
+    }
+
+    function widgetManagerLabel(widget: ConflictKPIWidget): string {
+        if (widget.kind === "preset") {
+            return `Conflict preset: ${widget.key}`;
+        }
+        if (widget.kind === "ranking") {
+            const metric =
+                widget.source === "aava"
+                    ? (aavaMetricLabels[
+                          widget.metric as keyof typeof aavaMetricLabels
+                      ] ?? widget.metric)
+                    : widget.metric;
+            const source = widget.source === "aava" ? "AAvA" : "Conflict";
+            return `${source} ranking: top ${widget.limit} ${widget.entity}s by ${metric}`;
+        }
+        const metric =
+            widget.source === "aava"
+                ? (aavaMetricLabels[
+                      widget.metric as keyof typeof aavaMetricLabels
+                  ] ?? widget.metric)
+                : widget.metric;
+        return `${widget.aggregation.toUpperCase()} ${widget.entity} ${metric}`;
+    }
+
+    function aavaKpiSelectionReason(): string {
+        if (selectedPrimaryIds.length > 0 && selectedVsIds.length > 0) {
+            return "";
+        }
+        return "Select at least one alliance on both sides before adding snapshot widgets.";
     }
 
     function refreshSelectedColumnsFromQuery() {
@@ -761,6 +861,7 @@
             return;
         }
         conflictId = id;
+        refreshSharedKpiWidgets();
         loadConflict(id);
     });
 </script>
@@ -815,123 +916,9 @@
                 </button>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <div class="dropdown" data-bs-auto-close="outside">
-                    <button
-                        class="btn ux-btn btn-sm"
-                        type="button"
-                        id="aavaKpiManagerDropdown"
-                        data-bs-toggle="dropdown"
-                        aria-expanded="false"
-                    >
-                        KPI widgets&nbsp;<i class="bi bi-chevron-down"></i>
-                    </button>
-                    <div
-                        class="dropdown-menu p-2 aava-kpi-dropdown-menu"
-                        aria-labelledby="aavaKpiManagerDropdown"
-                        style="min-width: 340px;"
-                    >
-                        <div class="small text-muted mb-1">
-                            Add shared KPI widgets from current AAvA snapshot
-                        </div>
-                        <div class="row g-1">
-                            <div class="col-12">
-                                <div class="small text-muted mb-1">
-                                    Ranking widget
-                                </div>
-                                <select
-                                    class="form-select form-select-sm"
-                                    bind:value={rankingMetricToAdd}
-                                >
-                                    {#each AAVA_METRIC_KEYS as key}
-                                        <option value={key}
-                                            >{aavaMetricLabels[key]}</option
-                                        >
-                                    {/each}
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <input
-                                    class="form-control form-control-sm"
-                                    type="number"
-                                    min="1"
-                                    max="50"
-                                    bind:value={rankingLimitToAdd}
-                                    placeholder="Top N"
-                                />
-                            </div>
-                            <div class="col-12">
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-secondary w-100"
-                                    on:click|preventDefault|stopPropagation={addAavaRankingWidget}
-                                    disabled={selectedPrimaryIds.length === 0 ||
-                                        selectedVsIds.length === 0}
-                                    >+ Add ranking widget</button
-                                >
-                            </div>
-
-                            <div class="col-12 mt-2">
-                                <div class="small text-muted mb-1">
-                                    Metric widget
-                                </div>
-                                <div class="small text-muted">
-                                    Entity: Alliance
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <select
-                                    class="form-select form-select-sm"
-                                    bind:value={metricAggToAdd}
-                                >
-                                    <option value="sum">SUM</option>
-                                    <option value="avg">AVG</option>
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <select
-                                    class="form-select form-select-sm"
-                                    bind:value={metricMetricToAdd}
-                                >
-                                    {#each AAVA_METRIC_KEYS as key}
-                                        <option value={key}
-                                            >{aavaMetricLabels[key]}</option
-                                        >
-                                    {/each}
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <select
-                                    class="form-select form-select-sm"
-                                    bind:value={metricNormalizeByToAdd}
-                                >
-                                    <option value="">No normalization</option>
-                                    {#each AAVA_METRIC_KEYS as key}
-                                        <option value={key}
-                                            >Per {aavaMetricLabels[key]}</option
-                                        >
-                                    {/each}
-                                </select>
-                            </div>
-                            <div class="col-12 small text-muted">
-                                Snapshot: {makeSelectionSnapshot().label} · {currentHeader}
-                            </div>
-                            <div class="col-12">
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-secondary w-100"
-                                    on:click|preventDefault|stopPropagation={addAavaMetricWidget}
-                                    disabled={selectedPrimaryIds.length === 0 ||
-                                        selectedVsIds.length === 0}
-                                    >+ Add metric widget</button
-                                >
-                            </div>
-                            <div class="col-12 small text-muted">
-                                Added widgets appear on the shared KPI dashboard
-                                in Conflict.
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <button class="btn ux-btn btn-sm" on:click={openKpiBuilderModal}
+                    >KPI Builder</button
+                >
                 <ShareResetBar
                     onReset={resetFilters}
                     resetDirty={isResetDirty}
@@ -1053,6 +1040,44 @@
         on:close={closeHeaderModal}
         on:apply={applyHeaderModal}
         validateSelection={(ids) => validateSingleSelection(ids, "header")}
+    />
+
+    <KpiBuilderModal
+        open={showKpiBuilderModal}
+        title="AAvA KPI Builder"
+        description="Create shared KPI widgets from the active AAvA snapshot and maintain widget order."
+        widgets={sharedKpiWidgets}
+        showMetricGlossary={true}
+        showPresetSection={false}
+        rankingEntityOptions={[{ value: "alliance", label: "Alliance" }]}
+        metricEntityOptions={[{ value: "alliance", label: "Alliance" }]}
+        scopeOptions={[{ value: "selection", label: "Selection snapshot" }]}
+        rankingEntityToAdd="alliance"
+        rankingScopeToAdd="selection"
+        metricEntityToAdd="alliance"
+        metricScopeToAdd="selection"
+        metricsOptions={AAVA_METRIC_KEYS}
+        selectedSnapshotLabel={makeSelectionSnapshot().label}
+        canAddRanking={selectedPrimaryIds.length > 0 &&
+            selectedVsIds.length > 0}
+        canAddMetric={selectedPrimaryIds.length > 0 && selectedVsIds.length > 0}
+        canAddRankingReason={aavaKpiSelectionReason()}
+        canAddMetricReason={aavaKpiSelectionReason()}
+        {widgetManagerLabel}
+        metricLabel={(metric) =>
+            aavaMetricLabels[metric as keyof typeof aavaMetricLabels] ?? metric}
+        {metricDescription}
+        on:close={closeKpiBuilderModal}
+        on:removeWidget={(event) => removeSharedWidget(event.detail.id)}
+        on:moveWidget={(event) =>
+            moveSharedWidget(event.detail.id, event.detail.delta)}
+        on:addRanking={addAavaRankingWidget}
+        on:addMetric={addAavaMetricWidget}
+        bind:rankingMetricToAdd
+        bind:rankingLimitToAdd
+        bind:metricMetricToAdd
+        bind:metricAggToAdd
+        bind:metricNormalizeByToAdd
     />
 
     <SelectionModal
