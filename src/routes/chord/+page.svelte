@@ -174,11 +174,9 @@
         showHeaderModal = false;
     }
 
-    function buildHeaderItems(): SelectionModalItem[] {
-        return buildStringSelectionItems(_rawData?.war_web.headers ?? []);
-    }
-
-    $: headerModalItems = buildHeaderItems();
+    $: headerModalItems = buildStringSelectionItems(
+        _rawData?.war_web.headers ?? [],
+    );
 
     function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
         if (!_rawData) return;

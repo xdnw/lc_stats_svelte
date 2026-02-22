@@ -46,6 +46,7 @@
         moveWidgetByDelta,
         readSharedKpiConfig,
         saveSharedKpiConfig,
+        sanitizeKpiWidget,
         type AavaScopeSnapshot,
         type ConflictKPIWidget,
     } from "$lib/kpi";
@@ -451,7 +452,26 @@
             return;
         }
         const config = readSharedKpiConfig(conflictId);
-        sharedKpiWidgets = Array.isArray(config.widgets) ? config.widgets : [];
+        const sanitized = Array.isArray(config.widgets)
+            ? config.widgets
+                  .map((item: unknown) => sanitizeKpiWidget(item, makeKpiId))
+                  .filter(
+                      (
+                          item: ConflictKPIWidget | null,
+                      ): item is ConflictKPIWidget => item !== null,
+                  )
+            : [];
+
+        // Drop unsupported legacy widget shapes and keep storage aligned with current schema.
+        if (
+            !Array.isArray(config.widgets) ||
+            sanitized.length !== config.widgets.length
+        ) {
+            config.widgets = sanitized;
+            saveSharedKpiConfig(conflictId, config);
+        }
+
+        sharedKpiWidgets = sanitized;
     }
 
     function removeSharedWidget(id: string) {
@@ -656,11 +676,9 @@
         showHeaderModal = false;
     }
 
-    function buildHeaderItems(): SelectionModalItem[] {
-        return buildStringSelectionItems(_rawData?.war_web.headers ?? []);
-    }
-
-    $: headerModalItems = buildHeaderItems();
+    $: headerModalItems = buildStringSelectionItems(
+        _rawData?.war_web.headers ?? [],
+    );
 
     function swapPrimaryCoalition() {
         if (!_rawData) return;
