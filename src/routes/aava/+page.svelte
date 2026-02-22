@@ -101,6 +101,9 @@
     let showHeaderModal = false;
     let showPrimaryAllianceModal = false;
     let showVsAllianceModal = false;
+    let headerModalItems: SelectionModalItem[] = [];
+    let primaryAllianceModalItems: SelectionModalItem[] = [];
+    let vsAllianceModalItems: SelectionModalItem[] = [];
     let rowsCache = new Map<string, any[]>();
     let renderQueued = false;
 
@@ -557,6 +560,8 @@
         return buildStringSelectionItems(_rawData?.war_web.headers ?? []);
     }
 
+    $: headerModalItems = buildHeaderItems();
+
     function swapPrimaryCoalition() {
         if (!_rawData) return;
         primaryCoalitionIndex = primaryCoalitionIndex === 0 ? 1 : 0;
@@ -565,17 +570,24 @@
         scheduleRenderTable();
     }
 
-    function buildCoalitionModalItems(coalitionIndex: 0 | 1): SelectionModalItem[] {
+    function buildCoalitionModalItems(
+        coalitionIndex: 0 | 1,
+    ): SelectionModalItem[] {
         const coalition = _rawData?.coalitions[coalitionIndex];
         if (!coalition) return [];
         return buildCoalitionAllianceItems([coalition], formatAllianceName);
     }
 
     function openPrimaryAllianceModal() {
+        primaryAllianceModalItems = buildCoalitionModalItems(
+            primaryCoalitionIndex as 0 | 1,
+        );
         showPrimaryAllianceModal = true;
     }
 
     function openVsAllianceModal() {
+        const vsIndex = (primaryCoalitionIndex === 0 ? 1 : 0) as 0 | 1;
+        vsAllianceModalItems = buildCoalitionModalItems(vsIndex);
         showVsAllianceModal = true;
     }
 
@@ -587,7 +599,9 @@
         showVsAllianceModal = false;
     }
 
-    function applyPrimaryAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+    function applyPrimaryAllianceModal(
+        event: CustomEvent<{ ids: SelectionId[] }>,
+    ) {
         const nextIds = toNumberSelection(event.detail.ids);
         setCoalitionSelection(primaryCoalitionIndex as 0 | 1, nextIds, {
             allowEmpty: true,
@@ -972,8 +986,8 @@
                             </strong>
                         </div>
                         <div class="small ux-muted">
-                            Use "Edit alliances" to search, bulk-select, or clear coalition
-                            alliances.
+                            Use "Edit alliances" to search, bulk-select, or
+                            clear coalition alliances.
                         </div>
                         <div class="mt-2">
                             <button
@@ -1002,8 +1016,8 @@
                             </strong>
                         </div>
                         <div class="small ux-muted">
-                            Use "Edit alliances" to search, bulk-select, or clear coalition
-                            alliances.
+                            Use "Edit alliances" to search, bulk-select, or
+                            clear coalition alliances.
                         </div>
                         <div class="mt-2">
                             <button
@@ -1031,7 +1045,7 @@
         open={showHeaderModal}
         title="Choose Metric Header"
         description="Pick the active war web header used for AAvA calculations."
-        items={buildHeaderItems()}
+        items={headerModalItems}
         selectedIds={[currentHeader]}
         applyLabel="Use header"
         singleSelect={true}
@@ -1045,7 +1059,7 @@
         open={showPrimaryAllianceModal}
         title={`Selected coalition: ${getPrimaryCoalition()?.name ?? ""}`}
         description="Choose alliances to include in the selected coalition set."
-        items={buildCoalitionModalItems(primaryCoalitionIndex as 0 | 1)}
+        items={primaryAllianceModalItems}
         selectedIds={selectedPrimaryIds}
         searchPlaceholder="Search selected coalition alliances..."
         on:close={closePrimaryAllianceModal}
@@ -1056,9 +1070,7 @@
         open={showVsAllianceModal}
         title={`Compared coalition: ${getVsCoalition()?.name ?? ""}`}
         description="Choose alliances to include in the compared coalition set."
-        items={buildCoalitionModalItems(
-            (primaryCoalitionIndex === 0 ? 1 : 0) as 0 | 1,
-        )}
+        items={vsAllianceModalItems}
         selectedIds={selectedVsIds}
         searchPlaceholder="Search compared coalition alliances..."
         on:close={closeVsAllianceModal}

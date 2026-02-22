@@ -1362,7 +1362,9 @@
                 return (
                     layout.sort === _layoutData.sort &&
                     layout.columns.length === _layoutData.columns.length &&
-                    layout.columns.every((col, idx) => col === _layoutData.columns[idx])
+                    layout.columns.every(
+                        (col, idx) => col === _layoutData.columns[idx],
+                    )
                 );
             }) ?? null
         );
@@ -1376,7 +1378,9 @@
         showLayoutPresetModal = false;
     }
 
-    function applyLayoutPresetModal(event: CustomEvent<{ ids: SelectionId[] }>): void {
+    function applyLayoutPresetModal(
+        event: CustomEvent<{ ids: SelectionId[] }>,
+    ): void {
         const key = firstSelectedString(event.detail.ids);
         if (!key || !(key in layouts)) return;
         applyLayoutPresetKey(key);
@@ -1523,8 +1527,9 @@
     >
         <li class="d-flex align-items-center gap-2 me-1">
             <span>Layout Picker:</span>
-            <button class="btn ux-btn btn-sm fw-bold" on:click={openLayoutPresetModal}
-                >Choose layout preset</button
+            <button
+                class="btn ux-btn btn-sm fw-bold"
+                on:click={openLayoutPresetModal}>Choose layout preset</button
             >
         </li>
 
@@ -2008,13 +2013,16 @@
         title="Choose Layout Preset"
         description="Pick a preset column layout for the current conflict table."
         items={buildLayoutPresetItems()}
-        selectedIds={currentLayoutPresetKey() ? [currentLayoutPresetKey() as string] : []}
+        selectedIds={currentLayoutPresetKey()
+            ? [currentLayoutPresetKey() as string]
+            : []}
         applyLabel="Use preset"
         singleSelect={true}
         searchPlaceholder="Search presets..."
         on:close={closeLayoutPresetModal}
         on:apply={applyLayoutPresetModal}
-        validateSelection={(ids) => validateSingleSelection(ids, "layout preset")}
+        validateSelection={(ids) =>
+            validateSingleSelection(ids, "layout preset")}
     />
 
     {#if !_loaded}

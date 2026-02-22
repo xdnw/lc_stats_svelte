@@ -25,7 +25,6 @@
         getDefaultWarWebHeader,
         resolveWarWebMetricMeta,
         toNumberSelection,
-        validateAtLeastOnePerCoalition,
         validateSingleSelection,
         yieldToMain,
     } from "$lib";
@@ -50,6 +49,10 @@
     let _currentHeaderName: string = "wars";
     let showHeaderModal = false;
     let showAllianceModal = false;
+    let headerModalItems: SelectionModalItem[] = [];
+    let allianceModalItems: SelectionModalItem[] = [];
+    let allianceModalSelectedIds: number[] = [];
+    let activeAllianceCoalitionIndex: 0 | 1 = 0;
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
@@ -175,6 +178,8 @@
         return buildStringSelectionItems(_rawData?.war_web.headers ?? []);
     }
 
+    $: headerModalItems = buildHeaderItems();
+
     function setLayoutAlliance(coalitionIndex: number, allianceId: number) {
         if (!_rawData) return;
         _allowedAllianceIds = toggleCoalitionAllianceSelection(
@@ -188,20 +193,36 @@
         setupWebWithCurrentLayout();
     }
 
-    function buildAllianceModalItems(): SelectionModalItem[] {
+    function buildAllianceModalItems(
+        coalitionIndex: 0 | 1,
+    ): SelectionModalItem[] {
         if (!_rawData) return [];
-        return buildCoalitionAllianceItems(_rawData.coalitions, formatAllianceName);
+        const coalition = _rawData.coalitions[coalitionIndex];
+        if (!coalition) return [];
+        return buildCoalitionAllianceItems([coalition], formatAllianceName);
     }
+
+    $: allianceModalItems = buildAllianceModalItems(
+        activeAllianceCoalitionIndex,
+    );
+    $: allianceModalSelectedIds = (() => {
+        if (!_rawData) return [];
+        return _rawData.coalitions[
+            activeAllianceCoalitionIndex
+        ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
+    })();
 
     function validateAllianceSelection(ids: SelectionId[]): string | null {
-        if (!_rawData) return null;
-        return validateAtLeastOnePerCoalition(
-            ids,
-            [_rawData.coalitions[0], _rawData.coalitions[1]],
-        );
+        return ids.length > 0 ? null : "Keep at least one alliance selected.";
     }
 
-    function openAllianceModal() {
+    function openAllianceModal(coalitionIndex: 0 | 1) {
+        activeAllianceCoalitionIndex = coalitionIndex;
+        allianceModalItems = buildAllianceModalItems(coalitionIndex);
+        if (_rawData)
+            allianceModalSelectedIds = _rawData.coalitions[
+                coalitionIndex
+            ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
         showAllianceModal = true;
     }
 
@@ -210,8 +231,15 @@
     }
 
     function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+        if (!_rawData) return;
         const nextIds = toNumberSelection(event.detail.ids);
-        _allowedAllianceIds = new Set(nextIds);
+        const otherIndex = (activeAllianceCoalitionIndex === 0 ? 1 : 0) as
+            | 0
+            | 1;
+        const preservedOther = _rawData.coalitions[
+            otherIndex
+        ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
+        _allowedAllianceIds = new Set([...preservedOther, ...nextIds]);
         showAllianceModal = false;
         setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
         saveCurrentQueryParams();
@@ -569,7 +597,9 @@
         {#if _rawData}
             <div class="d-flex justify-content-between align-items-center mb-1">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="fw-bold">Metric header: {_currentHeaderName}</span>
+                    <span class="fw-bold"
+                        >Metric header: {_currentHeaderName}</span
+                    >
                     <button
                         class="btn ux-btn btn-sm fw-bold"
                         on:click={openHeaderModal}
@@ -588,16 +618,15 @@
             >
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="fw-bold">
-                        {_rawData?.coalitions[0].name} selected: {_rawData
-                            .coalitions[0].alliance_ids.filter((id) =>
-                                _allowedAllianceIds.has(id),
-                            ).length}/{_rawData.coalitions[0].alliance_ids.length}
+                        {_rawData?.coalitions[0].name} selected: {_rawData.coalitions[0].alliance_ids.filter(
+                            (id) => _allowedAllianceIds.has(id),
+                        ).length}/{_rawData.coalitions[0].alliance_ids.length}
                     </span>
                 </div>
                 <div class="mt-2">
                     <button
                         class="btn ux-btn btn-sm fw-bold"
-                        on:click={openAllianceModal}
+                        on:click={() => openAllianceModal(0)}
                     >
                         Edit alliances
                     </button>
@@ -608,16 +637,15 @@
             >
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="fw-bold">
-                        {_rawData?.coalitions[1].name} selected: {_rawData
-                            .coalitions[1].alliance_ids.filter((id) =>
-                                _allowedAllianceIds.has(id),
-                            ).length}/{_rawData.coalitions[1].alliance_ids.length}
+                        {_rawData?.coalitions[1].name} selected: {_rawData.coalitions[1].alliance_ids.filter(
+                            (id) => _allowedAllianceIds.has(id),
+                        ).length}/{_rawData.coalitions[1].alliance_ids.length}
                     </span>
                 </div>
                 <div class="mt-2">
                     <button
                         class="btn ux-btn btn-sm fw-bold"
-                        on:click={openAllianceModal}
+                        on:click={() => openAllianceModal(1)}
                     >
                         Edit alliances
                     </button>
@@ -651,7 +679,7 @@
         open={showHeaderModal}
         title="Choose Metric Header"
         description="Pick the active header used to generate chord edges and flow tables."
-        items={buildHeaderItems()}
+        items={headerModalItems}
         selectedIds={[_currentHeaderName]}
         applyLabel="Use header"
         singleSelect={true}
@@ -662,10 +690,10 @@
     />
     <SelectionModal
         open={showAllianceModal}
-        title="Filter Alliances"
-        description="Select alliances from both coalitions to include in the chord graph."
-        items={buildAllianceModalItems()}
-        selectedIds={Array.from(_allowedAllianceIds)}
+        title={`Filter Alliances: ${_rawData?.coalitions[activeAllianceCoalitionIndex]?.name ?? "Coalition"}`}
+        description="Select alliances for the coalition associated with the button you clicked."
+        items={allianceModalItems}
+        selectedIds={allianceModalSelectedIds}
         searchPlaceholder="Search alliances..."
         on:close={closeAllianceModal}
         on:apply={applyAllianceModal}

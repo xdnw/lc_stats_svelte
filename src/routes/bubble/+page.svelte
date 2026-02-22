@@ -70,6 +70,8 @@
         defaultMetricSelection.map((name) => {
             return { value: name, label: name };
         });
+    // svelte-select can transiently emit undefined when the last chip is removed.
+    $: if (!Array.isArray(selected_metrics)) selected_metrics = [];
     $: isResetDirty = (() => {
         const selectedValues = selected_metrics.map((metric) => metric.value);
         const sameSelected =
@@ -94,7 +96,7 @@
         maxItems || !_rawData
             ? []
             : [
-                  ..._rawData.metric_names.map((name) => {
+                  ...(_rawData.metric_names ?? []).map((name) => {
                       return { value: name, label: name };
                   }),
               ];
