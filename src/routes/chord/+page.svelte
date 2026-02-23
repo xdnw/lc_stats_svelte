@@ -715,17 +715,17 @@
                         Choose metric header
                     </button>
                 </div>
-                <ShareResetBar
-                    onReset={resetFilters}
-                    resetDirty={isResetDirty}
-                />
-            </div>
-            <div class="d-flex justify-content-end mb-2">
-                <ExportDataMenu
-                    datasets={chordExportDatasets}
-                    bind:selectedDatasetKey={selectedChordExportDataset}
-                    onExport={handleChordExport}
-                />
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <ExportDataMenu
+                        datasets={chordExportDatasets}
+                        bind:selectedDatasetKey={selectedChordExportDataset}
+                        onExport={handleChordExport}
+                    />
+                    <ShareResetBar
+                        onReset={resetFilters}
+                        resetDirty={isResetDirty}
+                    />
+                </div>
             </div>
             <hr class="m-1" />
             <div

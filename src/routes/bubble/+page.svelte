@@ -1330,12 +1330,13 @@
             <div style="width: calc(100% - 30px);margin-left:15px;">
                 <div
                     class="mt-3 mb-5"
+                    class:bubble-city-slider={true}
                     style="position: relative; z-index: 1;"
                     bind:this={sliderElement}
                 ></div>
             </div>
             {#if _rawData}
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="fw-bold"
                         >Select 3
                         <button
@@ -1347,17 +1348,17 @@
                             <i class="bi bi-info-circle"></i>
                         </button></span
                     >
-                    <ShareResetBar
-                        onReset={resetFilters}
-                        resetDirty={isResetDirty}
-                    />
-                </div>
-                <div class="d-flex justify-content-end mb-2">
-                    <ExportDataMenu
-                        datasets={bubbleExportDatasets}
-                        bind:selectedDatasetKey={selectedBubbleExportDataset}
-                        onExport={handleBubbleExport}
-                    />
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <ExportDataMenu
+                            datasets={bubbleExportDatasets}
+                            bind:selectedDatasetKey={selectedBubbleExportDataset}
+                            onExport={handleBubbleExport}
+                        />
+                        <ShareResetBar
+                            onReset={resetFilters}
+                            resetDirty={isResetDirty}
+                        />
+                    </div>
                 </div>
                 <div
                     class="select-compact mb-2"
@@ -1444,3 +1445,16 @@
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
 </div>
+
+<style>
+    .bubble-city-slider :global(.noUi-pips),
+    .bubble-city-slider :global(.noUi-pips-horizontal),
+    .bubble-city-slider :global(.noUi-value),
+    .bubble-city-slider :global(.noUi-marker) {
+        pointer-events: none;
+    }
+
+    .bubble-city-slider :global(.noUi-pips-horizontal) {
+        z-index: 0;
+    }
+</style>

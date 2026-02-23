@@ -64,13 +64,12 @@
     $: hasDatasets = datasets.length > 0;
 </script>
 
-<div class="d-flex flex-wrap gap-1 align-items-center">
-    <label class="small ux-muted m-0" for={selectId}>Export</label>
+<div class="d-flex flex-nowrap gap-1 align-items-center">
     <select
         id={selectId}
-        class="form-select form-select-sm"
+        class="form-select form-select-sm ux-export-select"
         bind:value={selectedDatasetKey}
-        style="min-width: 15rem;"
+        aria-label="Choose export dataset"
         disabled={!hasDatasets}
     >
         {#each datasets as dataset}
@@ -108,3 +107,11 @@
         </ul>
     </div>
 </div>
+
+<style>
+    .ux-export-select {
+        width: auto;
+        min-width: 0;
+        max-width: 14rem;
+    }
+</style>
