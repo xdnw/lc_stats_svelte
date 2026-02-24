@@ -4,7 +4,7 @@
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import { base } from "$app/paths";
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import {
         addFormatters,
         buildStringSelectionItems,
@@ -100,7 +100,9 @@
         "NAVAL_MAX_VS_NONE",
     ].map((col) => `off:${col.toLowerCase().replaceAll("_", " ")} attacks`);
 
-    let layouts: { [key: string]: { sort: string; columns: string[] } } = {
+    let layouts: {
+        [key: string]: { sort: string; columns: string[]; order?: string };
+    } = {
         Summary: {
             sort: "off:wars",
             columns: [
@@ -180,10 +182,12 @@
 
     let _layoutData = {
         layout: Layout.COALITION,
-        columns: layouts.Summary.columns,
+        columns: [...layouts.Summary.columns],
         sort: layouts.Summary.sort,
         order: "desc",
     };
+    let layoutPresetKeys: string[] = [];
+    $: layoutPresetKeys = Object.keys(layouts);
 
     let _currentRowData: TableData;
     const getVis = (): any => getVisGlobal();
@@ -260,6 +264,12 @@
     let kpiCollapsed = false;
     let showLayoutPresetModal = false;
     let showKpiBuilderModal = false;
+    let showPresetOverflowMenu = false;
+    let selectedLayoutPresetKey: string | null = "Summary";
+
+    let layoutPresetViewportEl: HTMLDivElement | null = null;
+    let layoutPresetButtonsEl: HTMLDivElement | null = null;
+    let layoutPresetResizeObserver: ResizeObserver | null = null;
 
     let selectedAllianceIdsForKpi = new Set<number>();
     let selectedNationIdsForKpi = new Set<number>();
@@ -1102,6 +1112,8 @@
                 console.warn("Failed to parse KPI widgets from URL", error);
             }
         }
+
+        selectedLayoutPresetKey = detectLayoutPresetKey();
     }
 
     function loadCurrentLayout() {
@@ -1360,7 +1372,36 @@
             _loadError = "Missing conflict id in URL";
             _loaded = true;
         }
+
+        if (typeof ResizeObserver !== "undefined") {
+            layoutPresetResizeObserver = new ResizeObserver(() => {
+                updateLayoutPresetMode();
+            });
+            if (layoutPresetViewportEl) {
+                layoutPresetResizeObserver.observe(layoutPresetViewportEl);
+            }
+            if (layoutPresetButtonsEl) {
+                layoutPresetResizeObserver.observe(layoutPresetButtonsEl);
+            }
+        }
+
+        window.setTimeout(updateLayoutPresetMode, 0);
     });
+
+    onDestroy(() => {
+        layoutPresetResizeObserver?.disconnect();
+    });
+
+    $: {
+        const detectedKey = detectLayoutPresetKey();
+        if (selectedLayoutPresetKey !== detectedKey) {
+            selectedLayoutPresetKey = detectedKey;
+        }
+    }
+
+    $: if (layoutPresetViewportEl && layoutPresetButtonsEl) {
+        updateLayoutPresetMode();
+    }
 
     function handleClick(layout: number): void {
         _layoutData.layout = layout;
@@ -1379,23 +1420,29 @@
     }
 
     function applyLayoutPresetKey(key: string): void {
-        _layoutData.columns = layouts[key].columns;
-        _layoutData.sort = layouts[key].sort;
+        const layout = layouts[key];
+        if (!layout) return;
+        _layoutData.columns = [...layout.columns];
+        _layoutData.sort = layout.sort;
+        _layoutData.order = layout.order ?? "desc";
+        selectedLayoutPresetKey = key;
         syncLayoutQueryState();
         saveCurrentQueryParams();
         loadCurrentLayout();
     }
 
     function buildLayoutPresetItems(): SelectionModalItem[] {
-        return buildStringSelectionItems(Object.keys(layouts));
+        return buildStringSelectionItems(layoutPresetKeys);
     }
 
-    function currentLayoutPresetKey(): string | null {
+    function detectLayoutPresetKey(): string | null {
         return (
-            Object.keys(layouts).find((key) => {
+            layoutPresetKeys.find((key) => {
                 const layout = layouts[key];
+                const expectedOrder = layout.order ?? "desc";
                 return (
                     layout.sort === _layoutData.sort &&
+                    expectedOrder === _layoutData.order &&
                     layout.columns.length === _layoutData.columns.length &&
                     layout.columns.every(
                         (col, idx) => col === _layoutData.columns[idx],
@@ -1403,6 +1450,17 @@
                 );
             }) ?? null
         );
+    }
+
+    function updateLayoutPresetMode(): void {
+        if (!layoutPresetViewportEl || !layoutPresetButtonsEl) {
+            showPresetOverflowMenu = true;
+            return;
+        }
+
+        const available = layoutPresetViewportEl.clientWidth;
+        const required = layoutPresetButtonsEl.scrollWidth;
+        showPresetOverflowMenu = required > available;
     }
 
     function openLayoutPresetModal(): void {
@@ -1432,9 +1490,10 @@
 
     function resetFilters() {
         _layoutData.layout = Layout.COALITION;
-        _layoutData.columns = layouts.Summary.columns;
+        _layoutData.columns = [...layouts.Summary.columns];
         _layoutData.sort = layouts.Summary.sort;
         _layoutData.order = "desc";
+        selectedLayoutPresetKey = "Summary";
 
         kpiWidgets = [...DEFAULT_KPI_WIDGETS];
         saveKpiConfig();
@@ -1568,12 +1627,30 @@
     <ul
         class="layout-picker-bar ux-floating-controls nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
     >
-        <li class="d-flex align-items-center gap-2 me-1">
+        <li class="layout-preset-slot d-flex align-items-center gap-2 me-1">
             <span>Layout Picker:</span>
-            <button
-                class="btn ux-btn btn-sm fw-bold"
-                on:click={openLayoutPresetModal}>Choose layout preset</button
-            >
+            <div class="layout-preset-viewport" bind:this={layoutPresetViewportEl}>
+                <div
+                    class="layout-preset-buttons"
+                    class:layout-preset-buttons-hidden={showPresetOverflowMenu}
+                    bind:this={layoutPresetButtonsEl}
+                >
+                    {#each layoutPresetKeys as key}
+                        <button
+                            class="btn btn-sm fw-bold"
+                            class:ux-btn={selectedLayoutPresetKey === key}
+                            class:btn-outline-secondary={selectedLayoutPresetKey !== key}
+                            on:click={() => applyLayoutPresetKey(key)}>{key}</button
+                        >
+                    {/each}
+                </div>
+                {#if showPresetOverflowMenu}
+                    <button
+                        class="btn ux-btn btn-sm fw-bold layout-preset-more"
+                        on:click={openLayoutPresetModal}>More presets</button
+                    >
+                {/if}
+            </div>
         </li>
 
         <li>
@@ -1590,9 +1667,10 @@
                 }}
                 on:load={(e) => {
                     const p = e.detail.preset;
-                    _layoutData.columns = p.columns;
+                    _layoutData.columns = [...p.columns];
                     if (p.sort) _layoutData.sort = p.sort;
                     if (p.order) _layoutData.order = p.order;
+                    selectedLayoutPresetKey = detectLayoutPresetKey();
                     if (p.kpiConfig) {
                         applyKpiConfig(p.kpiConfig);
                         saveKpiConfig();
@@ -1856,8 +1934,8 @@
         title="Choose Layout Preset"
         description="Pick a preset column layout for the current conflict table."
         items={buildLayoutPresetItems()}
-        selectedIds={currentLayoutPresetKey()
-            ? [currentLayoutPresetKey() as string]
+        selectedIds={selectedLayoutPresetKey
+            ? [selectedLayoutPresetKey as string]
             : []}
         applyLabel="Use preset"
         singleSelect={true}
@@ -1964,3 +2042,41 @@
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
 </div>
+
+<style>
+    .layout-preset-slot {
+        min-width: 0;
+        flex: 1 1 640px;
+    }
+
+    .layout-preset-viewport {
+        min-width: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .layout-preset-buttons {
+        display: inline-flex;
+        flex-wrap: nowrap;
+        gap: 0.25rem;
+        white-space: nowrap;
+    }
+
+    .layout-preset-buttons-hidden {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    .layout-preset-more {
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    @media (max-width: 991.98px) {
+        .layout-preset-slot {
+            flex: 1 1 100%;
+        }
+    }
+</style>
