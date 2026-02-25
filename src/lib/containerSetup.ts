@@ -1,6 +1,6 @@
 import { setQueryParam } from './queryState';
 import { setupContainer as setupContainerWithAdapter } from './tableAdapter';
-import { ensureScriptsLoaded } from './runtime';
+import { ensureScriptsLoaded, ensureStylesLoaded } from './runtime';
 import { htmlToElement, uuidv4 } from './misc';
 import { commafy } from './formatting';
 import type { TableData } from './types';
@@ -12,5 +12,6 @@ export function setupContainer(container: HTMLElement, data: TableData) {
         commafy,
         setQueryParam,
         ensureScriptsLoaded,
+        ensureStylesLoaded,
     });
 }

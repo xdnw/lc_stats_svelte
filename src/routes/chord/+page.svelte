@@ -18,6 +18,7 @@
         getConflictDataUrl,
         getConflictGraphDataUrl,
         applySavedQueryParamsIfMissing,
+        queueUrlPrefetch,
         saveCurrentQueryParams,
         resetQueryParams,
         formatDatasetProvenance,
@@ -27,6 +28,7 @@
         toNumberSelection,
         validateSingleSelection,
         yieldToMain,
+        startPerfSpan,
         buildSettingsRows,
         exportBundleData,
         type ExportDatasetOption,
@@ -163,21 +165,13 @@
                 saveCurrentQueryParams();
 
                 // Warm graph payload cache so switching to Tiering/Bubble is faster.
-                const schedulePrefetch =
-                    typeof (window as any).requestIdleCallback === "function"
-                        ? (cb: () => void) =>
-                              (window as any).requestIdleCallback(cb, {
-                                  timeout: 2500,
-                              })
-                        : (cb: () => void) => window.setTimeout(cb, 300);
-                schedulePrefetch(() => {
-                    const graphUrl = getConflictGraphDataUrl(
-                        conflictId,
-                        config.version.graph_data,
-                    );
-                    decompressBson(graphUrl).catch(() => {
-                        // Best-effort prefetch only.
-                    });
+                const graphUrl = getConflictGraphDataUrl(
+                    conflictId,
+                    config.version.graph_data,
+                );
+                queueUrlPrefetch(graphUrl, {
+                    priority: "idle",
+                    crossRoute: true,
                 });
             })
             .catch((error) => {
@@ -304,6 +298,10 @@
         allowedAllianceIdsSet: Set<number>,
         header: string,
     ) {
+        const finishSpan = startPerfSpan("graph.chord.setupLayout", {
+            selectedAllianceCount: allowedAllianceIdsSet.size,
+            header,
+        });
         // let allowedAllianceIds: number[] = [...data.coalitions[0].alliance_ids, 11657];
 
         let allianceNameById: { [key: number]: string } = {};
@@ -374,6 +372,7 @@
             matrix: matrix.map((row) => row.slice()),
         };
         setupChord(matrix, labels, colors, alliance_ids, coalition_ids);
+        finishSpan();
     }
 
     function handleChordExport(action: ExportMenuAction): void {
@@ -412,7 +411,7 @@
         ]);
 
         const bundle = {
-            baseFileName: `chord-${conflictId ?? "conflict"}`,
+            baseFileName: `conflict-${conflictId ?? "conflict"}-chord`,
             meta: {
                 conflictId,
                 conflictName,

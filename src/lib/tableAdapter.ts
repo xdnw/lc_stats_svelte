@@ -1,18 +1,13 @@
-type TableDataSet = {
-    columns: string[];
-    data: any[][];
-    searchable: number[];
-    visible: number[];
-    cell_format: { [key: string]: number[] };
-    row_format:
-    | ((row: HTMLElement, data: { [key: string]: any }, index: number) => void)
-    | null;
-    sort: [number, string];
-    onSelectionChange?: (selection: {
-        selectedRowIndexes: number[];
-        selectedRows: any[][];
-    }) => void;
-};
+import { getWindowGlobal } from "./globals";
+import { startPerfSpan } from "./perf";
+import type { TableData } from "./types";
+
+type DataTableRender = (
+    data: unknown,
+    type: unknown,
+    row: unknown,
+    meta: unknown,
+) => unknown;
 
 export type TableAdapterDeps = {
     uuidv4: () => string;
@@ -24,6 +19,7 @@ export type TableAdapterDeps = {
         options?: { replace?: boolean },
     ) => void;
     ensureScriptsLoaded: (scriptIds: string[]) => Promise<void>;
+    ensureStylesLoaded: (styleIds: string[]) => Promise<void>;
 };
 
 function ensureJqueryLoaded(deps: TableAdapterDeps): Promise<void> {
@@ -36,7 +32,9 @@ function ensureJqueryLoaded(deps: TableAdapterDeps): Promise<void> {
 }
 
 function ensureDTLoaded(deps: TableAdapterDeps): Promise<void> {
-    return deps.ensureScriptsLoaded(["dtjs1", "dtjs2", "dtjs3"]);
+    return deps
+        .ensureStylesLoaded(["dtcss1", "dtcss2"])
+        .then(() => deps.ensureScriptsLoaded(["dtjs1", "dtjs2", "dtjs3"]));
 }
 
 function addTable(container: HTMLElement, id: string, deps: TableAdapterDeps) {
@@ -49,7 +47,7 @@ function addTable(container: HTMLElement, id: string, deps: TableAdapterDeps) {
     <i class="bi bi-layout-three-columns"></i>&nbsp;Customize Columns&nbsp;<i class="bi bi-chevron-down"></i></button>
     <div class="dropdown d-inline">
     <button class="btn ux-btn" type="button" id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
-    Export&nbsp;<i class="bi bi-chevron-down"></i>
+    Export data&nbsp;<i class="bi bi-chevron-down"></i>
     </button>
     <ul class="dropdown-menu" aria-labelledby="${dropdownId}">
     <li><button class="dropdown-item fw-bold" type="button" onclick="download(false, 'CSV')"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
@@ -99,8 +97,9 @@ function addTable(container: HTMLElement, id: string, deps: TableAdapterDeps) {
 function setupTable(
     containerElem: HTMLElement,
     tableElem: HTMLElement,
-    dataSetRoot: TableDataSet,
+    dataSetRoot: TableData,
     deps: TableAdapterDeps,
+    onTableReady?: () => void,
 ) {
     function getColumnToneClass(title: string | null | undefined): string {
         const normalized = (title ?? "").toLowerCase();
@@ -146,18 +145,19 @@ function setupTable(
             return deps.commafy(rounded);
         }
 
-        const cellFormatByCol: {
-            [key: number]: (data: number, type: any, row: any, meta: any) => void;
-        } = {};
+        const cellFormatByCol: Record<number, DataTableRender> = {};
+        const cellFormatNameByCol: Record<number, string> = {};
         if (cell_format != null) {
             for (const func in cell_format) {
                 const cols: number[] = cell_format[func];
                 for (const col of cols) {
-                    const funcObj = (window as any)[func] as Function;
-                    cellFormatByCol[col] = funcObj as any;
+                    const funcObj = getWindowGlobal<DataTableRender>(func);
                     if (funcObj == null) {
-                        console.log("No function found for " + func);
+                        console.warn("No function found for " + func);
+                        continue;
                     }
+                    cellFormatByCol[col] = funcObj;
+                    cellFormatNameByCol[col] = func;
                 }
             }
         }
@@ -165,7 +165,7 @@ function setupTable(
         const columnsInfo: {
             data: number;
             className?: string;
-            render?: any;
+            render?: DataTableRender;
             visible?: boolean;
         }[] = [];
         if (dataColumns.length > 0) {
@@ -175,7 +175,7 @@ function setupTable(
                     orderDataType?: string;
                     data: number;
                     className: string;
-                    render?: any;
+                    render?: DataTableRender;
                     defaultContent?: string;
                 } = {
                     data: i,
@@ -186,8 +186,8 @@ function setupTable(
                 if (renderFunc != null) {
                     columnInfo.render = renderFunc;
                     if (
-                        renderFunc == (window as any).formatNumber ||
-                        renderFunc == (window as any).formatMoney
+                        cellFormatNameByCol[i] === "formatNumber" ||
+                        cellFormatNameByCol[i] === "formatMoney"
                     ) {
                         columnInfo.orderDataType = "numeric-comma";
                     }
@@ -425,6 +425,7 @@ function setupTable(
                     const api = (this as any).api();
                     api.columns.adjust();
                     renderSummaryRow(api);
+                    onTableReady?.();
                 },
                 rowCallback: function (
                     row: any,
@@ -699,12 +700,16 @@ function setupTable(
 
 export function setupContainer(
     container: HTMLElement,
-    data: TableDataSet,
+    data: TableData,
     deps: TableAdapterDeps,
 ): HTMLTableElement {
+    const finishSpan = startPerfSpan("table.setupContainer", {
+        rows: data.data.length,
+        columns: data.columns.length,
+    });
     container.innerHTML = "";
     addTable(container, deps.uuidv4(), deps);
     const table = container.getElementsByTagName("table")[0] as HTMLTableElement;
-    setupTable(container, table, data, deps);
+    setupTable(container, table, data, deps, finishSpan);
     return table;
 }

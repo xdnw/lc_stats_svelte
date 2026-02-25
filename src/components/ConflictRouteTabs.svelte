@@ -1,8 +1,8 @@
 <script lang="ts">
     import {
-        decompressBson,
         getConflictDataUrl,
         getConflictGraphDataUrl,
+        queueUrlPrefetch,
     } from "$lib";
     import { config } from "../routes/+layout";
 
@@ -29,7 +29,7 @@
         const url = GRAPH_TABS.has(tab)
             ? getConflictGraphDataUrl(conflictId, config.version.graph_data)
             : getConflictDataUrl(conflictId, config.version.conflict_data);
-        decompressBson(url).catch(() => {});
+        queueUrlPrefetch(url, { priority: "high", crossRoute: true });
     }
 </script>
 

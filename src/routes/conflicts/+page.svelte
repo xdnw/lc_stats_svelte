@@ -33,6 +33,7 @@
     formatAllianceName,
     getConflictDataUrl,
     getConflictGraphDataUrl,
+    queueUrlPrefetch,
     toNumberSelection,
     yieldToMain,
   } from "$lib";
@@ -336,12 +337,12 @@
             String(conflictId),
             config.version.conflict_data,
           );
-          decompressBson(detailUrl).catch(() => {});
+          queueUrlPrefetch(detailUrl, { priority: "high", crossRoute: true });
           const graphUrl = getConflictGraphDataUrl(
             String(conflictId),
             config.version.graph_data,
           );
-          decompressBson(graphUrl).catch(() => {});
+          queueUrlPrefetch(graphUrl, { priority: "high", crossRoute: true });
         },
       );
 

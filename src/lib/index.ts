@@ -36,6 +36,7 @@ export {
     getConflictGraphDataUrl,
     formatDatasetProvenance,
     ensureScriptsLoaded,
+    ensureStylesLoaded,
     rafDelay,
 } from './runtime';
 export {
@@ -45,7 +46,26 @@ export {
 } from './graphMetrics';
 export type { MetricAccessors } from './graphMetrics';
 export { decompressBson } from './binary';
-export { uuidv4, htmlToElement, arrayEquals, yieldToMain } from './misc';
+export {
+    uuidv4,
+    htmlToElement,
+    arrayEquals,
+    scheduleWhenIdle,
+    yieldToMain,
+} from './misc';
+export {
+    canPrefetchCrossRoute,
+    queuePrefetch,
+    queueUrlPrefetch,
+    cancelPrefetch,
+    resetPrefetchCoordinator,
+} from './prefetchCoordinator';
+export {
+    startPerfSpan,
+    incrementPerfCounter,
+    getPerfSnapshot,
+    clearPerfSnapshot,
+} from './perf';
 export { addFormatters } from './formatterInit';
 export { computeLayoutTableData } from './layoutTable';
 export { setupContainer } from './containerSetup';

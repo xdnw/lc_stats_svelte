@@ -26,10 +26,12 @@
         ensureScriptsLoaded,
         applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
+        queueUrlPrefetch,
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
         yieldToMain,
+        startPerfSpan,
         buildSettingsRows,
         exportBundleData,
         type ExportBundle,
@@ -363,21 +365,13 @@
                 saveCurrentQueryParams();
 
                 // Warm conflict detail cache so switching to table pages is faster.
-                const schedulePrefetch =
-                    typeof (window as any).requestIdleCallback === "function"
-                        ? (cb: () => void) =>
-                              (window as any).requestIdleCallback(cb, {
-                                  timeout: 2500,
-                              })
-                        : (cb: () => void) => window.setTimeout(cb, 300);
-                schedulePrefetch(() => {
-                    const detailUrl = getConflictDataUrl(
-                        conflictId,
-                        config.version.conflict_data,
-                    );
-                    decompressBson(detailUrl).catch(() => {
-                        // Best-effort prefetch only.
-                    });
+                const detailUrl = getConflictDataUrl(
+                    conflictId,
+                    config.version.conflict_data,
+                );
+                queueUrlPrefetch(detailUrl, {
+                    priority: "idle",
+                    crossRoute: true,
                 });
             })
             .catch((error) => {
@@ -1110,12 +1104,17 @@
             const plotly = getPlotly();
             if (!plotly) return;
             const graphDivAny = graphDiv as any;
+            const finishSpan = startPerfSpan("graph.plotly.react", {
+                traceCount: traces.length,
+                frameCount: frames.length,
+            });
             plotly.purge(graphDiv);
             plotly.react(graphDiv, {
                 data: traces,
                 layout: layout,
                 frames: frames,
             });
+            finishSpan();
             if (plotlyAnimatedListener) {
                 graphDivAny.removeListener?.(
                     "plotly_animated",
@@ -1222,7 +1221,7 @@
         ]);
 
         return {
-            baseFileName: `bubble-${conflictId ?? "conflict"}`,
+            baseFileName: `conflict-${conflictId ?? "conflict"}-bubble`,
             meta: {
                 conflictId,
                 conflictName,

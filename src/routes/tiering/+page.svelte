@@ -37,10 +37,12 @@
         generateColors,
         applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
+        queueUrlPrefetch,
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
         yieldToMain,
+        startPerfSpan,
         exportBundleData,
         buildSettingsRows,
         type ExportBundle,
@@ -353,21 +355,13 @@
                 saveCurrentQueryParams();
 
                 // Warm conflict detail cache so switching back to table pages is faster.
-                const schedulePrefetch =
-                    typeof (window as any).requestIdleCallback === "function"
-                        ? (cb: () => void) =>
-                              (window as any).requestIdleCallback(cb, {
-                                  timeout: 2500,
-                              })
-                        : (cb: () => void) => window.setTimeout(cb, 300);
-                schedulePrefetch(() => {
-                    const detailUrl = getConflictDataUrl(
-                        conflictId,
-                        config.version.conflict_data,
-                    );
-                    decompressBson(detailUrl).catch(() => {
-                        // Best-effort prefetch only.
-                    });
+                const detailUrl = getConflictDataUrl(
+                    conflictId,
+                    config.version.conflict_data,
+                );
+                queueUrlPrefetch(detailUrl, {
+                    priority: "idle",
+                    crossRoute: true,
                 });
             })
             .catch((error) => {
@@ -578,7 +572,7 @@
         ]);
 
         return {
-            baseFileName: `tiering-${conflictId ?? "conflict"}`,
+            baseFileName: `conflict-${conflictId ?? "conflict"}-tiering`,
             meta: {
                 conflictId,
                 conflictName,
@@ -676,6 +670,11 @@
             dataSetByConfigCache.set(cacheKey, response);
         }
         if (!response) return;
+
+        const finishSpan = startPerfSpan("graph.tiering.setupCharts", {
+            datasetCount: response.data.length,
+            metricCount: selected_metrics.length,
+        });
 
         turnValues = isAnyCumulative ? response.time : [response.time[0]];
         dataSets = response.data;
@@ -797,6 +796,8 @@
             });
             myChart.update();
         });
+
+        finishSpan();
     }
 
     interface DataSet {

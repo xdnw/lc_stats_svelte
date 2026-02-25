@@ -33,7 +33,7 @@
     let normalizedSelectedIds: SelectionId[] = [];
 
     function itemLabel(item: SelectionModalItem): string {
-        const raw = (item as any)?.label;
+        const raw = item?.label;
         if (typeof raw === "string") return raw;
         if (raw == null) return `${item.id}`;
         return `${raw}`;

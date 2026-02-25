@@ -178,7 +178,7 @@ export function exportBundleData(request: ExportBundleRequest): boolean {
     return true;
 }
 
-export function downloadTableData(currentRowData: DownloadableTableData | null | undefined, useClipboard: boolean, type: ExportType) {
+export function downloadTableData(currentRowData: DownloadableTableData | null | undefined, useClipboard: boolean, type: ExportType, fileBaseName?: string) {
     if (!currentRowData) {
         modalStrWithCloseButton('Error', 'No data to download');
         return;
@@ -187,10 +187,10 @@ export function downloadTableData(currentRowData: DownloadableTableData | null |
     const visibleColumns = currentRowData.visible.map((index) => currentRowData.columns[index]);
     const tableData: any[][] = currentRowData.data.map((row) => currentRowData.visible.map((index) => row[index]));
     tableData.unshift(visibleColumns);
-    downloadCells(tableData, useClipboard, type);
+    downloadCells(tableData, useClipboard, type, fileBaseName);
 }
 
-export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean, type: ExportType) {
+export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean, type: ExportType, fileBaseName?: string) {
     const table = $(elem).DataTable();
     const visibleColumnNames: string[] = [];
     const visibleColumnIds: Set<number> = new Set();
@@ -215,14 +215,14 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
         data2dInclHeaderNames.push(rowData);
     });
 
-    downloadCells(data2dInclHeaderNames, useClipboard, type);
+    downloadCells(data2dInclHeaderNames, useClipboard, type, fileBaseName);
 }
 
-export function downloadCells(data: any[][], useClipboard: boolean, type: ExportType) {
+export function downloadCells(data: any[][], useClipboard: boolean, type: ExportType, fileBaseName?: string) {
     const fileContent = rowsToDelimitedText(data, type, !useClipboard);
     writeTextExport(
         fileContent,
-        `data.${type.ext}`,
+        `${fileBaseName ?? 'data'}.${type.ext}`,
         type,
         useClipboard ? 'clipboard' : 'download',
     );

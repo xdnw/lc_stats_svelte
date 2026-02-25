@@ -23,6 +23,7 @@
         ExportTypes,
         downloadTableElem,
         applySavedQueryParamsIfMissing,
+        queueUrlPrefetch,
         saveCurrentQueryParams,
         resetQueryParams,
         formatDatasetProvenance,
@@ -1249,21 +1250,13 @@
                 saveCurrentQueryParams();
 
                 // Warm graph payload cache so Tiering/Bubble route switches are faster.
-                const schedulePrefetch =
-                    typeof (window as any).requestIdleCallback === "function"
-                        ? (cb: () => void) =>
-                              (window as any).requestIdleCallback(cb, {
-                                  timeout: 2500,
-                              })
-                        : (cb: () => void) => window.setTimeout(cb, 300);
-                schedulePrefetch(() => {
-                    const graphUrl = getConflictGraphDataUrl(
-                        conflictId,
-                        config.version.graph_data,
-                    );
-                    decompressBson(graphUrl).catch(() => {
-                        // Best-effort prefetch; ignore failures and keep normal route behavior.
-                    });
+                const graphUrl = getConflictGraphDataUrl(
+                    conflictId,
+                    config.version.graph_data,
+                );
+                queueUrlPrefetch(graphUrl, {
+                    priority: "idle",
+                    crossRoute: true,
                 });
             })
             .catch((error) => {
@@ -1355,6 +1348,7 @@
                     ).querySelector("table") as HTMLTableElement,
                     useClipboard,
                     ExportTypes[type as keyof typeof ExportTypes],
+                    `conflict-${conflictId ?? "conflict"}-overview`,
                 );
             },
         );
