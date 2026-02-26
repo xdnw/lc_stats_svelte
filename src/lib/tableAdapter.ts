@@ -25,13 +25,34 @@ type TableRuntimeState = {
 type TableContainerState = {
     schemaKey: string;
     tableElem: HTMLTableElement;
+    containerId: string;
     runtimeState: TableRuntimeState;
+    bootstrappedData: TableData;
     tableApi: any | null;
     resetSelection: (() => void) | null;
     pendingData: TableData | null;
+    lastVisibleByCol: boolean[];
+    lastSortKey: string;
 };
 
 const containerStateByElem = new WeakMap<HTMLElement, TableContainerState>();
+
+function shouldLogContainer(containerId: string): boolean {
+    return containerId === "conflict-table-1" || containerId === "aava-table";
+}
+
+function logTableAdapter(
+    containerId: string,
+    message: string,
+    meta?: Record<string, unknown>,
+): void {
+    if (!shouldLogContainer(containerId)) return;
+    if (meta) {
+        console.info(`[table-adapter:${containerId}] ${message}`, meta);
+        return;
+    }
+    console.info(`[table-adapter:${containerId}] ${message}`);
+}
 
 export type TableAdapterDeps = {
     uuidv4: () => string;
@@ -70,7 +91,18 @@ function setupTable(
     onTableReady?: () => void,
     onApiReady?: (tableApi: any, resetSelection: () => void) => void,
 ) {
+    const containerId = containerElem.id || "(anonymous-container)";
+    const setupStartedAt = performance.now();
+    logTableAdapter(containerId, "setupTable start", {
+        rows: runtimeState.dataSet.data.length,
+        columns: runtimeState.dataSet.columns.length,
+    });
+
+    const jqueryLoadStartedAt = performance.now();
     ensureJqueryLoaded(deps).then(() => {
+        logTableAdapter(containerId, "jQuery ready", {
+            elapsedMs: Number((performance.now() - jqueryLoadStartedAt).toFixed(2)),
+        });
         const jqTable = $(tableElem);
 
         const dataSetRoot = runtimeState.dataSet;
@@ -82,6 +114,11 @@ function setupTable(
         const cell_format = dataSetRoot.cell_format;
         let sort = dataSetRoot.sort;
         if (sort == null) sort = [0, "asc"];
+        const shouldDeferInitialSort =
+            dataColumns.length >= 160 &&
+            Array.isArray(sort) &&
+            sort[0] > 0;
+        const shouldDeferInitialSummary = dataColumns.length >= 160;
 
         function isDataColumnNumeric(dataColIndex: number): boolean {
             return (
@@ -107,6 +144,7 @@ function setupTable(
 
         const cellFormatByCol: Record<number, DataTableRender> = {};
         const cellFormatNameByCol: Record<number, string> = {};
+        const searchableSet = new Set<number>(searchableColumns);
         if (cell_format != null) {
             for (const func in cell_format) {
                 const cols: number[] = cell_format[func];
@@ -127,6 +165,7 @@ function setupTable(
             className?: string;
             render?: DataTableRender;
             visible?: boolean;
+            searchable?: boolean;
         }[] = [];
         if (dataColumns.length > 0) {
             for (let i = 0; i < dataColumns.length; i++) {
@@ -137,10 +176,12 @@ function setupTable(
                     className: string;
                     render?: DataTableRender;
                     defaultContent?: string;
+                    searchable?: boolean;
                 } = {
                     data: i,
                     className: `details-control ${toneClass}`.trim(),
                     defaultContent: "",
+                    searchable: searchableSet.has(i),
                 };
                 const renderFunc = cellFormatByCol[i];
                 if (renderFunc != null) {
@@ -157,6 +198,7 @@ function setupTable(
         }
         const tableArr: any[] = [null];
 
+        const scaffoldStartedAt = performance.now();
         buildFiltersAndSummaryScaffold({
             containerElem,
             columnsInfo,
@@ -166,8 +208,15 @@ function setupTable(
             getColumnToneClass,
             getTableApi: () => tableArr[0],
         });
+        logTableAdapter(containerId, "filters scaffold ready", {
+            elapsedMs: Number((performance.now() - scaffoldStartedAt).toFixed(2)),
+        });
 
+        const dtLoadStartedAt = performance.now();
         ensureDTLoaded(deps).then(() => {
+            logTableAdapter(containerId, "DataTables assets ready", {
+                elapsedMs: Number((performance.now() - dtLoadStartedAt).toFixed(2)),
+            });
             const selectionController = createSelectionController({
                 containerElem,
                 onSelectionChange: runtimeState.dataSet.onSelectionChange,
@@ -181,9 +230,12 @@ function setupTable(
                 formatSummaryValue,
                 isSelected: selectionController.isSelected,
             });
+            let readyForReorderRedraw = false;
+            let pendingInitialSummary = shouldDeferInitialSummary;
 
             ($.fn as any).dataTableExt.oStdClasses.sWrapper =
                 "py-2 px-2 dataTables_wrapper";
+            const dataTableInitStartedAt = performance.now();
             const table = (tableArr[0] = (jqTable as any).DataTable({
                 dom: "rt<'ux-dt-bottom'plf>",
                 columns: [
@@ -207,7 +259,7 @@ function setupTable(
                 pageLength: 10,
                 deferRender: true,
                 orderClasses: false,
-                order: [sort],
+                order: shouldDeferInitialSort ? [] : [sort],
                 autoWidth: false,
                 searchHighlight: false,
                 info: false,
@@ -216,8 +268,19 @@ function setupTable(
                 scrollX: false,
                 initComplete: function () {
                     const api = (this as any).api();
-                    api.columns.adjust();
-                    renderSummaryRow(api);
+                    if (shouldDeferInitialSort) {
+                        requestAnimationFrame(() => {
+                            api.order([sort]).draw(false);
+                            logTableAdapter(containerId, "deferred initial sort applied", {
+                                sortIndex: sort[0],
+                                sortDir: sort[1],
+                            });
+                        });
+                    }
+                    readyForReorderRedraw = true;
+                    logTableAdapter(containerId, "DataTable initComplete", {
+                        elapsedMs: Number((performance.now() - dataTableInitStartedAt).toFixed(2)),
+                    });
                     onTableReady?.();
                 },
                 rowCallback: function (
@@ -239,11 +302,20 @@ function setupTable(
                     }
                 },
                 drawCallback: function () {
-                    renderSummaryRow(this.api());
+                    const api = this.api();
+                    if (pendingInitialSummary) {
+                        pendingInitialSummary = false;
+                        requestAnimationFrame(() => {
+                            renderSummaryRow(api);
+                        });
+                        return;
+                    }
+                    renderSummaryRow(api);
                 },
             }));
 
             table.on("column-reorder", function (_e: any, _settings: any, _details: any) {
+                if (!readyForReorderRedraw) return;
                 table.draw(false);
             });
 
@@ -317,7 +389,12 @@ function setupTable(
             onApiReady?.(table, resetSelection);
             selectionController.publishSelection(table);
             tableElem.classList.remove("d-none");
-            table.columns.adjust().draw(false);
+            requestAnimationFrame(() => {
+                table.columns.adjust();
+            });
+            logTableAdapter(containerId, "setupTable end", {
+                elapsedMs: Number((performance.now() - setupStartedAt).toFixed(2)),
+            });
         });
     });
 }
@@ -341,27 +418,115 @@ function buildSchemaKey(data: TableData): string {
 }
 
 function applyIncrementalUpdate(state: TableContainerState, data: TableData): void {
+    const startedAt = performance.now();
     state.runtimeState.dataSet = data;
 
     if (!state.tableApi) {
+        if (data === state.bootstrappedData) {
+            logTableAdapter(state.containerId, "incremental update skipped (matches bootstrap data)", {
+                rows: data.data.length,
+                columns: data.columns.length,
+            });
+            return;
+        }
         state.pendingData = data;
+        logTableAdapter(state.containerId, "incremental update deferred (api not ready)", {
+            rows: data.data.length,
+            columns: data.columns.length,
+        });
         return;
     }
 
     const tableApi = state.tableApi;
     const sort = data.sort ?? [0, "asc"];
+    const nextSortKey = `${sort[0]}:${sort[1]}`;
+
+    const rowsUpdateStartedAt = performance.now();
 
     tableApi.clear();
     tableApi.rows.add(data.data);
 
+    const rowsUpdateMs = performance.now() - rowsUpdateStartedAt;
+
+    const visibilityStartedAt = performance.now();
+    const nextVisibleSet = new Set<number>(data.visible);
+    let visibilityChanges = 0;
+    const columnsToShow: number[] = [];
+    const columnsToHide: number[] = [];
+
+    const hasColReorderApi =
+        tableApi.colReorder &&
+        typeof tableApi.colReorder.disable === "function" &&
+        typeof tableApi.colReorder.enable === "function";
+    const colReorderSuspendStartedAt = performance.now();
+    if (hasColReorderApi) {
+        tableApi.colReorder.disable();
+    }
+    const colReorderSuspendMs = performance.now() - colReorderSuspendStartedAt;
+
     for (let i = 0; i < data.columns.length; i++) {
+        const shouldBeVisible = nextVisibleSet.has(i);
+        if (state.lastVisibleByCol[i] === shouldBeVisible) {
+            continue;
+        }
         const apiColIndex = i + 1;
-        tableApi.column(apiColIndex).visible(data.visible.includes(i), false);
+        if (shouldBeVisible) columnsToShow.push(apiColIndex);
+        else columnsToHide.push(apiColIndex);
+        state.lastVisibleByCol[i] = shouldBeVisible;
+        visibilityChanges++;
     }
 
-    tableApi.order([sort]);
+    const showStartedAt = performance.now();
+    if (columnsToShow.length > 0) {
+        tableApi.columns(columnsToShow).visible(true, false);
+    }
+    const showMs = performance.now() - showStartedAt;
+
+    const hideStartedAt = performance.now();
+    if (columnsToHide.length > 0) {
+        tableApi.columns(columnsToHide).visible(false, false);
+    }
+    const hideMs = performance.now() - hideStartedAt;
+
+    const colReorderResumeStartedAt = performance.now();
+    if (hasColReorderApi) {
+        tableApi.colReorder.enable();
+    }
+    const colReorderResumeMs = performance.now() - colReorderResumeStartedAt;
+    const visibilityMs = performance.now() - visibilityStartedAt;
+
+    if (state.lastSortKey !== nextSortKey) {
+        tableApi.order([sort]);
+        state.lastSortKey = nextSortKey;
+    }
+
+    const drawStartedAt = performance.now();
     state.resetSelection?.();
-    tableApi.columns.adjust().draw(false);
+    const adjustStartedAt = performance.now();
+    if (visibilityChanges > 0) {
+        tableApi.columns.adjust();
+    }
+    const adjustMs = performance.now() - adjustStartedAt;
+    tableApi.draw(false);
+    const drawMs = performance.now() - drawStartedAt;
+
+    logTableAdapter(state.containerId, "incremental update applied", {
+        rows: data.data.length,
+        columns: data.columns.length,
+        visibilityChanges,
+        shownChanges: columnsToShow.length,
+        hiddenChanges: columnsToHide.length,
+        colReorderSuspended: hasColReorderApi,
+        colReorderSuspendMs: Number(colReorderSuspendMs.toFixed(2)),
+        showMs: Number(showMs.toFixed(2)),
+        hideMs: Number(hideMs.toFixed(2)),
+        colReorderResumeMs: Number(colReorderResumeMs.toFixed(2)),
+        rowsUpdateMs: Number(rowsUpdateMs.toFixed(2)),
+        visibilityMs: Number(visibilityMs.toFixed(2)),
+        adjustMs: Number(adjustMs.toFixed(2)),
+        drawMs: Number(drawMs.toFixed(2)),
+        elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
+    });
 }
 
 function disposeContainerState(container: HTMLElement): void {
@@ -377,6 +542,8 @@ export function setupContainer(
     deps: TableAdapterDeps,
     callbacks?: TableCallbacks,
 ): HTMLTableElement {
+    const containerId = container.id || "(anonymous-container)";
+    const setupStartedAt = performance.now();
     const finishSpan = startPerfSpan("table.setupContainer", {
         rows: data.data.length,
         columns: data.columns.length,
@@ -387,13 +554,25 @@ export function setupContainer(
         incrementPerfCounter("table.incremental.reuse", 1, {
             reason: "schema-match",
         });
+        logTableAdapter(containerId, "reuse schema-match", {
+            rows: data.data.length,
+            columns: data.columns.length,
+        });
         applyIncrementalUpdate(existingState, data);
         finishSpan();
+        logTableAdapter(containerId, "setupContainer end (reuse)", {
+            elapsedMs: Number((performance.now() - setupStartedAt).toFixed(2)),
+        });
         return existingState.tableElem;
     }
 
     incrementPerfCounter("table.incremental.rebuild", 1, {
         reason: existingState ? "schema-change" : "first-build",
+    });
+    logTableAdapter(containerId, "rebuild", {
+        reason: existingState ? "schema-change" : "first-build",
+        rows: data.data.length,
+        columns: data.columns.length,
     });
 
     disposeContainerState(container);
@@ -410,10 +589,14 @@ export function setupContainer(
     const nextState: TableContainerState = {
         schemaKey,
         tableElem: table,
+        containerId,
         runtimeState,
+        bootstrappedData: data,
         tableApi: null,
         resetSelection: null,
         pendingData: null,
+        lastVisibleByCol: data.columns.map((_, index) => data.visible.includes(index)),
+        lastSortKey: `${(data.sort ?? [0, "asc"])[0]}:${(data.sort ?? [0, "asc"])[1]}`,
     };
 
     containerStateByElem.set(container, nextState);
@@ -428,10 +611,19 @@ export function setupContainer(
         (tableApi, resetSelection) => {
             nextState.tableApi = tableApi;
             nextState.resetSelection = resetSelection;
+            logTableAdapter(containerId, "table api ready", {
+                elapsedMs: Number((performance.now() - setupStartedAt).toFixed(2)),
+            });
             if (nextState.pendingData) {
                 const pending = nextState.pendingData;
                 nextState.pendingData = null;
-                applyIncrementalUpdate(nextState, pending);
+                if (pending !== nextState.bootstrappedData) {
+                    requestAnimationFrame(() => {
+                        applyIncrementalUpdate(nextState, pending);
+                    });
+                } else {
+                    logTableAdapter(containerId, "pending update skipped (already bootstrapped)");
+                }
             }
         },
     );

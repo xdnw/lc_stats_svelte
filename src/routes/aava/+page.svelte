@@ -175,15 +175,15 @@
     })();
 
     function getColumnLabels(header: string): Record<ColumnKey, string> {
-        const meta = resolveWarWebMetricMeta(header);
+        const labels = getAavaMetricLabels(header);
         return {
             name: "Alliance",
-            primary_to_row: meta.primaryToRowLabel(header),
-            row_to_primary: meta.rowToPrimaryLabel(header),
+            primary_to_row: labels.primary_to_row,
+            row_to_primary: labels.row_to_primary,
             net: "Net",
             total: "Total",
-            primary_share_pct: "Compared share %",
-            row_share_pct: "Selected share %",
+            primary_share_pct: labels.primary_share_pct,
+            row_share_pct: labels.row_share_pct,
             abs_net: "Abs Net",
         };
     }
@@ -614,7 +614,6 @@
         renderQueued = false;
         const container = document.getElementById("aava-table");
         if (!container) return;
-        container.innerHTML = "";
 
         let primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
         let vsIds =

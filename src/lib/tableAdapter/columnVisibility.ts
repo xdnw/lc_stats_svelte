@@ -5,6 +5,13 @@ type SetupColumnVisibilityParams = {
     setQueryParam: (param: string, value: string | null) => void;
 };
 
+function shouldLogColumnManager(containerElem: HTMLElement): boolean {
+    return (
+        containerElem.id === "conflict-table-1" ||
+        containerElem.id === "aava-table"
+    );
+}
+
 function syncVisibleColumnsToQuery(
     tableApi: any,
     dataColumns: string[],
@@ -23,6 +30,7 @@ export function setupColumnVisibilityController(
     params: SetupColumnVisibilityParams,
 ): void {
     const { containerElem, tableApi, dataColumns, setQueryParam } = params;
+    const logEnabled = shouldLogColumnManager(containerElem);
 
     const searchInput = containerElem.querySelector(
         ".ux-colmgr-search",
@@ -49,8 +57,12 @@ export function setupColumnVisibilityController(
     const countElemEl = countElem;
     const showAllBtnEl = showAllBtn;
     const hideAllBtnEl = hideAllBtn;
+    const modalElem = searchInputEl.closest(".modal") as HTMLElement | null;
+    let renderQueued = false;
+    let hasRenderedList = false;
 
     function renderColumnManagerList(): void {
+        const startedAt = performance.now();
         const query = searchInputEl.value.trim().toLowerCase();
         listElemEl.innerHTML = "";
 
@@ -78,7 +90,7 @@ export function setupColumnVisibilityController(
                 tableApi.column(i + 1).visible(checkbox.checked);
                 syncVisibleColumnsToQuery(tableApi, dataColumns, setQueryParam);
                 tableApi.columns.adjust().draw(false);
-                renderColumnManagerList();
+                scheduleColumnManagerRender();
             });
 
             const label = document.createElement("span");
@@ -97,6 +109,31 @@ export function setupColumnVisibilityController(
         }
 
         countElemEl.textContent = `Visible: ${visibleCount}/${Math.max(0, dataColumns.length - 1)}`;
+        hasRenderedList = true;
+
+        if (logEnabled) {
+            console.info("[column-manager] render list", {
+                containerId: containerElem.id,
+                query,
+                visibleCount,
+                elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
+            });
+        }
+    }
+
+    function scheduleColumnManagerRender(): void {
+        if (!hasRenderedList) return;
+        if (renderQueued) return;
+        renderQueued = true;
+        requestAnimationFrame(() => {
+            renderQueued = false;
+            renderColumnManagerList();
+        });
+    }
+
+    function renderOnFirstOpen(): void {
+        if (hasRenderedList) return;
+        renderColumnManagerList();
     }
 
     searchInputEl.addEventListener("input", renderColumnManagerList);
@@ -106,7 +143,7 @@ export function setupColumnVisibilityController(
         }
         syncVisibleColumnsToQuery(tableApi, dataColumns, setQueryParam);
         tableApi.columns.adjust().draw(false);
-        renderColumnManagerList();
+        scheduleColumnManagerRender();
     });
     hideAllBtnEl.addEventListener("click", () => {
         for (let i = 1; i < dataColumns.length; i++) {
@@ -114,9 +151,20 @@ export function setupColumnVisibilityController(
         }
         syncVisibleColumnsToQuery(tableApi, dataColumns, setQueryParam);
         tableApi.columns.adjust().draw(false);
-        renderColumnManagerList();
+        scheduleColumnManagerRender();
     });
 
-    renderColumnManagerList();
-    tableApi.on("column-visibility", renderColumnManagerList);
+    if (modalElem) {
+        modalElem.addEventListener("shown.bs.modal", renderOnFirstOpen);
+    } else {
+        renderColumnManagerList();
+    }
+
+    countElemEl.textContent = "Open to load column list";
+    listElemEl.innerHTML = '<div class="small ux-muted">Open this dialog to load and search columns.</div>';
+
+    tableApi.on("column-visibility", () => {
+        if (!hasRenderedList) return;
+        scheduleColumnManagerRender();
+    });
 }

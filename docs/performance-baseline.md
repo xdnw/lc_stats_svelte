@@ -62,6 +62,13 @@ Key event/counter names:
 - `prefetch.success`
 - `prefetch.failed`
 - `prefetch.skipped`
+- `conflict.layout.compute`
+- `conflict.layout.apply`
+- `conflict.layout.preset.apply`
+- `conflict.layout.columnPreset.apply`
+- `conflict.layout.cache.hit`
+- `conflict.layout.cache.miss`
+- `conflict.layout.cache.invalidate`
 
 Journey-specific event/counter names (`conflicts -> conflict -> bubble`):
 
@@ -105,3 +112,18 @@ Warm (repeat navigation, cached payload/runtime expected):
 - Confirm cross-route prefetches are skipped on constrained clients (`saveData`, slow connection, low memory).
 - Confirm decompression worker fallback counters remain near zero on modern browsers.
 - Confirm no feature regressions in query restore, table export, column customization, and graph interactions.
+
+## Conflict KPI/Preset Acceptance Signals
+
+Use a large `conflict?id=<sample>` with nation layout selected and many KPI widgets.
+
+- Baseline capture:
+1. `window.__lcPerf.clear()`.
+2. Apply a nation preset from layout picker and then from `My layouts`.
+3. Open KPI builder, add/reorder several ranking/metric widgets, and close.
+4. Collect `window.__lcPerf.snapshot()`.
+
+- Post-change expectations:
+1. `conflict.layout.cache.hit` should dominate over `conflict.layout.cache.miss` during repeated preset toggles with the same raw payload.
+2. `conflict.layout.preset.apply` and `conflict.layout.columnPreset.apply` spans should no longer coincide with multi-second main-thread stalls.
+3. `table.incremental.reuse` should remain higher than `table.incremental.rebuild` for preset/sort/order churn where schema is unchanged.
