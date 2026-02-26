@@ -1,6 +1,7 @@
 import { decompressBson } from "./binary";
 import { scheduleWhenIdle } from "./misc";
 import { incrementPerfCounter } from "./perf";
+import { prewarmRuntimeGroup, type RuntimePrefetchGroup } from "./runtime";
 
 type PrefetchPriority = "high" | "idle";
 
@@ -161,6 +162,22 @@ export function queueUrlPrefetch(
         `decompress:${url}`,
         async () => {
             await decompressBson(url);
+        },
+        options,
+    );
+}
+
+export function queueRuntimePrefetch(
+    group: RuntimePrefetchGroup,
+    options?: {
+        priority?: PrefetchPriority;
+        crossRoute?: boolean;
+    },
+): boolean {
+    return queuePrefetch(
+        `runtime:${group}`,
+        async () => {
+            await prewarmRuntimeGroup(group);
         },
         options,
     );

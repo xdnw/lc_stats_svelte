@@ -55,6 +55,7 @@
         SelectionModalItem,
     } from "$lib/selection/types";
     import { appConfig as config } from "$lib/appConfig";
+    import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
 
     const Layout = {
         COALITION: 0,
@@ -1226,6 +1227,9 @@
     })();
 
     function setupConflictTables(conflictId: string) {
+        beginJourneySpan("journey.conflicts_to_conflict.dataFetch", {
+            conflictId,
+        });
         _loadError = null;
         _loaded = false;
         let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
@@ -1249,6 +1253,8 @@
                 if (data.posts && Object.keys(data.posts).length)
                     loadPosts(data.posts);
                 _loaded = true;
+                endJourneySpan("journey.conflicts_to_conflict.routeTransition");
+                endJourneySpan("journey.conflicts_to_conflict.firstMount");
                 saveCurrentQueryParams();
 
                 // Warm graph payload cache so Tiering/Bubble route switches are faster.
@@ -1266,6 +1272,9 @@
                 _loadError =
                     "Could not load conflict data. Please try again later.";
                 _loaded = true;
+            })
+            .finally(() => {
+                endJourneySpan("journey.conflicts_to_conflict.dataFetch");
             });
     }
 
@@ -1357,6 +1366,9 @@
                 _loaded = true;
             },
             onResolvedId: (id, queryParams) => {
+                beginJourneySpan("journey.conflicts_to_conflict.firstMount", {
+                    conflictId: id,
+                });
                 loadLayoutFromQuery(queryParams);
                 conflictId = id;
                 loadKpiConfigFromStorage();

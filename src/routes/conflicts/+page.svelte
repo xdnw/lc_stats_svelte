@@ -4,6 +4,7 @@
    * This page is for viewing the table of all conflicts
    */
   import { base } from "$app/paths";
+  import { goto } from "$app/navigation";
   import Breadcrumbs from "../../components/Breadcrumbs.svelte";
   import ShareResetBar from "../../components/ShareResetBar.svelte";
   import Progress from "../../components/Progress.svelte";
@@ -12,7 +13,7 @@
     SelectionId,
     SelectionModalItem,
   } from "$lib/selection/types";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { decompressBson } from "$lib/binary";
   import { modalStrWithCloseButton } from "$lib/modals";
   import { setupContainer } from "$lib/containerSetup";
@@ -27,13 +28,16 @@
   } from "$lib/queryState";
   import {
     formatDatasetProvenance,
+    getConflictsIndexUrl,
     getConflictDataUrl,
     getConflictGraphDataUrl,
   } from "$lib/runtime";
   import { formatAllianceName } from "$lib/formatting";
-  import { queueUrlPrefetch } from "$lib/prefetchCoordinator";
+  import { queueRuntimePrefetch, queueUrlPrefetch } from "$lib/prefetchCoordinator";
   import { toNumberSelection } from "$lib/selectionModalHelpers";
-  import { yieldToMain } from "$lib/misc";
+  import { scheduleWhenIdle, yieldToMain } from "$lib/misc";
+  import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
+  import { incrementPerfCounter, startPerfSpan } from "$lib/perf";
   import { ConflictIndex } from "$lib/types";
   import type { TableCallbacks } from "$lib/tableCallbacks";
   import type { JSONValue, RawData, TableData } from "$lib/types";
@@ -74,7 +78,14 @@
     };
   } = {};
   let timelineRows: JSONValue[][] = [];
+  let visualizationElement: HTMLDivElement | null = null;
+  let timelineObserver: IntersectionObserver | null = null;
+  let timelineScriptPromise: Promise<void> | null = null;
   let guildParam: string | null = null;
+
+  const VIS_TIMELINE_SCRIPT_ID = "visjs";
+  const VIS_TIMELINE_SCRIPT_SRC =
+    "https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js";
 
   let _allowedAllianceIds: Set<number> = new Set();
   let showAllianceModal = false;
@@ -342,7 +353,7 @@
           const hasPinnedInfo = (details.pinnedInfo ?? "").trim().length > 0;
 
           const bodyHtml = `
-          <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' onclick='openConflictPageFromCard(event,${conflictId})' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
+          <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' onclick='return openConflictPageFromCard(event,${conflictId})' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
 
           <div class='ux-conflict-popup-actions' role='group' aria-label='Conflict actions'>
             <button type='button' class='btn ux-btn fw-bold' onclick='openCoalitionForConflict(event,${conflictId},0,true)' aria-label='Show coalition 1 alliances for ${safeName}'>C1</button>
@@ -381,19 +392,48 @@
             config.version.graph_data,
           );
           queueUrlPrefetch(graphUrl, { priority: "high", crossRoute: true });
+          queueRuntimePrefetch("table", {
+            priority: "idle",
+            crossRoute: true,
+          });
         },
       );
 
       setWindowGlobal(
         "openConflictPageFromCard",
         (event: Event | undefined, conflictId: number) => {
+          const mouseEvent = event as MouseEvent | undefined;
+          const isPlainLeftClick =
+            !!mouseEvent &&
+            mouseEvent.button === 0 &&
+            !mouseEvent.ctrlKey &&
+            !mouseEvent.metaKey &&
+            !mouseEvent.shiftKey &&
+            !mouseEvent.altKey;
+          if (!isPlainLeftClick) {
+            incrementPerfCounter("journey.conflicts_to_conflict.navMode", 1, {
+              mode: "document-or-new-tab",
+            });
+            return true;
+          }
+
           stopTableEvent(event);
+          const href = `${base}/conflict?id=${conflictId}`;
+          beginJourneySpan("journey.conflicts_to_conflict.routeTransition", {
+            mode: "spa",
+            source: "conflict-card",
+            conflictId,
+          });
+          incrementPerfCounter("journey.conflicts_to_conflict.navMode", 1, {
+            mode: "spa",
+          });
           const modalElem = document.getElementById("exampleModal");
           const modalInstance = getBootstrapModalInstance(modalElem);
           modalInstance?.hide?.();
           window.setTimeout(() => {
-            window.location.href = `${base}/conflict?id=${conflictId}`;
+            void goto(href, { keepFocus: true, noScroll: false });
           }, 80);
+          return false;
         },
       );
 
@@ -434,8 +474,10 @@
         },
       );
 
-      // Url of s3 bucket
-      let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
+      beginJourneySpan("journey.conflicts.dataFetch", {
+        version: config.version.conflicts,
+      });
+      let url = getConflictsIndexUrl(config.version.conflicts);
 
       decompressBson(url)
         .then(async (result: RawData) => {
@@ -502,17 +544,48 @@
           setupConflicts(result);
           _loaded = true;
           saveCurrentQueryParams();
-          initializeTimeline(false);
+          requestTimelineRender(false);
         })
         .catch((error) => {
           console.error("Failed to load conflicts data", error);
           _loadError = "Could not load conflicts data. Please try again later.";
           _loaded = true;
+        })
+        .finally(() => {
+          endJourneySpan("journey.conflicts.dataFetch");
         });
     } catch (error) {
       console.error("Error reading from S3 bucket:", error);
       _loadError = "Could not load conflicts data. Please try again later.";
     }
+
+    scheduleWhenIdle(() => {
+      void ensureTimelineScriptLoaded().then(() => {
+        requestTimelineRender(false);
+      });
+    }, { timeout: 6000, fallbackDelayMs: 1200 });
+
+    if (
+      typeof IntersectionObserver !== "undefined" &&
+      visualizationElement
+    ) {
+      timelineObserver = new IntersectionObserver((entries) => {
+        const isVisible = entries.some((entry) => entry.isIntersecting);
+        if (!isVisible) return;
+        requestTimelineRender(false);
+        timelineObserver?.disconnect();
+        timelineObserver = null;
+      }, {
+        root: null,
+        threshold: 0.15,
+      });
+      timelineObserver.observe(visualizationElement);
+    }
+  });
+
+  onDestroy(() => {
+    timelineObserver?.disconnect();
+    timelineObserver = null;
   });
 
   function setupConflicts(result: RawData) {
@@ -723,7 +796,7 @@
     setQueryParam("guild", id === "0" ? null : id);
     saveCurrentQueryParams();
     setupConflicts(_rawData!);
-    initializeTimeline(true);
+    requestTimelineRender(true);
   }
 
   function normalizeWikiUrl(wiki: string): string {
@@ -836,7 +909,7 @@
     }
     selectedCategories = next;
     setupConflicts(_rawData!);
-    initializeTimeline(true);
+    requestTimelineRender(true);
   }
 
   function openAllianceModal() {
@@ -863,7 +936,7 @@
     saveCurrentQueryParams();
 
     setupConflicts(_rawData!);
-    initializeTimeline(true);
+    requestTimelineRender(true);
   }
 
   function resetFilters() {
@@ -876,21 +949,76 @@
     resetQueryParams(["ids", "guild", "guild_id"]);
     saveCurrentQueryParams();
     setupConflicts(_rawData);
-    initializeTimeline(true);
+    requestTimelineRender(true);
   }
 
   function retryLoad() {
     window.location.reload();
   }
 
+  function ensureTimelineScriptLoaded(): Promise<void> {
+    if (typeof getVis() !== "undefined") {
+      return Promise.resolve();
+    }
+    if (timelineScriptPromise) {
+      return timelineScriptPromise;
+    }
+
+    const existing = document.getElementById(
+      VIS_TIMELINE_SCRIPT_ID,
+    ) as HTMLScriptElement | null;
+    if (existing?.getAttribute("data-loaded") === "true") {
+      return Promise.resolve();
+    }
+
+    const finishRuntimeSpan = startPerfSpan("journey.conflicts.timeline.runtime", {
+      strategy: "intent-visibility",
+    });
+
+    timelineScriptPromise = new Promise<void>((resolve, reject) => {
+      const script =
+        existing ??
+        Object.assign(document.createElement("script"), {
+          id: VIS_TIMELINE_SCRIPT_ID,
+          async: true,
+          src: VIS_TIMELINE_SCRIPT_SRC,
+        });
+
+      const onLoad = () => {
+        script.setAttribute("data-loaded", "true");
+        finishRuntimeSpan();
+        resolve();
+      };
+
+      const onError = () => {
+        timelineScriptPromise = null;
+        finishRuntimeSpan();
+        reject(new Error("Failed to load vis timeline runtime"));
+      };
+
+      script.addEventListener("load", onLoad, { once: true });
+      script.addEventListener("error", onError, { once: true });
+
+      if (!existing) {
+        document.head.appendChild(script);
+      }
+    });
+
+    return timelineScriptPromise;
+  }
+
+  function requestTimelineRender(force: boolean) {
+    ensureTimelineScriptLoaded()
+      .then(() => {
+        initializeTimeline(force);
+      })
+      .catch((error) => {
+        console.error("Failed to initialize timeline runtime", error);
+      });
+  }
+
   function initializeTimeline(force: boolean) {
-    const script = document.getElementById("visjs");
-    if (
-      _loaded &&
-      _rawData &&
-      ((script && script.getAttribute("data-loaded")) ||
-        typeof getVis() !== "undefined")
-    ) {
+    if (_loaded && _rawData && typeof getVis() !== "undefined") {
       // DOM element where the Timeline will be attached
       const container = document.getElementById("visualization");
       if (!container) return;
@@ -961,23 +1089,11 @@
       timeline.addCustomTime(maxEnd, "t2");
     }
   }
-
-  function onScriptLoad(event: Event) {
-    const script = event.target as HTMLScriptElement;
-    script.setAttribute("data-loaded", "true");
-    initializeTimeline(false);
-  }
 </script>
 
 <svelte:head>
   <!-- Modify head -->
   <title>Conflicts</title>
-  <script
-    id="visjs"
-    async
-    src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"
-    on:load={onScriptLoad}
-  ></script>
 </svelte:head>
 <!-- Add navbar component to page  -->
 <div class="container-fluid p-2 ux-page-body">
@@ -1073,7 +1189,7 @@
   <div class="ux-surface p-2 mt-2">
     <h4 class="m-1">Timeline</h4>
     <p class="ps-1 ux-muted">Use ctrl+mousewheel to zoom on PC</p>
-    <div class="m-0" id="visualization"></div>
+    <div class="m-0" id="visualization" bind:this={visualizationElement}></div>
   </div>
   {#if datasetProvenance}
     <div class="small text-muted text-end mt-2">{datasetProvenance}</div>

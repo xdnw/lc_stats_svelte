@@ -38,12 +38,33 @@ const styleManifest: Record<string, StyleManifestEntry> = {
 const scriptLoadPromises = new Map<string, Promise<void>>();
 const styleLoadPromises = new Map<string, Promise<void>>();
 
+export type RuntimePrefetchGroup = "plotly" | "table";
+
+const runtimeGroupToScripts: Record<RuntimePrefetchGroup, string[]> = {
+    plotly: ["plotjs"],
+    table: ["jqjs", "dtjs1", "dtjs2", "dtjs3"],
+};
+
+const runtimeGroupToStyles: Partial<Record<RuntimePrefetchGroup, string[]>> = {
+    table: ["dtcss1", "dtcss2"],
+};
+
+export function getConflictsIndexUrl(version: number | string): string {
+    return `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${version}`;
+}
+
 export function getConflictDataUrl(conflictId: string, version: number | string): string {
     return `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${version}`;
 }
 
 export function getConflictGraphDataUrl(conflictId: string, version: number | string): string {
     return `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${version}`;
+}
+
+export function prewarmRuntimeGroup(group: RuntimePrefetchGroup): Promise<void> {
+    const styles = runtimeGroupToStyles[group] ?? [];
+    const scripts = runtimeGroupToScripts[group] ?? [];
+    return ensureStylesLoaded(styles).then(() => ensureScriptsLoaded(scripts));
 }
 
 export function formatDatasetProvenance(version: number | string, updateMs?: number): string {

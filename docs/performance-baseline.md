@@ -63,6 +63,42 @@ Key event/counter names:
 - `prefetch.failed`
 - `prefetch.skipped`
 
+Journey-specific event/counter names (`conflicts -> conflict -> bubble`):
+
+- `journey.conflicts_to_conflict.navMode` (counter with `mode=spa|document-or-new-tab`)
+- `journey.conflicts_to_conflict.routeTransition`
+- `journey.conflicts_to_conflict.dataFetch`
+- `journey.conflicts_to_conflict.firstMount`
+- `journey.conflict_to_bubble.routeTransition`
+- `journey.conflict_to_bubble.dataFetch`
+- `journey.conflict_to_bubble.runtimeLoad`
+- `journey.conflict_to_bubble.firstMount`
+- `worker.bubble.clone.ms`
+- `worker.bubble.receive.ms`
+- `worker.bubble.compute.ms`
+- `worker.bubble.respond.ms`
+
+## Journey Targets
+
+Primary journey: `/conflicts -> /conflict?id=<sample> -> /bubble?id=<sample>`
+
+Cold (hard refresh on `/conflicts`, empty memory cache):
+
+- `journey.conflicts_to_conflict.routeTransition` p50 <= 450ms, p95 <= 800ms
+- `journey.conflicts_to_conflict.dataFetch` p50 <= 1300ms, p95 <= 2200ms
+- `journey.conflict_to_bubble.routeTransition` p50 <= 500ms, p95 <= 900ms
+- `journey.conflict_to_bubble.dataFetch` p50 <= 1500ms, p95 <= 2500ms
+- `journey.conflict_to_bubble.runtimeLoad` p50 <= 300ms, p95 <= 700ms
+
+Warm (repeat navigation, cached payload/runtime expected):
+
+- `journey.conflicts_to_conflict.routeTransition` p50 <= 220ms, p95 <= 450ms
+- `journey.conflicts_to_conflict.dataFetch` p50 <= 120ms, p95 <= 280ms
+- `journey.conflict_to_bubble.routeTransition` p50 <= 260ms, p95 <= 520ms
+- `journey.conflict_to_bubble.dataFetch` p50 <= 150ms, p95 <= 320ms
+- `journey.conflict_to_bubble.runtimeLoad` p50 <= 90ms, p95 <= 180ms
+- `worker.bubble.clone.ms` median should be lower than pre-protocol baseline (init+param protocol)
+
 ## Validation Checklist
 
 - Confirm first route no longer pulls DataTables or Plotly unless required by the active route.

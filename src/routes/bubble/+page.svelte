@@ -42,6 +42,15 @@
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { getPlotlyGlobal } from "$lib/globals";
     import { appConfig as config } from "$lib/appConfig";
+    import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
+    import type {
+        WorkerDatasetComputeRequest,
+        WorkerDatasetComputeResult,
+        WorkerDatasetInitRequest,
+        WorkerDatasetInitResult,
+        WorkerDatasetReleaseRequest,
+        WorkerDatasetReleaseResult,
+    } from "$lib/workerDatasetProtocol";
 
     function getPlotly(): any {
         return getPlotlyGlobal();
@@ -68,6 +77,9 @@
     let traceCache = new Map<string, TraceBuildResult>();
     let graphUpdateQueued = false;
     let bubbleWorker: Worker | null = null;
+    let bubbleWorkerDatasetKey: string | null = null;
+    let bubbleWorkerDatasetReady: Promise<void> | null = null;
+    let hasCompletedFirstBubbleMount = false;
     let latestGraphRunId = 0;
     let lastBubbleRenderKey: string | null = null;
     let lastPlotSchemaKey: string | null = null;
@@ -275,6 +287,13 @@
             },
             onResolvedId: (id) => {
                 conflictId = id;
+                beginJourneySpan("journey.conflict_to_bubble.routeTransition", {
+                    mode: "spa",
+                    conflictId: id,
+                });
+                beginJourneySpan("journey.conflict_to_bubble.firstMount", {
+                    conflictId: id,
+                });
                 fetchConflictGraphData(id);
             },
         });
@@ -321,10 +340,28 @@
         latestGraphRunId++;
         lastBubbleRenderKey = null;
         lastPlotSchemaKey = null;
+        if (bubbleWorker && bubbleWorkerDatasetKey) {
+            void requestWorkerRpc<
+                WorkerDatasetReleaseRequest,
+                WorkerDatasetReleaseResult
+            >(
+                bubbleWorker,
+                {
+                    action: "release",
+                    datasetKey: bubbleWorkerDatasetKey,
+                },
+                {
+                    timeoutMs: 2_000,
+                    operation: "bubble dataset release",
+                },
+            ).catch(() => {});
+        }
         if (bubbleWorker) {
             bubbleWorker.terminate();
             bubbleWorker = null;
         }
+        bubbleWorkerDatasetKey = null;
+        bubbleWorkerDatasetReady = null;
         const sliderApi = getSliderApi();
         if (sliderApi) {
             if (sliderSetListener) {
@@ -351,6 +388,10 @@
     });
 
     function fetchConflictGraphData(conflictId: string) {
+        hasCompletedFirstBubbleMount = false;
+        beginJourneySpan("journey.conflict_to_bubble.dataFetch", {
+            conflictId,
+        });
         let url = getConflictGraphDataUrl(
             conflictId,
             config.version.graph_data,
@@ -359,6 +400,14 @@
             .then(async (data) => {
                 conflictName = data.name;
                 _rawData = data;
+                bubbleWorkerDatasetKey = `bubble:${conflictId}:${config.version.graph_data}`;
+                bubbleWorkerDatasetReady = null;
+                if (bubbleWorker && bubbleWorkerDatasetKey) {
+                    bubbleWorkerDatasetReady = initializeBubbleWorkerDataset(
+                        bubbleWorkerDatasetKey,
+                        data,
+                    );
+                }
                 traceCache.clear();
                 lastBubbleRenderKey = null;
                 datasetProvenance = formatDatasetProvenance(
@@ -369,6 +418,7 @@
                 await yieldToMain();
                 setupGraphData(_rawData);
                 _loaded = true;
+                endJourneySpan("journey.conflict_to_bubble.routeTransition");
                 saveCurrentQueryParams();
 
                 // Warm conflict detail cache so switching to table pages is faster.
@@ -386,6 +436,9 @@
                 _loadError =
                     "Could not load conflict graph data. Please try again later.";
                 _loaded = true;
+            })
+            .finally(() => {
+                endJourneySpan("journey.conflict_to_bubble.dataFetch");
             });
     }
 
@@ -421,13 +474,36 @@
         ranges: Range;
     }
 
-    type BubbleWorkerRequest = {
-        id: number;
-        data: GraphData;
+    type BubbleTraceParams = {
         metrics: [TierMetric, TierMetric, TierMetric];
         minCity: number;
         maxCity: number;
     };
+
+    type BubbleWorkerRequest = WorkerDatasetComputeRequest<BubbleTraceParams>;
+
+    async function initializeBubbleWorkerDataset(
+        datasetKey: string,
+        data: GraphData,
+    ): Promise<void> {
+        const worker = bubbleWorker;
+        if (!worker) return;
+        await requestWorkerRpc<
+            WorkerDatasetInitRequest<GraphData>,
+            WorkerDatasetInitResult
+        >(
+            worker,
+            {
+                action: "init",
+                datasetKey,
+                data,
+            },
+            {
+                timeoutMs: 30_000,
+                operation: "bubble dataset init",
+            },
+        );
+    }
 
     function computeTraces(
         data: GraphData,
@@ -435,8 +511,27 @@
         minCity: number,
         maxCity: number,
     ): Promise<TraceBuildResult | null> {
+        const finishComputeSpan = startPerfSpan(
+            "journey.conflict_to_bubble.workerCompute",
+            { mode: bubbleWorker ? "worker" : "main" },
+        );
         const worker = bubbleWorker;
         if (!worker) {
+            return Promise.resolve(
+                generateTraces(
+                    data,
+                    metrics[0],
+                    metrics[1],
+                    metrics[2],
+                    minCity,
+                    maxCity,
+                ),
+            ).finally(() => {
+                finishComputeSpan();
+            });
+        }
+
+        if (!bubbleWorkerDatasetKey) {
             return Promise.resolve(
                 generateTraces(
                     data,
@@ -449,32 +544,79 @@
             );
         }
 
-        return requestWorkerRpc<BubbleWorkerRequest, TraceBuildResult | null>(
-            worker,
-            {
-                data,
-                metrics,
-                minCity,
-                maxCity,
-            },
-            {
-                timeoutMs: 30_000,
-                operation: "bubble trace compute",
-            },
-        ).catch((error) => {
-            console.warn(
-                "Bubble worker compute failed, falling back to main thread",
-                error,
-            );
-            return generateTraces(
-                data,
-                metrics[0],
-                metrics[1],
-                metrics[2],
-                minCity,
-                maxCity,
-            );
-        });
+        const roundTripStart =
+            typeof performance !== "undefined"
+                ? performance.now()
+                : Date.now();
+
+        const ready =
+            bubbleWorkerDatasetReady ??
+            initializeBubbleWorkerDataset(bubbleWorkerDatasetKey, data);
+        bubbleWorkerDatasetReady = ready;
+
+        return ready
+            .then(() =>
+                requestWorkerRpc<
+                    BubbleWorkerRequest,
+                    WorkerDatasetComputeResult<TraceBuildResult | null>
+                >(
+                    worker,
+                    {
+                        action: "compute",
+                        datasetKey: bubbleWorkerDatasetKey as string,
+                        params: {
+                            metrics,
+                            minCity,
+                            maxCity,
+                        },
+                    },
+                    {
+                        timeoutMs: 30_000,
+                        operation: "bubble trace compute",
+                    },
+                ),
+            )
+            .then((workerResult) => {
+                const roundTripEnd =
+                    typeof performance !== "undefined"
+                        ? performance.now()
+                        : Date.now();
+                const roundTripMs = Math.max(0, roundTripEnd - roundTripStart);
+                const workerMs = workerResult.timings.totalMs;
+                const cloneMs = Math.max(0, roundTripMs - workerMs);
+                incrementPerfCounter(
+                    "worker.bubble.receive.ms",
+                    workerResult.timings.receiveMs,
+                );
+                incrementPerfCounter(
+                    "worker.bubble.compute.ms",
+                    workerResult.timings.computeMs,
+                );
+                incrementPerfCounter(
+                    "worker.bubble.respond.ms",
+                    workerResult.timings.respondMs,
+                );
+                incrementPerfCounter("worker.bubble.total.ms", workerMs);
+                incrementPerfCounter("worker.bubble.clone.ms", cloneMs);
+                return workerResult.value;
+            })
+            .catch((error) => {
+                console.warn(
+                    "Bubble worker compute failed, falling back to main thread",
+                    error,
+                );
+                return generateTraces(
+                    data,
+                    metrics[0],
+                    metrics[1],
+                    metrics[2],
+                    minCity,
+                    maxCity,
+                );
+            })
+            .finally(() => {
+                finishComputeSpan();
+            });
     }
 
     function getTraceCacheKey(
@@ -1084,7 +1226,11 @@
             };
         }
 
+        beginJourneySpan("journey.conflict_to_bubble.runtimeLoad", {
+            runtime: "plotjs",
+        });
         ensureScriptsLoaded(["plotjs"]).then(() => {
+            endJourneySpan("journey.conflict_to_bubble.runtimeLoad");
             const plotly = getPlotly();
             if (!plotly) return;
             const graphDivAny = graphDiv as any;
@@ -1119,6 +1265,10 @@
                 layout: layout,
                 frames: frames,
             });
+            if (!hasCompletedFirstBubbleMount) {
+                hasCompletedFirstBubbleMount = true;
+                endJourneySpan("journey.conflict_to_bubble.firstMount");
+            }
             lastPlotSchemaKey = nextSchemaKey;
             finishSpan();
             if (plotlyAnimatedListener) {
@@ -1146,6 +1296,9 @@
             };
             graphDivAny.on?.("plotly_animated", plotlyAnimatedListener);
             graphDivAny.on?.("plotly_sliderchange", plotlySliderChangeListener);
+        }).catch((error) => {
+            endJourneySpan("journey.conflict_to_bubble.runtimeLoad");
+            console.error("Failed to load plot runtime", error);
         });
     }
 

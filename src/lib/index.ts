@@ -48,13 +48,16 @@ export {
     generateColorsFromPalettes,
 } from './colors';
 export {
+    getConflictsIndexUrl,
     getConflictDataUrl,
     getConflictGraphDataUrl,
     formatDatasetProvenance,
     ensureScriptsLoaded,
     ensureStylesLoaded,
+    prewarmRuntimeGroup,
     rafDelay,
 } from './runtime';
+export type { RuntimePrefetchGroup } from './runtime';
 export {
     UNITS_PER_CITY,
     toggleCoalitionAllianceSelection,
@@ -73,9 +76,14 @@ export {
     canPrefetchCrossRoute,
     queuePrefetch,
     queueUrlPrefetch,
+    queueRuntimePrefetch,
     cancelPrefetch,
     resetPrefetchCoordinator,
 } from './prefetchCoordinator';
+export {
+    beginJourneySpan,
+    endJourneySpan,
+} from './journeyPerf';
 export {
     startPerfSpan,
     incrementPerfCounter,

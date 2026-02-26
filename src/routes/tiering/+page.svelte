@@ -51,6 +51,15 @@
     } from "$lib";
     import { appConfig as config } from "$lib/appConfig";
     import { requestWorkerRpc } from "$lib/workerRpc";
+    import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
+    import type {
+        WorkerDatasetComputeRequest,
+        WorkerDatasetComputeResult,
+        WorkerDatasetInitRequest,
+        WorkerDatasetInitResult,
+        WorkerDatasetReleaseRequest,
+        WorkerDatasetReleaseResult,
+    } from "$lib/workerDatasetProtocol";
     import Select from "svelte-select";
     import * as d3 from "d3";
     import noUiSlider from "nouislider";
@@ -88,6 +97,9 @@
     let chartInstanceRef: Chart | null = null;
     let dataSetByConfigCache = new Map<string, DataSetResponse>();
     let tieringWorker: Worker | null = null;
+    let tieringWorkerDatasetKey: string | null = null;
+    let tieringWorkerDatasetReady: Promise<void> | null = null;
+    let hasCompletedFirstTieringMount = false;
     let latestSetupRunId = 0;
     let lastTieringRenderKey: string | null = null;
     let selectedTieringExportDataset = "snapshot";
@@ -312,6 +324,13 @@
             },
             onResolvedId: (id) => {
                 conflictId = id;
+                beginJourneySpan("journey.conflict_to_tiering.routeTransition", {
+                    mode: "spa",
+                    conflictId: id,
+                });
+                beginJourneySpan("journey.conflict_to_tiering.firstMount", {
+                    conflictId: id,
+                });
                 setupChartData(id);
             },
         });
@@ -320,10 +339,28 @@
     onDestroy(() => {
         latestSetupRunId++;
         lastTieringRenderKey = null;
+        if (tieringWorker && tieringWorkerDatasetKey) {
+            void requestWorkerRpc<
+                WorkerDatasetReleaseRequest,
+                WorkerDatasetReleaseResult
+            >(
+                tieringWorker,
+                {
+                    action: "release",
+                    datasetKey: tieringWorkerDatasetKey,
+                },
+                {
+                    timeoutMs: 2_000,
+                    operation: "tiering dataset release",
+                },
+            ).catch(() => {});
+        }
         if (tieringWorker) {
             tieringWorker.terminate();
             tieringWorker = null;
         }
+        tieringWorkerDatasetKey = null;
+        tieringWorkerDatasetReady = null;
         if (chartInstanceRef) {
             chartInstanceRef.destroy();
             chartInstanceRef = null;
@@ -337,6 +374,10 @@
      * @param conflictId The id of the conflict
      */
     function setupChartData(conflictId: string) {
+        hasCompletedFirstTieringMount = false;
+        beginJourneySpan("journey.conflict_to_tiering.dataFetch", {
+            conflictId,
+        });
         _loadError = null;
         _loaded = false;
         dataSetByConfigCache.clear();
@@ -347,6 +388,14 @@
         decompressBson(url)
             .then(async (data) => {
                 _rawData = data;
+                tieringWorkerDatasetKey = `tiering:${conflictId}:${config.version.graph_data}`;
+                tieringWorkerDatasetReady = null;
+                if (tieringWorker && tieringWorkerDatasetKey) {
+                    tieringWorkerDatasetReady = initializeTieringWorkerDataset(
+                        tieringWorkerDatasetKey,
+                        data,
+                    );
+                }
                 conflictName = _rawData.name;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
@@ -356,6 +405,7 @@
                 await yieldToMain();
                 setupCharts(_rawData);
                 _loaded = true;
+                endJourneySpan("journey.conflict_to_tiering.routeTransition");
                 saveCurrentQueryParams();
 
                 // Warm conflict detail cache so switching back to table pages is faster.
@@ -373,6 +423,9 @@
                 _loadError =
                     "Could not load conflict graph data. Please try again later.";
                 _loaded = true;
+            })
+            .finally(() => {
+                endJourneySpan("journey.conflict_to_tiering.dataFetch");
             });
     }
 
@@ -811,6 +864,10 @@
         });
 
         finishSpan();
+        if (!hasCompletedFirstTieringMount) {
+            hasCompletedFirstTieringMount = true;
+            endJourneySpan("journey.conflict_to_tiering.firstMount");
+        }
         lastTieringRenderKey = renderKey;
     }
 
@@ -829,14 +886,37 @@
         is_turn: boolean;
     }
 
-    type TieringWorkerRequest = {
-        id: number;
-        data: GraphData;
+    type TieringWorkerParams = {
         metrics: TierMetric[];
         alliance_ids: number[][];
         useSingleColor: boolean;
         cityBandSize: number;
     };
+
+    type TieringWorkerRequest = WorkerDatasetComputeRequest<TieringWorkerParams>;
+
+    async function initializeTieringWorkerDataset(
+        datasetKey: string,
+        data: GraphData,
+    ): Promise<void> {
+        const worker = tieringWorker;
+        if (!worker) return;
+        await requestWorkerRpc<
+            WorkerDatasetInitRequest<GraphData>,
+            WorkerDatasetInitResult
+        >(
+            worker,
+            {
+                action: "init",
+                datasetKey,
+                data,
+            },
+            {
+                timeoutMs: 30_000,
+                operation: "tiering dataset init",
+            },
+        );
+    }
 
     function computeDataSetsByTime(
         data: GraphData,
@@ -844,8 +924,25 @@
         alliance_ids: number[][],
         cityBandSize: number,
     ): Promise<DataSetResponse | null> {
+        const finishComputeSpan = startPerfSpan(
+            "journey.conflict_to_tiering.workerCompute",
+            { mode: tieringWorker ? "worker" : "main" },
+        );
         const worker = tieringWorker;
         if (!worker) {
+            return Promise.resolve(
+                getDataSetsByTime(
+                    data,
+                    metrics,
+                    alliance_ids,
+                    cityBandSize,
+                ),
+            ).finally(() => {
+                finishComputeSpan();
+            });
+        }
+
+        if (!tieringWorkerDatasetKey) {
             return Promise.resolve(
                 getDataSetsByTime(
                     data,
@@ -856,26 +953,73 @@
             );
         }
 
-        return requestWorkerRpc<TieringWorkerRequest, DataSetResponse | null>(
-            worker,
-            {
-                data,
-                metrics,
-                alliance_ids,
-                useSingleColor,
-                cityBandSize,
-            },
-            {
-                timeoutMs: 30_000,
-                operation: "tiering dataset compute",
-            },
-        ).catch((error) => {
-            console.warn(
-                "Tiering worker compute failed, falling back to main thread",
-                error,
-            );
-            return getDataSetsByTime(data, metrics, alliance_ids, cityBandSize);
-        });
+        const roundTripStart =
+            typeof performance !== "undefined"
+                ? performance.now()
+                : Date.now();
+
+        const ready =
+            tieringWorkerDatasetReady ??
+            initializeTieringWorkerDataset(tieringWorkerDatasetKey, data);
+        tieringWorkerDatasetReady = ready;
+
+        return ready
+            .then(() =>
+                requestWorkerRpc<
+                    TieringWorkerRequest,
+                    WorkerDatasetComputeResult<DataSetResponse | null>
+                >(
+                    worker,
+                    {
+                        action: "compute",
+                        datasetKey: tieringWorkerDatasetKey as string,
+                        params: {
+                            metrics,
+                            alliance_ids,
+                            useSingleColor,
+                            cityBandSize,
+                        },
+                    },
+                    {
+                        timeoutMs: 30_000,
+                        operation: "tiering dataset compute",
+                    },
+                ),
+            )
+            .then((workerResult) => {
+                const roundTripEnd =
+                    typeof performance !== "undefined"
+                        ? performance.now()
+                        : Date.now();
+                const roundTripMs = Math.max(0, roundTripEnd - roundTripStart);
+                const workerMs = workerResult.timings.totalMs;
+                const cloneMs = Math.max(0, roundTripMs - workerMs);
+                incrementPerfCounter(
+                    "worker.tiering.receive.ms",
+                    workerResult.timings.receiveMs,
+                );
+                incrementPerfCounter(
+                    "worker.tiering.compute.ms",
+                    workerResult.timings.computeMs,
+                );
+                incrementPerfCounter(
+                    "worker.tiering.respond.ms",
+                    workerResult.timings.respondMs,
+                );
+                incrementPerfCounter("worker.tiering.total.ms", workerMs);
+                incrementPerfCounter("worker.tiering.clone.ms", cloneMs);
+                return workerResult.value;
+            })
+            .catch((error) => {
+                console.warn(
+                    "Tiering worker compute failed, falling back to main thread",
+                    error,
+                );
+                return getDataSetsByTime(data, metrics, alliance_ids, cityBandSize);
+            })
+            .finally(() => {
+                finishComputeSpan();
+            });
     }
 
     function getDataSetCacheKey(
