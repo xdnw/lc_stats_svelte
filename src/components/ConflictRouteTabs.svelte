@@ -1,10 +1,7 @@
 <script lang="ts">
-    import {
-        getConflictDataUrl,
-        getConflictGraphDataUrl,
-        queueUrlPrefetch,
-    } from "$lib";
-    import { config } from "../routes/+layout";
+    import { getConflictDataUrl, getConflictGraphDataUrl } from "$lib/runtime";
+    import { queueUrlPrefetch } from "$lib/prefetchCoordinator";
+    import { appConfig as config } from "$lib/appConfig";
 
     type ConflictTab =
         | "coalition"

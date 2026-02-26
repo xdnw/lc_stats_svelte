@@ -5,36 +5,28 @@
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import { base } from "$app/paths";
     import { onDestroy, onMount } from "svelte";
+    import { addFormatters } from "$lib/formatterInit";
+    import { buildStringSelectionItems, firstSelectedString, validateSingleSelection } from "$lib/selectionModalHelpers";
+    import { decompressBson } from "$lib/binary";
+    import { formatDate, formatDuration, formatAllianceName, formatNationName } from "$lib/formatting";
+    import { setupContainer } from "$lib/containerSetup";
+    import { computeLayoutTableData } from "$lib/layoutTable";
     import {
-        addFormatters,
-        buildStringSelectionItems,
-        decompressBson,
-        firstSelectedString,
-        formatDate,
-        setupContainer,
-        computeLayoutTableData,
         getPageStorageKey,
-        type Conflict,
         setQueryParams,
-        getCurrentQueryParams,
         decodeQueryParamValue,
-        formatDuration,
-        type TableData,
-        ExportTypes,
-        downloadTableElem,
-        applySavedQueryParamsIfMissing,
-        queueUrlPrefetch,
         saveCurrentQueryParams,
         resetQueryParams,
-        formatDatasetProvenance,
-        formatAllianceName,
-        trimHeader,
-        validateSingleSelection,
-        buildAavaSelectionRows,
-        formatNationName,
-        getConflictGraphDataUrl,
-        yieldToMain,
-    } from "$lib";
+    } from "$lib/queryState";
+    import { ExportTypes, downloadTableElem } from "$lib/dataExport";
+    import { queueUrlPrefetch } from "$lib/prefetchCoordinator";
+    import { formatDatasetProvenance, getConflictGraphDataUrl } from "$lib/runtime";
+    import { trimHeader } from "$lib/warWeb";
+    import { buildAavaSelectionRows } from "$lib/aavaSelection";
+    import { yieldToMain } from "$lib/misc";
+    import { bootstrapIdRoute } from "$lib/routeBootstrap";
+    import type { TableCallbacks } from "$lib/tableCallbacks";
+    import type { Conflict, TableData } from "$lib/types";
     import {
         makeKpiId,
         readSharedKpiConfig,
@@ -61,8 +53,8 @@
     import type {
         SelectionId,
         SelectionModalItem,
-    } from "../../components/selectionModalTypes";
-    import { config } from "../+layout";
+    } from "$lib/selection/types";
+    import { appConfig as config } from "$lib/appConfig";
 
     const Layout = {
         COALITION: 0,
@@ -1080,7 +1072,17 @@
 
         _currentRowData = td;
         const tableContainer = document.getElementById("conflict-table-1");
-        setupContainer(tableContainer as HTMLElement, _currentRowData);
+        const tableCallbacks: TableCallbacks = {
+            cellFormatters: {
+                formatNation: formatNationCell,
+                formatAA: formatAllianceCell,
+                formatCol: formatCoalitionCell,
+            },
+            actions: {
+                download: downloadConflictTable,
+            },
+        };
+        setupContainer(tableContainer as HTMLElement, _currentRowData, tableCallbacks);
     }
 
     function loadLayoutFromQuery(query: URLSearchParams) {
@@ -1274,11 +1276,62 @@
         }
     }
 
-    onMount(() => {
-        applySavedQueryParamsIfMissing(
-            ["layout", "sort", "order", "columns", "kpiw"],
-            ["id"],
+    function formatNationCell(data: any): string {
+        let aaId = data[2] as number;
+        let aaName = formatAllianceName(namesByAllianceId[aaId], aaId);
+        let nationName = formatNationName(data[0], data[1]);
+        return (
+            '<a href="https://politicsandwar.com/alliance/id=' +
+            data[2] +
+            '">' +
+            aaName +
+            '</a> | <a href="https://politicsandwar.com/nation/id=' +
+            data[1] +
+            '">' +
+            nationName +
+            "</a>"
         );
+    }
+
+    function formatAllianceCell(data: any): string {
+        let allianceId = data[1] as number;
+        let allianceName = formatAllianceName(data[0], allianceId);
+        return (
+            '<a href="https://politicsandwar.com/alliance/id=' +
+            allianceId +
+            '">' +
+            allianceName +
+            "</a>"
+        );
+    }
+
+    function formatCoalitionCell(data: any): string {
+        let index = data;
+        let button = document.createElement("button");
+        if (!_rawData) return "";
+        button.setAttribute("type", "button");
+        button.setAttribute("class", "ms-1 btn ux-btn btn-sm fw-bold");
+        button.setAttribute(
+            "onclick",
+            `showNames('${_rawData.coalitions[index].name}',${index})`,
+        );
+        button.textContent = _rawData.coalitions[index].name;
+        return button.outerHTML;
+    }
+
+    function downloadConflictTable(useClipboard: boolean, type: string): void {
+        const tableElem = (
+            document.getElementById("conflict-table-1") as HTMLElement
+        ).querySelector("table") as HTMLTableElement;
+        downloadTableElem(
+            tableElem,
+            useClipboard,
+            ExportTypes[type as keyof typeof ExportTypes],
+            `conflict-${conflictId ?? "conflict"}-overview`,
+        );
+    }
+
+    onMount(() => {
         addFormatters();
 
         setWindowGlobal(
@@ -1294,78 +1347,22 @@
             },
         );
 
-        setWindowGlobal("formatNation", (data: any) => {
-            let aaId = data[2] as number;
-            let aaName = formatAllianceName(namesByAllianceId[aaId], aaId);
-            let nationName = formatNationName(data[0], data[1]);
-            return (
-                '<a href="https://politicsandwar.com/alliance/id=' +
-                data[2] +
-                '">' +
-                aaName +
-                '</a> | <a href="https://politicsandwar.com/nation/id=' +
-                data[1] +
-                '">' +
-                nationName +
-                "</a>"
-            );
-        });
-
-        setWindowGlobal("formatAA", (data: any) => {
-            let allianceId = data[1] as number;
-            let allianceName = formatAllianceName(data[0], allianceId);
-            return (
-                '<a href="https://politicsandwar.com/alliance/id=' +
-                allianceId +
-                '">' +
-                allianceName +
-                "</a>"
-            );
-        });
-
-        setWindowGlobal("formatCol", (data: any) => {
-            let index = data;
-            let button = document.createElement("button");
-            if (!_rawData) return "";
-            button.setAttribute("type", "button");
-            button.setAttribute("class", "ms-1 btn ux-btn btn-sm fw-bold");
-            button.setAttribute(
-                "onclick",
-                `showNames('${_rawData.coalitions[index].name}',${index})`,
-            );
-            button.textContent = _rawData.coalitions[index].name;
-            return button.outerHTML;
-        });
-
-        setWindowGlobal(
-            "download",
-            function download(useClipboard: boolean, type: string) {
-                downloadTableElem(
-                    (
-                        document.getElementById(
-                            "conflict-table-1",
-                        ) as HTMLElement
-                    ).querySelector("table") as HTMLTableElement,
-                    useClipboard,
-                    ExportTypes[type as keyof typeof ExportTypes],
-                    `conflict-${conflictId ?? "conflict"}-overview`,
-                );
-            },
-        );
-
-        const queryParams = getCurrentQueryParams();
-        loadLayoutFromQuery(queryParams);
         kpiCollapsed = localStorage.getItem(kpiCollapseStorageKey()) === "1";
 
-        const id = queryParams.get("id");
-        if (id) {
-            conflictId = id;
-            loadKpiConfigFromStorage();
-            setupConflictTables(conflictId);
-        } else {
-            _loadError = "Missing conflict id in URL";
-            _loaded = true;
-        }
+        bootstrapIdRoute({
+            restoreParams: ["layout", "sort", "order", "columns", "kpiw"],
+            preserveParams: ["id"],
+            onMissingId: () => {
+                _loadError = "Missing conflict id in URL";
+                _loaded = true;
+            },
+            onResolvedId: (id, queryParams) => {
+                loadLayoutFromQuery(queryParams);
+                conflictId = id;
+                loadKpiConfigFromStorage();
+                setupConflictTables(id);
+            },
+        });
 
         if (typeof ResizeObserver !== "undefined") {
             layoutPresetResizeObserver = new ResizeObserver(() => {

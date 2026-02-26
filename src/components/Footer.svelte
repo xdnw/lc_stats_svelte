@@ -1,5 +1,5 @@
 <script lang=ts>
-import { config } from "../routes/+layout";
+import { appConfig as config } from "$lib/appConfig";
 </script>
 <footer class="bd-footer border-top border-1 mt-3 py-4 bg-body-tertiary">
     <div class="container-md p-3 p-md-4">

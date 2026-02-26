@@ -4,7 +4,7 @@
     import type {
         SelectionId,
         SelectionModalItem,
-    } from "./selectionModalTypes";
+    } from "$lib/selection/types";
 
     export let open = false;
     export let title = "Select Items";

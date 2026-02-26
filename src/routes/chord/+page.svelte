@@ -9,6 +9,7 @@
         type Conflict,
         rafDelay,
         getCurrentQueryParams,
+        bootstrapIdRoute,
         setQueryParam,
         generateColorsFromPalettes,
         Palette,
@@ -17,7 +18,6 @@
         toggleCoalitionAllianceSelection,
         getConflictDataUrl,
         getConflictGraphDataUrl,
-        applySavedQueryParamsIfMissing,
         queueUrlPrefetch,
         saveCurrentQueryParams,
         resetQueryParams,
@@ -43,10 +43,10 @@
     import type {
         SelectionId,
         SelectionModalItem,
-    } from "../../components/selectionModalTypes";
+    } from "$lib/selection/types";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import * as d3 from "d3";
-    import { config } from "../+layout";
+    import { appConfig as config } from "$lib/appConfig";
 
     let conflictName = "";
     let conflictId: string | null = null;
@@ -71,6 +71,7 @@
         coalitionIds: number[];
         matrix: number[][];
     } | null = null;
+    let lastChordLayoutKey: string | null = null;
     const chordExportDatasets: ExportDatasetOption[] = [
         {
             key: "matrix",
@@ -107,16 +108,18 @@
     })();
 
     onMount(() => {
-        applySavedQueryParamsIfMissing(["header", "ids"], ["id"]);
-        let queryParams = getCurrentQueryParams();
-        const id = queryParams.get("id");
-        if (id) {
-            conflictId = id;
-            setupWebFromId(conflictId, queryParams);
-        } else {
-            _loadError = "Missing conflict id in URL";
-            _loaded = true;
-        }
+        bootstrapIdRoute({
+            restoreParams: ["header", "ids"],
+            preserveParams: ["id"],
+            onMissingId: () => {
+                _loadError = "Missing conflict id in URL";
+                _loaded = true;
+            },
+            onResolvedId: (id, queryParams) => {
+                conflictId = id;
+                setupWebFromId(id, queryParams);
+            },
+        });
     });
 
     function setupWebFromId(conflictId: string, queryParams: URLSearchParams) {
@@ -160,6 +163,7 @@
                     }
                 }
                 await yieldToMain();
+                lastChordLayoutKey = null;
                 setupWebWithCurrentLayout();
                 _loaded = true;
                 saveCurrentQueryParams();
@@ -269,6 +273,7 @@
 
     function resetFilters() {
         if (!_rawData) return;
+        lastChordLayoutKey = null;
         _currentHeaderName = getDefaultWarWebHeader(_rawData);
         _allowedAllianceIds = new Set([
             ..._rawData.coalitions[0].alliance_ids,
@@ -286,6 +291,13 @@
     }
 
     function setupWebWithCurrentLayout() {
+        const layoutKey = `${_currentHeaderName}|${Array.from(_allowedAllianceIds)
+            .sort((a, b) => a - b)
+            .join(".")}`;
+        if (layoutKey === lastChordLayoutKey) {
+            return;
+        }
+        lastChordLayoutKey = layoutKey;
         setupWebWithLayout(
             _rawData as Conflict,
             _allowedAllianceIds,

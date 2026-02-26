@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { getQueryParam, queueUrlPrefetch } from "$lib";
-  import { config } from "./+layout";
+  import { appConfig as config } from "$lib/appConfig";
 
   type AdTemplate = {
     id: string;

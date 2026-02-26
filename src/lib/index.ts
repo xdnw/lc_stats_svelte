@@ -12,6 +12,22 @@ export {
     resetQueryParams,
 } from './queryState';
 export {
+    bootstrapIdRoute,
+} from './routeBootstrap';
+export type {
+    IdRouteBootstrapOptions,
+} from './routeBootstrap';
+export {
+    appConfig,
+    appRoutes,
+    appVersion,
+} from './appConfig';
+export type {
+    AppConfig,
+    AppRoutes,
+    AppVersion,
+} from './appConfig';
+export {
     formatDate,
     formatDaysToDate,
     formatDuration,
@@ -69,6 +85,16 @@ export {
 export { addFormatters } from './formatterInit';
 export { computeLayoutTableData } from './layoutTable';
 export { setupContainer } from './containerSetup';
+export { requestWorkerRpc } from './workerRpc';
+export type { WorkerRpcOptions } from './workerRpc';
+export {
+    resolveCellFormatter,
+} from './tableCallbacks';
+export type {
+    TableCallbacks,
+    DataTableRender,
+    DownloadAction,
+} from './tableCallbacks';
 export {
     trimHeader,
     getDefaultWarWebHeader,
@@ -111,4 +137,8 @@ export {
     buildCoalitionAllianceItems,
     validateAtLeastOnePerCoalition,
 } from './selectionModalHelpers';
+export type {
+    SelectionId,
+    SelectionModalItem,
+} from './selection/types';
 export * from './types';

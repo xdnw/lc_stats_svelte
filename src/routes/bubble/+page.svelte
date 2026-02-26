@@ -18,28 +18,30 @@
         generateColors,
         setQueryParam,
         getCurrentQueryParams,
+        bootstrapIdRoute,
         arrayEquals,
         type TierMetric,
         resolveMetricAccessors,
         getConflictDataUrl,
         getConflictGraphDataUrl,
         ensureScriptsLoaded,
-        applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
         queueUrlPrefetch,
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
         yieldToMain,
+        incrementPerfCounter,
         startPerfSpan,
         buildSettingsRows,
         exportBundleData,
         type ExportBundle,
         type ExportDatasetOption,
     } from "$lib";
+    import { requestWorkerRpc } from "$lib/workerRpc";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { getPlotlyGlobal } from "$lib/globals";
-    import { config } from "../+layout";
+    import { appConfig as config } from "$lib/appConfig";
 
     function getPlotly(): any {
         return getPlotlyGlobal();
@@ -66,8 +68,9 @@
     let traceCache = new Map<string, TraceBuildResult>();
     let graphUpdateQueued = false;
     let bubbleWorker: Worker | null = null;
-    let workerRequestId = 0;
     let latestGraphRunId = 0;
+    let lastBubbleRenderKey: string | null = null;
+    let lastPlotSchemaKey: string | null = null;
     let latestTraceBuildResult: TraceBuildResult | null = null;
     let latestTraceMetrics: [TierMetric, TierMetric, TierMetric] | null = null;
     let selectedBubbleExportDataset = "frame";
@@ -259,21 +262,22 @@
             );
         }
 
-        applySavedQueryParamsIfMissing(
-            ["city_min", "city_max", "time", "normalize", "selected"],
-            ["id"],
-        );
-        let queryParams = getCurrentQueryParams();
-        loadQueryParams(queryParams);
-
-        const id = queryParams.get("id");
-        if (id) {
-            conflictId = id;
-            fetchConflictGraphData(conflictId);
-        } else {
-            _loadError = "Missing conflict id in URL";
-            _loaded = true;
-        }
+        bootstrapIdRoute({
+            restoreParams: ["city_min", "city_max", "time", "normalize", "selected"],
+            preserveParams: ["id"],
+            beforeResolveId: () => {
+                const queryParams = getCurrentQueryParams();
+                loadQueryParams(queryParams);
+            },
+            onMissingId: () => {
+                _loadError = "Missing conflict id in URL";
+                _loaded = true;
+            },
+            onResolvedId: (id) => {
+                conflictId = id;
+                fetchConflictGraphData(id);
+            },
+        });
         noUiSlider.create(sliderElement, {
             start: cityValues,
             connect: true,
@@ -315,6 +319,8 @@
 
     onDestroy(() => {
         latestGraphRunId++;
+        lastBubbleRenderKey = null;
+        lastPlotSchemaKey = null;
         if (bubbleWorker) {
             bubbleWorker.terminate();
             bubbleWorker = null;
@@ -354,6 +360,7 @@
                 conflictName = data.name;
                 _rawData = data;
                 traceCache.clear();
+                lastBubbleRenderKey = null;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
                     (data as any).update_ms,
@@ -422,17 +429,14 @@
         maxCity: number;
     };
 
-    type BubbleWorkerResponse =
-        | { id: number; ok: true; result: TraceBuildResult | null }
-        | { id: number; ok: false; error: string };
-
     function computeTraces(
         data: GraphData,
         metrics: [TierMetric, TierMetric, TierMetric],
         minCity: number,
         maxCity: number,
     ): Promise<TraceBuildResult | null> {
-        if (!bubbleWorker) {
+        const worker = bubbleWorker;
+        if (!worker) {
             return Promise.resolve(
                 generateTraces(
                     data,
@@ -445,50 +449,19 @@
             );
         }
 
-        return new Promise<TraceBuildResult | null>((resolve, reject) => {
-            const worker = bubbleWorker;
-            if (!worker) {
-                resolve(
-                    generateTraces(
-                        data,
-                        metrics[0],
-                        metrics[1],
-                        metrics[2],
-                        minCity,
-                        maxCity,
-                    ),
-                );
-                return;
-            }
-            const requestId = ++workerRequestId;
-            const onMessage = (event: MessageEvent<BubbleWorkerResponse>) => {
-                const response = event.data;
-                if (!response || response.id !== requestId) return;
-                worker.removeEventListener("message", onMessage);
-                worker.removeEventListener("error", onError);
-                if (response.ok) {
-                    resolve(response.result);
-                } else {
-                    reject(new Error(response.error));
-                }
-            };
-            const onError = (event: ErrorEvent) => {
-                worker.removeEventListener("message", onMessage);
-                worker.removeEventListener("error", onError);
-                reject(event.error ?? new Error(event.message));
-            };
-
-            worker.addEventListener("message", onMessage);
-            worker.addEventListener("error", onError, { once: true });
-            const payload: BubbleWorkerRequest = {
-                id: requestId,
+        return requestWorkerRpc<BubbleWorkerRequest, TraceBuildResult | null>(
+            worker,
+            {
                 data,
                 metrics,
                 minCity,
                 maxCity,
-            };
-            worker.postMessage(payload);
-        }).catch((error) => {
+            },
+            {
+                timeoutMs: 30_000,
+                operation: "bubble trace compute",
+            },
+        ).catch((error) => {
             console.warn(
                 "Bubble worker compute failed, falling back to main thread",
                 error,
@@ -747,6 +720,16 @@
             cityValues[0],
             cityValues[1],
         );
+        const renderKey = `${cacheKey}|slider:${graphSliderIndex}`;
+        if (
+            renderKey === lastBubbleRenderKey &&
+            (graphDiv as any)?.data?.length > 0
+        ) {
+            incrementPerfCounter("graph.bubble.renderSkipped", 1, {
+                reason: "unchanged-render-key",
+            });
+            return;
+        }
         let tracesTime = traceCache.get(cacheKey);
         if (!tracesTime) {
             const computed = await computeTraces(
@@ -773,6 +756,7 @@
             coalition_names,
             metrics,
         );
+        lastBubbleRenderKey = renderKey;
     }
 
     function createGraph(
@@ -1104,16 +1088,38 @@
             const plotly = getPlotly();
             if (!plotly) return;
             const graphDivAny = graphDiv as any;
+            const schemaTraceKey = traces
+                .map((trace) => {
+                    const mode = trace.mode ?? "";
+                    const pointCount = Array.isArray(trace.x)
+                        ? trace.x.length
+                        : 0;
+                    const idCount = Array.isArray(trace.id)
+                        ? trace.id.length
+                        : 0;
+                    return `${mode}:${pointCount}:${idCount}`;
+                })
+                .join("|");
+            const schemaFrameKey = frames
+                .map((frame) => `${frame?.name ?? ""}:${frame?.data?.length ?? 0}`)
+                .join("|");
+            const nextSchemaKey = `${schemaTraceKey}::${schemaFrameKey}`;
+            const needsFullRebuild =
+                !lastPlotSchemaKey || lastPlotSchemaKey !== nextSchemaKey;
             const finishSpan = startPerfSpan("graph.plotly.react", {
                 traceCount: traces.length,
                 frameCount: frames.length,
+                fullRebuild: needsFullRebuild,
             });
-            plotly.purge(graphDiv);
+            if (needsFullRebuild) {
+                plotly.purge(graphDiv);
+            }
             plotly.react(graphDiv, {
                 data: traces,
                 layout: layout,
                 frames: frames,
             });
+            lastPlotSchemaKey = nextSchemaKey;
             finishSpan();
             if (plotlyAnimatedListener) {
                 graphDivAny.removeListener?.(

@@ -9,11 +9,10 @@
     import type {
         SelectionId,
         SelectionModalItem,
-    } from "../../components/selectionModalTypes";
+    } from "$lib/selection/types";
     import { base } from "$app/paths";
     import {
         addFormatters,
-        applySavedQueryParamsIfMissing,
         buildAavaSelectionRows,
         buildCoalitionAllianceItems,
         buildStringSelectionItems,
@@ -23,6 +22,7 @@
         firstSelectedString,
         formatAllianceName,
         formatDatasetProvenance,
+        bootstrapIdRoute,
         getDefaultWarWebHeader,
         getConflictDataUrl,
         getConflictGraphDataUrl,
@@ -36,11 +36,11 @@
         queueUrlPrefetch,
         toNumberSelection,
         type Conflict,
+        type TableCallbacks,
         type TableData,
         validateSingleSelection,
         yieldToMain,
     } from "$lib";
-    import { setWindowGlobal } from "$lib/globals";
     import { AAVA_METRIC_KEYS, getAavaMetricLabels } from "$lib/aava";
     import {
         makeKpiId,
@@ -51,7 +51,7 @@
         type AavaScopeSnapshot,
         type ConflictKPIWidget,
     } from "$lib/kpi";
-    import { config } from "../+layout";
+    import { appConfig as config } from "$lib/appConfig";
 
     type ColumnKey =
         | "name"
@@ -115,6 +115,31 @@
     let sharedKpiWidgets: ConflictKPIWidget[] = [];
     let primaryCoalition: Conflict["coalitions"][number] | undefined;
     let vsCoalition: Conflict["coalitions"][number] | undefined;
+
+    function formatAllianceLinkCell(data: unknown): string {
+        const value = data as [string, number] | undefined;
+        const allianceId = value?.[1] ?? 0;
+        const allianceName = formatAllianceName(value?.[0], allianceId);
+        return `<a href="https://politicsandwar.com/alliance/id=${allianceId}">${allianceName}</a>`;
+    }
+
+    function formatPercentCell(data: unknown): string {
+        const value = Number(data);
+        if (!Number.isFinite(value)) return "0.00%";
+        return `${value.toFixed(2)}%`;
+    }
+
+    function downloadAavaTable(useClipboard: boolean, type: string): void {
+        const tableElem = document
+            .getElementById("aava-table")
+            ?.querySelector("table") as HTMLTableElement | null;
+        if (!tableElem) return;
+        downloadTableElem(
+            tableElem,
+            useClipboard,
+            ExportTypes[type as keyof typeof ExportTypes],
+        );
+    }
 
     function clearRowsCache() {
         rowsCache.clear();
@@ -639,7 +664,17 @@
             sort: [ALL_COLUMN_KEYS.indexOf("net"), "desc"],
         };
 
-        setupContainer(container, rowData);
+        const tableCallbacks: TableCallbacks = {
+            cellFormatters: {
+                formatAllianceLink: formatAllianceLinkCell,
+                formatPercent: formatPercentCell,
+            },
+            actions: {
+                download: downloadAavaTable,
+            },
+        };
+
+        setupContainer(container, rowData, tableCallbacks);
     }
 
     function scheduleRenderTable() {
@@ -829,43 +864,22 @@
     }
 
     onMount(() => {
-        applySavedQueryParamsIfMissing(
-            ["header", "pc", "columns", "cols"],
-            ["id"],
-        );
-
-        addFormatters();
-        setWindowGlobal("formatAllianceLink", (data: [string, number]) => {
-            const allianceName = formatAllianceName(data?.[0], data?.[1]);
-            const allianceId = data?.[1];
-            return `<a href="https://politicsandwar.com/alliance/id=${allianceId}">${allianceName}</a>`;
+        bootstrapIdRoute({
+            restoreParams: ["header", "pc", "columns", "cols"],
+            preserveParams: ["id"],
+            beforeResolveId: () => {
+                addFormatters();
+            },
+            onMissingId: () => {
+                _loadError = "Missing conflict id in URL";
+                _loaded = true;
+            },
+            onResolvedId: (id) => {
+                conflictId = id;
+                refreshSharedKpiWidgets();
+                loadConflict(id);
+            },
         });
-        setWindowGlobal("formatPercent", (data: number) => {
-            if (!Number.isFinite(data)) return "0.00%";
-            return `${data.toFixed(2)}%`;
-        });
-        setWindowGlobal("download", (useClipboard: boolean, type: string) => {
-            const tableElem = document
-                .getElementById("aava-table")
-                ?.querySelector("table") as HTMLTableElement | null;
-            if (!tableElem) return;
-            downloadTableElem(
-                tableElem,
-                useClipboard,
-                ExportTypes[type as keyof typeof ExportTypes],
-            );
-        });
-
-        const query = getCurrentQueryParams();
-        const id = query.get("id");
-        if (!id) {
-            _loadError = "Missing conflict id in URL";
-            _loaded = true;
-            return;
-        }
-        conflictId = id;
-        refreshSharedKpiWidgets();
-        loadConflict(id);
     });
 </script>
 

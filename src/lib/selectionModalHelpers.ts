@@ -1,4 +1,4 @@
-import type { SelectionId, SelectionModalItem } from "../components/selectionModalTypes";
+import type { SelectionId, SelectionModalItem } from "./selection/types";
 
 type CoalitionAllianceShape = {
     alliance_ids?: Array<number | string> | Record<string, number | string | null | undefined>;

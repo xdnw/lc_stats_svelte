@@ -11,7 +11,7 @@
     import type {
         SelectionId,
         SelectionModalItem,
-    } from "../../components/selectionModalTypes";
+    } from "$lib/selection/types";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { base } from "$app/paths";
     import type { API, Options } from "nouislider";
@@ -27,6 +27,7 @@
         arrayEquals,
         setQueryParam,
         getCurrentQueryParams,
+        bootstrapIdRoute,
         resolveMetricAccessors,
         toNumberSelection,
         getConflictDataUrl,
@@ -35,20 +36,21 @@
         Palette,
         palettePrimary,
         generateColors,
-        applySavedQueryParamsIfMissing,
         saveCurrentQueryParams,
         queueUrlPrefetch,
         resetQueryParams,
         formatDatasetProvenance,
         formatAllianceName,
         yieldToMain,
+        incrementPerfCounter,
         startPerfSpan,
         exportBundleData,
         buildSettingsRows,
         type ExportBundle,
         type ExportDatasetOption,
     } from "$lib";
-    import { config } from "../+layout";
+    import { appConfig as config } from "$lib/appConfig";
+    import { requestWorkerRpc } from "$lib/workerRpc";
     import Select from "svelte-select";
     import * as d3 from "d3";
     import noUiSlider from "nouislider";
@@ -86,8 +88,8 @@
     let chartInstanceRef: Chart | null = null;
     let dataSetByConfigCache = new Map<string, DataSetResponse>();
     let tieringWorker: Worker | null = null;
-    let workerRequestId = 0;
     let latestSetupRunId = 0;
+    let lastTieringRenderKey: string | null = null;
     let selectedTieringExportDataset = "snapshot";
 
     const tieringExportDatasets: ExportDatasetOption[] = [
@@ -297,26 +299,27 @@
             );
         }
 
-        applySavedQueryParamsIfMissing(
-            ["selected", "normalize", "unicolor", "cityband", "ids"],
-            ["id"],
-        );
-        // Get the conflict id from the url query string
-        let queryParams = getCurrentQueryParams();
-        loadQueryParams(queryParams);
-
-        const id = queryParams.get("id");
-        if (id) {
-            conflictId = id;
-            setupChartData(conflictId);
-        } else {
-            _loadError = "Missing conflict id in URL";
-            _loaded = true;
-        }
+        bootstrapIdRoute({
+            restoreParams: ["selected", "normalize", "unicolor", "cityband", "ids"],
+            preserveParams: ["id"],
+            beforeResolveId: () => {
+                const queryParams = getCurrentQueryParams();
+                loadQueryParams(queryParams);
+            },
+            onMissingId: () => {
+                _loadError = "Missing conflict id in URL";
+                _loaded = true;
+            },
+            onResolvedId: (id) => {
+                conflictId = id;
+                setupChartData(id);
+            },
+        });
     });
 
     onDestroy(() => {
         latestSetupRunId++;
+        lastTieringRenderKey = null;
         if (tieringWorker) {
             tieringWorker.terminate();
             tieringWorker = null;
@@ -349,6 +352,7 @@
                     config.version.graph_data,
                     (data as any).update_ms,
                 );
+                lastTieringRenderKey = null;
                 await yieldToMain();
                 setupCharts(_rawData);
                 _loaded = true;
@@ -656,6 +660,15 @@
         );
 
         const cacheKey = getDataSetCacheKey(metrics, alliance_ids);
+        const renderKey = `${cacheKey}|metricLabels:${selected_metrics
+            .map((m) => m.label)
+            .join("|")}`;
+        if (renderKey === lastTieringRenderKey && chartInstanceRef) {
+            incrementPerfCounter("graph.tiering.renderSkipped", 1, {
+                reason: "unchanged-render-key",
+            });
+            return;
+        }
         let response = dataSetByConfigCache.get(cacheKey);
         if (!response) {
             const computed = await computeDataSetsByTime(
@@ -798,6 +811,7 @@
         });
 
         finishSpan();
+        lastTieringRenderKey = renderKey;
     }
 
     interface DataSet {
@@ -824,65 +838,38 @@
         cityBandSize: number;
     };
 
-    type TieringWorkerResponse =
-        | { id: number; ok: true; result: DataSetResponse | null }
-        | { id: number; ok: false; error: string };
-
     function computeDataSetsByTime(
         data: GraphData,
         metrics: TierMetric[],
         alliance_ids: number[][],
         cityBandSize: number,
     ): Promise<DataSetResponse | null> {
-        if (!tieringWorker) {
+        const worker = tieringWorker;
+        if (!worker) {
             return Promise.resolve(
-                getDataSetsByTime(data, metrics, alliance_ids, cityBandSize),
+                getDataSetsByTime(
+                    data,
+                    metrics,
+                    alliance_ids,
+                    cityBandSize,
+                ),
             );
         }
 
-        return new Promise<DataSetResponse | null>((resolve, reject) => {
-            const worker = tieringWorker;
-            if (!worker) {
-                resolve(
-                    getDataSetsByTime(
-                        data,
-                        metrics,
-                        alliance_ids,
-                        cityBandSize,
-                    ),
-                );
-                return;
-            }
-            const requestId = ++workerRequestId;
-            const onMessage = (event: MessageEvent<TieringWorkerResponse>) => {
-                const response = event.data;
-                if (!response || response.id !== requestId) return;
-                worker.removeEventListener("message", onMessage);
-                worker.removeEventListener("error", onError);
-                if (response.ok) {
-                    resolve(response.result);
-                } else {
-                    reject(new Error(response.error));
-                }
-            };
-            const onError = (event: ErrorEvent) => {
-                worker.removeEventListener("message", onMessage);
-                worker.removeEventListener("error", onError);
-                reject(event.error ?? new Error(event.message));
-            };
-
-            worker.addEventListener("message", onMessage);
-            worker.addEventListener("error", onError, { once: true });
-            const payload: TieringWorkerRequest = {
-                id: requestId,
+        return requestWorkerRpc<TieringWorkerRequest, DataSetResponse | null>(
+            worker,
+            {
                 data,
                 metrics,
                 alliance_ids,
                 useSingleColor,
                 cityBandSize,
-            };
-            worker.postMessage(payload);
-        }).catch((error) => {
+            },
+            {
+                timeoutMs: 30_000,
+                operation: "tiering dataset compute",
+            },
+        ).catch((error) => {
             console.warn(
                 "Tiering worker compute failed, falling back to main thread",
                 error,

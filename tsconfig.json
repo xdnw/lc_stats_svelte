@@ -16,6 +16,7 @@
         "noImplicitAny": true,
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
+        "ignoreDeprecations": "6.0",
         "downlevelIteration": true,
         "importHelpers": true,
         "skipDefaultLibCheck": true,

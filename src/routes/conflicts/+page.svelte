@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { config } from "./../+layout";
+  import { appConfig as config } from "$lib/appConfig";
   /**
    * This page is for viewing the table of all conflicts
    */
@@ -11,32 +11,32 @@
   import type {
     SelectionId,
     SelectionModalItem,
-  } from "../../components/selectionModalTypes";
+  } from "$lib/selection/types";
   import { onMount } from "svelte";
+  import { decompressBson } from "$lib/binary";
+  import { modalStrWithCloseButton } from "$lib/modals";
+  import { setupContainer } from "$lib/containerSetup";
+  import { addFormatters } from "$lib/formatterInit";
+  import { ExportTypes, downloadTableElem } from "$lib/dataExport";
   import {
-    decompressBson,
-    modalStrWithCloseButton,
-    setupContainer,
-    addFormatters,
-    type TableData,
-    ExportTypes,
-    downloadTableElem,
-    type RawData,
-    ConflictIndex,
-    type JSONValue,
     getCurrentQueryParams,
     setQueryParam,
     applySavedQueryParamsIfMissing,
     saveCurrentQueryParams,
     resetQueryParams,
+  } from "$lib/queryState";
+  import {
     formatDatasetProvenance,
-    formatAllianceName,
     getConflictDataUrl,
     getConflictGraphDataUrl,
-    queueUrlPrefetch,
-    toNumberSelection,
-    yieldToMain,
-  } from "$lib";
+  } from "$lib/runtime";
+  import { formatAllianceName } from "$lib/formatting";
+  import { queueUrlPrefetch } from "$lib/prefetchCoordinator";
+  import { toNumberSelection } from "$lib/selectionModalHelpers";
+  import { yieldToMain } from "$lib/misc";
+  import { ConflictIndex } from "$lib/types";
+  import type { TableCallbacks } from "$lib/tableCallbacks";
+  import type { JSONValue, RawData, TableData } from "$lib/types";
   import {
     getBootstrapModalInstance,
     getWindowGlobal,
@@ -95,6 +95,67 @@
 
   const getVis = (): any => getVisGlobal();
 
+  function formatConflictUrlCell(
+    data: unknown,
+    _type: any,
+    row: any,
+    _meta: any,
+  ): string {
+    const id = row[ConflictIndex.ID] as number;
+    const safeLabel = escapeHtml(`${data}`);
+    const conflictUrl = `${base}/conflict?id=${id}`;
+    return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='return openConflictCardFromName(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
+  }
+
+  function formatPinnedAlliancesCell(
+    _data: unknown,
+    _type: any,
+    row: any,
+    _meta: any,
+  ): string {
+    if (_allowedAllianceIds.size === _rawData?.alliance_ids.length) {
+      return "";
+    }
+    const c1_ids = row[ConflictIndex.C1_ID] as number[];
+    const c2_ids = row[ConflictIndex.C2_ID] as number[];
+
+    const c1 = c1_ids.filter((id) => _allowedAllianceIds.has(id));
+    const c2 = c2_ids.filter((id) => _allowedAllianceIds.has(id));
+    const total = c1.length + c2.length;
+
+    if (total === 0) return "<span class='ux-muted'>-</span>";
+
+    let chips: string[] = [];
+    const pushChip = (ids: number[], side: string, cls: string) => {
+      for (const id of ids) {
+        if (chips.length >= 4) return;
+        const name = allianceNameById[id] ?? `AA:${id}`;
+        chips.push(
+          `<span class='badge ${cls}' title='${side}: ${name}'>${side}:${name}</span>`,
+        );
+      }
+    };
+
+    pushChip(c1, "C1", "text-bg-primary");
+    pushChip(c2, "C2", "text-bg-danger");
+    if (total > chips.length) {
+      chips.push(
+        `<span class='badge text-bg-secondary'>+${total - chips.length}</span>`,
+      );
+    }
+    return `<div class='d-flex flex-wrap gap-1'>${chips.join("")}</div>`;
+  }
+
+  function downloadConflictsTable(useClipboard: boolean, type: string): void {
+    const tableElem = (document.getElementById("conflictTable") as HTMLElement)
+      .querySelector("table") as HTMLTableElement;
+    downloadTableElem(
+      tableElem,
+      useClipboard,
+      ExportTypes[type as keyof typeof ExportTypes],
+    );
+  }
+
   // onMount runs when this component (i.e. the page) is loaded
   // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
   onMount(() => {
@@ -123,16 +184,6 @@
       // Function to format the url for the conflict name
       // Has a C1 and C2 button for showing coalition alliances modal
       // + the name of the conflict (linking to the conflict page)
-      setWindowGlobal(
-        "formatUrl",
-        (data: string, _type: any, row: any, _meta: any) => {
-          const id = row[ConflictIndex.ID] as number;
-          const safeLabel = escapeHtml(`${data}`);
-          const conflictUrl = `${base}/conflict?id=${id}`;
-          return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='return openConflictCardFromName(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
-        },
-      );
-
       setWindowGlobal(
         "openConflictCardFromName",
         (event: MouseEvent | undefined, conflictId: number) => {
@@ -165,19 +216,6 @@
             >("openConflictCard");
           openConflictCard?.(undefined, conflictId);
           return false;
-        },
-      );
-
-      setWindowGlobal(
-        "download",
-        function download(useClipboard: boolean, type: string) {
-          downloadTableElem(
-            (
-              document.getElementById("conflictTable") as HTMLElement
-            ).querySelector("table") as HTMLTableElement,
-            useClipboard,
-            ExportTypes[type as keyof typeof ExportTypes],
-          );
         },
       );
 
@@ -461,7 +499,7 @@
           guildParam = queryParams.get("guild") || queryParams.get("guild_id");
 
           await yieldToMain();
-          setupConflicts(result, guildParam);
+          setupConflicts(result);
           _loaded = true;
           saveCurrentQueryParams();
           initializeTimeline(false);
@@ -477,7 +515,7 @@
     }
   });
 
-  function setupConflicts(result: RawData, setParam: string | null) {
+  function setupConflicts(result: RawData) {
     let columns: string[] = [...(result.headers as string[])];
     let visible: number[] = [
       ConflictIndex.NAME,
@@ -512,32 +550,15 @@
       });
     }
 
-    let sourceI = columns.indexOf("source");
-    let source_sets = result.source_sets!;
-    let source_names = result.source_names!;
-    let ss = setParam && source_sets ? source_sets[setParam] : null;
-    if (ss) {
-      currSource = [
-        source_names[setParam as string],
-        parseFloat(setParam as string),
-      ];
-      if (!currSource[0]) currSource[0] = setParam + " (None Featured)";
-      let allowConflict = function (conflict: any) {
-        if (!ss) return true;
-        let source = sourceI == -1 ? 0 : conflict[sourceI];
-        if (!source || source == 0) return true;
-        if (
-          ss.includes(source) ||
-          parseFloat(setParam as string) == source ||
-          conflict[0] == parseInt(setParam as string)
-        )
-          return true;
-        return source == 128;
-      };
-      rows = rows.filter(allowConflict);
+    // Apply source filter before category counting so category chips reflect
+    // the active source scope and category filtering remains stable.
+    const selectedSourceId = guildParam ?? `${currSource[1]}`;
+    if (selectedSourceId && selectedSourceId !== "0") {
+      rows = rows.filter(
+        (row) => `${row[ConflictIndex.SOURCE] ?? "0"}` === selectedSourceId,
+      );
     }
 
-    // Build quick filter counts and preserve selection where possible
     categoryCounts = {};
     for (const row of rows) {
       const category = `${row[ConflictIndex.CATEGORY] ?? "uncategorized"}`;
@@ -681,7 +702,17 @@
     };
 
     // Setup the conflicts table
-    setupContainer(container as HTMLElement, _currentRowData);
+    const tableCallbacks: TableCallbacks = {
+      cellFormatters: {
+        formatUrl: formatConflictUrlCell,
+        formatPinnedAlliances: formatPinnedAlliancesCell,
+      },
+      actions: {
+        download: downloadConflictsTable,
+      },
+    };
+
+    setupContainer(container as HTMLElement, _currentRowData, tableCallbacks);
   }
   function selectSource(event: Event) {
     const target = event.target as HTMLSelectElement;
@@ -691,7 +722,7 @@
     guildParam = id === "0" ? null : id;
     setQueryParam("guild", id === "0" ? null : id);
     saveCurrentQueryParams();
-    setupConflicts(_rawData!, id);
+    setupConflicts(_rawData!);
     initializeTimeline(true);
   }
 
@@ -804,7 +835,7 @@
       next.add(category);
     }
     selectedCategories = next;
-    setupConflicts(_rawData!, guildParam);
+    setupConflicts(_rawData!);
     initializeTimeline(true);
   }
 
@@ -831,7 +862,7 @@
     });
     saveCurrentQueryParams();
 
-    setupConflicts(_rawData!, guildParam);
+    setupConflicts(_rawData!);
     initializeTimeline(true);
   }
 
@@ -844,7 +875,7 @@
     showAllianceModal = false;
     resetQueryParams(["ids", "guild", "guild_id"]);
     saveCurrentQueryParams();
-    setupConflicts(_rawData, null);
+    setupConflicts(_rawData);
     initializeTimeline(true);
   }
 

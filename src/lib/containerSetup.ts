@@ -3,9 +3,14 @@ import { setupContainer as setupContainerWithAdapter } from './tableAdapter';
 import { ensureScriptsLoaded, ensureStylesLoaded } from './runtime';
 import { htmlToElement, uuidv4 } from './misc';
 import { commafy } from './formatting';
+import type { TableCallbacks } from './tableCallbacks';
 import type { TableData } from './types';
 
-export function setupContainer(container: HTMLElement, data: TableData) {
+export function setupContainer(
+    container: HTMLElement,
+    data: TableData,
+    callbacks?: TableCallbacks,
+) {
     return setupContainerWithAdapter(container, data, {
         uuidv4,
         htmlToElement,
@@ -13,5 +18,5 @@ export function setupContainer(container: HTMLElement, data: TableData) {
         setQueryParam,
         ensureScriptsLoaded,
         ensureStylesLoaded,
-    });
+    }, callbacks);
 }
