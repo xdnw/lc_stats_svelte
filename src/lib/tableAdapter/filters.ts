@@ -26,7 +26,7 @@ export function buildFiltersAndSummaryScaffold(
     } = params;
 
     const thead = containerElem.querySelector("thead tr");
-    const tfoot = containerElem.querySelector("tfoot tr");
+    const tfoot = containerElem.querySelector("tfoot");
 
     function handleSearch(input: HTMLInputElement): void {
         const th = input.closest("th");
@@ -41,16 +41,12 @@ export function buildFiltersAndSummaryScaffold(
     if (!thead || !tfoot) return;
 
     const theadFragment = document.createDocumentFragment();
-    const tfootFragment = document.createDocumentFragment();
     const summaryRow = document.createElement("tr");
     summaryRow.className = "ux-summary-row";
 
     const thNumber = document.createElement("th");
     thNumber.textContent = "#";
     theadFragment.appendChild(thNumber);
-
-    const tfNumber = document.createElement("th");
-    tfootFragment.appendChild(tfNumber);
 
     const summaryActionsCell = document.createElement("th");
     summaryActionsCell.className = "ux-summary-actions";
@@ -63,7 +59,6 @@ export function buildFiltersAndSummaryScaffold(
         columnInfo.visible = visibleColumns.includes(i);
 
         const th = document.createElement("th");
-        const tf = document.createElement("th");
         const summaryCell = document.createElement("th");
         summaryCell.className = "ux-summary-cell";
 
@@ -71,7 +66,6 @@ export function buildFiltersAndSummaryScaffold(
             const toneClass = getColumnToneClass(title);
             if (toneClass) {
                 th.classList.add(toneClass);
-                tf.classList.add(toneClass);
                 summaryCell.classList.add(toneClass);
             }
 
@@ -88,16 +82,13 @@ export function buildFiltersAndSummaryScaffold(
             } else {
                 th.textContent = title;
             }
-
-            tf.textContent = i === 0 ? "" : title;
         }
 
         theadFragment.appendChild(th);
-        tfootFragment.appendChild(tf);
         summaryRow.appendChild(summaryCell);
     }
 
     thead.appendChild(theadFragment);
-    tfoot.appendChild(tfootFragment);
-    tfoot.parentElement?.appendChild(summaryRow);
+    tfoot.innerHTML = "";
+    tfoot.appendChild(summaryRow);
 }

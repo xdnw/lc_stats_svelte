@@ -63,7 +63,7 @@ export function addTableShell(
         htmlToElement(`<div class="ux-table-wrap"><table id="${id}" class="bg-body-secondary border table compact table-bordered table-striped d-none" style="width:100%">
         <thead class="table-info"><tr></tr></thead>
         <tbody></tbody>
-        <tfoot><tr></tr></tfoot>
+        <tfoot></tfoot>
     </table></div>`),
     );
 }
