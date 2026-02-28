@@ -1,3 +1,5 @@
+import { resolveExportActions } from "$lib/exportActions";
+
 export function getColumnToneClass(title: string | null | undefined): string {
     const normalized = (title ?? "").toLowerCase();
     if (normalized.includes("selected")) return "ux-col-selected";
@@ -15,6 +17,13 @@ export function addTableShell(
     const modalId = `tblColModal-${id}`;
     const dropdownId = `dropdownMenuButton-${id}`;
 
+    const actionsHtml = resolveExportActions({ includeJson: false })
+        .map((action) => {
+            const isClipboard = action.target === "clipboard";
+            return `<li><button class="dropdown-item fw-bold ux-export-btn" type="button" data-export-type="${action.format}" data-export-clipboard="${isClipboard}"><kbd><i class="bi ${action.icon}"></i></kbd> ${action.label}</button></li>`;
+        })
+        .join("");
+
     container.appendChild(
         htmlToElement(`<div class="ux-toolbar">
     <button class="btn ux-btn" type="button" data-bs-toggle="modal" data-bs-target="#${modalId}" aria-expanded="false" aria-controls="${modalId}">
@@ -24,10 +33,7 @@ export function addTableShell(
     Export data&nbsp;<i class="bi bi-chevron-down"></i>
     </button>
     <ul class="dropdown-menu" aria-labelledby="${dropdownId}">
-    <li><button class="dropdown-item fw-bold ux-export-btn" type="button" data-export-type="CSV" data-export-clipboard="false"><kbd><i class="bi bi-download"></i> ,</kbd> Download CSV</button></li>
-    <li><button class="dropdown-item fw-bold ux-export-btn" type="button" data-export-type="CSV" data-export-clipboard="true"><kbd><i class="bi bi-copy"></i> ,</kbd> Copy CSV</button></li>
-    <li><button class="dropdown-item fw-bold ux-export-btn" type="button" data-export-type="TSV" data-export-clipboard="false"><kbd><i class="bi bi-download"></i><i class="bi bi-indent"></i></kbd> Download TSV</button></li>
-    <li><button class="dropdown-item fw-bold ux-export-btn" type="button" data-export-type="TSV" data-export-clipboard="true"><kbd><i class="bi bi-copy"></i><i class="bi bi-indent"></i></kbd> Copy TSV</button></li>
+    ${actionsHtml}
     </ul>
     </div>
     </div>`),

@@ -17,7 +17,6 @@
   import { decompressBson } from "$lib/binary";
   import { modalStrWithCloseButton } from "$lib/modals";
   import { setupContainer } from "$lib/containerSetup";
-  import { addFormatters } from "$lib/formatterInit";
   import { ExportTypes, downloadTableElem } from "$lib/dataExport";
   import {
     getCurrentQueryParams,
@@ -26,6 +25,10 @@
     saveCurrentQueryParams,
     resetQueryParams,
   } from "$lib/queryState";
+  import {
+    MAX_COMPOSITE_CONFLICT_IDS,
+    encodeCompositeSelectionIds,
+  } from "$lib/conflictIds";
   import {
     formatDatasetProvenance,
     getConflictsIndexUrl,
@@ -43,8 +46,6 @@
   import type { JSONValue, RawData, TableData } from "$lib/types";
   import {
     getBootstrapModalInstance,
-    getWindowGlobal,
-    setWindowGlobal,
     getVisGlobal,
   } from "$lib/globals";
 
@@ -56,7 +57,6 @@
   let datasetProvenance = "";
   let allianceNameById: { [key: number]: string } = {};
   let allianceIdsByCoalition: { [key: string]: number[][] } = {};
-  let colNames: { [key: string]: string[] } = {};
   let conflictDetailsById: {
     [key: number]: {
       name: string;
@@ -81,7 +81,10 @@
   let visualizationElement: HTMLDivElement | null = null;
   let timelineObserver: IntersectionObserver | null = null;
   let timelineScriptPromise: Promise<void> | null = null;
+  let conflictActionClickListener: ((event: MouseEvent) => void) | null = null;
   let guildParam: string | null = null;
+  let selectedConflictIds: Set<number> = new Set();
+  let selectionMessage: string | null = null;
 
   const VIS_TIMELINE_SCRIPT_ID = "visjs";
   const VIS_TIMELINE_SCRIPT_SRC =
@@ -101,7 +104,10 @@
     const allCategoriesSelected =
       selectedCategories.size === categories.length &&
       categories.every((category) => selectedCategories.has(category));
-    return !allAlliancesSelected || !!guildParam || !allCategoriesSelected;
+    return !allAlliancesSelected ||
+      !!guildParam ||
+      !allCategoriesSelected ||
+      selectedConflictIds.size > 0;
   })();
 
   const getVis = (): any => getVisGlobal();
@@ -115,7 +121,7 @@
     const id = row[ConflictIndex.ID] as number;
     const safeLabel = escapeHtml(`${data}`);
     const conflictUrl = `${base}/conflict?id=${id}`;
-    return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' onclick='return openConflictCardFromName(event,${id})' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
+    return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' data-conflict-action='open-card-from-name' data-conflict-id='${id}' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
   }
 
   function formatPinnedAlliancesCell(
@@ -171,308 +177,70 @@
   // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
   onMount(() => {
     try {
-      applySavedQueryParamsIfMissing(["ids", "guild", "guild_id"]);
-      // Add the cell format functions to the window
-      addFormatters();
+      applySavedQueryParamsIfMissing(["ids", "guild"]);
+      conflictActionClickListener = (event: MouseEvent) => {
+        const target = parseConflictActionTarget(event);
+        if (!target) return;
 
-      // These store a map of the alliance and coalition names
-      // - Used by the row format function for coloring the rows
-      // - Used to create the modal for the coalition alliances
+        const action = target.dataset.conflictAction;
+        const conflictId = parseConflictId(target.dataset.conflictId);
+        if (!action) return;
 
-      setWindowGlobal(
-        "getIds",
-        (
-          coalitionName: string,
-          index: number,
-        ): { alliance_ids: number[]; alliance_names: string[] } => {
-          const alliance_ids = allianceIdsByCoalition[coalitionName][index];
-          const alliance_names = alliance_ids.map((id) =>
-            formatAllianceName(allianceNameById[id], id),
-          );
-          return { alliance_ids, alliance_names };
-        },
-      );
-      // Function to format the url for the conflict name
-      // Has a C1 and C2 button for showing coalition alliances modal
-      // + the name of the conflict (linking to the conflict page)
-      setWindowGlobal(
-        "openConflictCardFromName",
-        (event: MouseEvent | undefined, conflictId: number) => {
-          if (!event) {
-            const openConflictCard =
-              getWindowGlobal<
-                (event: Event | undefined, conflictId: number) => void
-              >("openConflictCard");
-            openConflictCard?.(undefined, conflictId);
-            return false;
-          }
+        if (action === "open-card-from-name") {
+          if (conflictId == null) return;
+          const allowDefault = openConflictCardFromName(event, conflictId);
+          if (!allowDefault) stopTableEvent(event);
+          return;
+        }
 
-          event.stopPropagation();
+        if (action === "open-conflict-page") {
+          if (conflictId == null) return;
+          const allowDefault = openConflictPageFromCard(event, conflictId);
+          if (!allowDefault) stopTableEvent(event);
+          return;
+        }
 
-          const isPlainLeftClick =
-            event.button === 0 &&
-            !event.ctrlKey &&
-            !event.metaKey &&
-            !event.shiftKey &&
-            !event.altKey;
+        stopTableEvent(event);
 
-          if (!isPlainLeftClick) {
-            return true;
-          }
+        if (action === "open-card") {
+          if (conflictId != null) openConflictCard(undefined, conflictId);
+          return;
+        }
 
-          event.preventDefault();
-          const openConflictCard =
-            getWindowGlobal<
-              (event: Event | undefined, conflictId: number) => void
-            >("openConflictCard");
-          openConflictCard?.(undefined, conflictId);
-          return false;
-        },
-      );
-
-      setWindowGlobal(
-        "openConflictField",
-        (
-          event: Event | undefined,
-          conflictId: number,
-          field: "status" | "cb" | "posts",
-        ) => {
-          stopTableEvent(event);
-          const details = conflictDetailsById[conflictId];
-          if (!details) return;
-
-          const title = `${details.name} - ${field.toUpperCase()}`;
-          modalStrWithCloseButton(
-            title,
-            buildConflictFieldBody(details, field),
-          );
-        },
-      );
-
-      setWindowGlobal(
-        "openConflictFieldFromCard",
-        (
-          event: Event | undefined,
-          conflictId: number,
-          field: "status" | "cb" | "posts",
-        ) => {
-          stopTableEvent(event);
-          const details = conflictDetailsById[conflictId];
-          if (!details) return;
-
-          const title = `${details.name} - ${field.toUpperCase()}`;
-          modalStrWithCloseButton(
-            conflictModalTitleWithBack(title, conflictId),
-            buildConflictFieldBody(details, field),
-          );
-        },
-      );
-
-      setWindowGlobal(
-        "openCoalitionForConflict",
-        (
-          event: Event | undefined,
-          conflictId: number,
-          index: number,
-          fromCard: boolean = false,
-        ) => {
-          stopTableEvent(event);
-          const details = conflictDetailsById[conflictId];
-          if (!details) return;
-
-          const getIds =
-            getWindowGlobal<
-              (
-                coalitionName: string,
-                index: number,
-              ) => { alliance_ids: number[]; alliance_names: string[] }
-            >("getIds");
-          if (!getIds) return;
-          const col = getIds(details.name, index);
-
-          const alliance_ids = col.alliance_ids;
-          const ul = document.createElement("ul");
-          ul.className = "mb-0";
-          for (let i = 0; i < alliance_ids.length; i++) {
-            const alliance_id = alliance_ids[i];
-            const alliance_name = formatAllianceName(
-              col.alliance_names[i],
-              alliance_id,
-            );
-            const a = document.createElement("a");
-            a.setAttribute(
-              "href",
-              `https://politicsandwar.com/alliance/id=${alliance_id}`,
-            );
-            a.setAttribute("target", "_blank");
-            a.setAttribute("rel", "noopener noreferrer");
-            a.textContent = alliance_name;
-            const li = document.createElement("li");
-            li.appendChild(a);
-            ul.appendChild(li);
-          }
-
-          const modalBody = document.createElement("div");
-          const idsStr = alliance_ids.join(",");
-          const areaElem = document.createElement("kbd");
-          areaElem.textContent = idsStr;
-          areaElem.setAttribute("readonly", "true");
-          areaElem.setAttribute("class", "form-control m-0");
-          modalBody.appendChild(areaElem);
-          const copyToClipboard = `<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' onclick='copyToClipboard("${idsStr}")' aria-label='Copy alliance ids'><i class='bi bi-clipboard'></i></button>`;
-          modalBody.innerHTML += copyToClipboard;
-          modalBody.appendChild(ul);
-
-          modalStrWithCloseButton(
-            fromCard
-              ? conflictModalTitleWithBack(
-                  `Coalition ${index + 1}: ${details.name}`,
-                  conflictId,
-                )
-              : `Coalition ${index + 1}: ${details.name}`,
-            modalBody.outerHTML,
-          );
-        },
-      );
-
-      setWindowGlobal(
-        "openConflictCard",
-        (event: Event | undefined, conflictId: number) => {
-          stopTableEvent(event);
-          const details = conflictDetailsById[conflictId];
-          if (!details) return;
-
-          const wikiValue = details.wiki ?? "";
-          const hasWiki = wikiValue.trim().length > 0;
-          const hasStatus = (details.status ?? "").trim().length > 0;
-          const hasCb = (details.cb ?? "").trim().length > 0;
-          const hasPosts = details.posts && typeof details.posts === "object";
-          const wikiUrl = hasWiki ? normalizeWikiUrl(wikiValue) : "#";
-          const conflictUrl = `${base}/conflict?id=${conflictId}`;
-          const safeName = escapeHtml(details.name);
-          const hasPinnedInfo = (details.pinnedInfo ?? "").trim().length > 0;
-
-          const bodyHtml = `
-          <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' onclick='return openConflictPageFromCard(event,${conflictId})' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
-
-          <div class='ux-conflict-popup-actions' role='group' aria-label='Conflict actions'>
-            <button type='button' class='btn ux-btn fw-bold' onclick='openCoalitionForConflict(event,${conflictId},0,true)' aria-label='Show coalition 1 alliances for ${safeName}'>C1</button>
-            <button type='button' class='btn ux-btn fw-bold' onclick='openCoalitionForConflict(event,${conflictId},1,true)' aria-label='Show coalition 2 alliances for ${safeName}'>C2</button>
-            <button type='button' class='btn ux-btn fw-bold' onclick='openConflictFieldFromCard(event,${conflictId},"status")' ${hasStatus ? "" : "disabled"} aria-label='Open status for ${safeName}'>Status</button>
-            <button type='button' class='btn ux-btn fw-bold' onclick='openConflictFieldFromCard(event,${conflictId},"cb")' ${hasCb ? "" : "disabled"} aria-label='Open casus belli for ${safeName}'>CB</button>
-            <button type='button' class='btn ux-btn fw-bold' onclick='openConflictFieldFromCard(event,${conflictId},"posts")' ${hasPosts ? "" : "disabled"} aria-label='Open posts for ${safeName}'>Posts</button>
-            <a class='btn ux-btn fw-bold' href='${wikiUrl}' ${hasWiki ? "target='_blank' rel='noopener noreferrer'" : "aria-disabled='true' tabindex='-1'"} aria-label='Open wiki for ${safeName} in a new tab'>Wiki</a>
-          </div>
-
-          <div class='ux-conflict-popup-meta mt-2' role='group' aria-label='Conflict basic info'>
-            <div><span class='ux-muted'>C1:</span> ${escapeHtml(details.c1Name)}</div>
-            <div><span class='ux-muted'>C2:</span> ${escapeHtml(details.c2Name)}</div>
-            <div><span class='ux-muted'>Category:</span> ${escapeHtml(details.category)}</div>
-            <div><span class='ux-muted'>Start:</span> ${escapeHtml(formatConflictDate(details.start))}</div>
-            <div><span class='ux-muted'>End:</span> ${escapeHtml(formatConflictDate(details.end))}</div>
-            <div><span class='ux-muted'>Wars:</span> ${details.wars}</div>
-            <div><span class='ux-muted'>Active wars:</span> ${details.activeWars}</div>
-            <div><span class='ux-muted'>C1 dealt:</span> ${escapeHtml(formatConflictMoney(details.c1Dealt))}</div>
-            <div><span class='ux-muted'>C2 dealt:</span> ${escapeHtml(formatConflictMoney(details.c2Dealt))}</div>
-            <div><span class='ux-muted'>Total dealt:</span> ${escapeHtml(formatConflictMoney(details.totalDealt))}</div>
-            ${hasPinnedInfo ? `<div><span class='ux-muted'>Pinned:</span> ${escapeHtml(details.pinnedInfo ?? "")}</div>` : ""}
-          </div>
-        `;
-
-          modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
-
-          // Prefetch this conflict's data so navigating to it is instant.
-          const detailUrl = getConflictDataUrl(
-            String(conflictId),
-            config.version.conflict_data,
-          );
-          queueUrlPrefetch(detailUrl, { priority: "high", crossRoute: true });
-          const graphUrl = getConflictGraphDataUrl(
-            String(conflictId),
-            config.version.graph_data,
-          );
-          queueUrlPrefetch(graphUrl, { priority: "high", crossRoute: true });
-          queueRuntimePrefetch("table", {
-            priority: "idle",
-            crossRoute: true,
-          });
-        },
-      );
-
-      setWindowGlobal(
-        "openConflictPageFromCard",
-        (event: Event | undefined, conflictId: number) => {
-          const mouseEvent = event as MouseEvent | undefined;
-          const isPlainLeftClick =
-            !!mouseEvent &&
-            mouseEvent.button === 0 &&
-            !mouseEvent.ctrlKey &&
-            !mouseEvent.metaKey &&
-            !mouseEvent.shiftKey &&
-            !mouseEvent.altKey;
-          if (!isPlainLeftClick) {
-            incrementPerfCounter("journey.conflicts_to_conflict.navMode", 1, {
-              mode: "document-or-new-tab",
-            });
-            return true;
-          }
-
-          stopTableEvent(event);
-          const href = `${base}/conflict?id=${conflictId}`;
-          beginJourneySpan("journey.conflicts_to_conflict.routeTransition", {
-            mode: "spa",
-            source: "conflict-card",
+        if (action === "open-coalition") {
+          if (conflictId == null) return;
+          const index = parseConflictId(target.dataset.conflictIndex);
+          if (index == null || (index !== 0 && index !== 1)) return;
+          openCoalitionForConflict(
+            undefined,
             conflictId,
-          });
-          incrementPerfCounter("journey.conflicts_to_conflict.navMode", 1, {
-            mode: "spa",
-          });
-          const modalElem = document.getElementById("exampleModal");
-          const modalInstance = getBootstrapModalInstance(modalElem);
-          modalInstance?.hide?.();
-          window.setTimeout(() => {
-            void goto(href, { keepFocus: true, noScroll: false });
-          }, 80);
-          return false;
-        },
-      );
+            index,
+            target.dataset.conflictFromCard === "true",
+          );
+          return;
+        }
 
-      setWindowGlobal(
-        "formatPinnedAlliances",
-        (_data: any, _type: any, row: any, _meta: any) => {
-          if (_allowedAllianceIds.size === _rawData?.alliance_ids.length) {
-            return "";
-          }
-          const c1_ids = row[ConflictIndex.C1_ID] as number[];
-          const c2_ids = row[ConflictIndex.C2_ID] as number[];
-
-          const c1 = c1_ids.filter((id) => _allowedAllianceIds.has(id));
-          const c2 = c2_ids.filter((id) => _allowedAllianceIds.has(id));
-          const total = c1.length + c2.length;
-
-          if (total === 0) return "<span class='ux-muted'>-</span>";
-
-          let chips: string[] = [];
-          const pushChip = (ids: number[], side: string, cls: string) => {
-            for (const id of ids) {
-              if (chips.length >= 4) return;
-              const name = allianceNameById[id] ?? `AA:${id}`;
-              chips.push(
-                `<span class='badge ${cls}' title='${side}: ${name}'>${side}:${name}</span>`,
-              );
+        if (action === "open-field") {
+          if (conflictId == null) return;
+          const field = target.dataset.conflictField;
+          if (field === "status" || field === "cb" || field === "posts") {
+            if (target.dataset.conflictFromCard === "true") {
+              openConflictFieldFromCard(undefined, conflictId, field);
+            } else {
+              openConflictField(undefined, conflictId, field);
             }
-          };
-
-          pushChip(c1, "C1", "text-bg-primary");
-          pushChip(c2, "C2", "text-bg-danger");
-          if (total > chips.length) {
-            chips.push(
-              `<span class='badge text-bg-secondary'>+${total - chips.length}</span>`,
-            );
           }
-          return `<span class='d-inline-flex flex-wrap gap-1'>${chips.join("")}</span>`;
-        },
-      );
+          return;
+        }
+
+        if (action === "copy-ids") {
+          const value = target.dataset.copyValue ?? "";
+          copyToClipboard(value);
+          return;
+        }
+
+      };
+      document.addEventListener("click", conflictActionClickListener, true);
 
       beginJourneySpan("journey.conflicts.dataFetch", {
         version: config.version.conflicts,
@@ -527,6 +295,13 @@
 
           let queryParams = getCurrentQueryParams();
 
+          const compositeMessage = queryParams.get("cmsg");
+          if (compositeMessage) {
+            selectionMessage = compositeMessage;
+            setQueryParam("cmsg", null, { replace: true });
+            queryParams = getCurrentQueryParams();
+          }
+
           const allianceIdsParam = queryParams.get("ids");
           if (allianceIdsParam) {
             for (const id of allianceIdsParam.split(".")) {
@@ -538,7 +313,7 @@
             }
           }
 
-          guildParam = queryParams.get("guild") || queryParams.get("guild_id");
+          guildParam = queryParams.get("guild");
 
           await yieldToMain();
           setupConflicts(result);
@@ -586,6 +361,10 @@
   onDestroy(() => {
     timelineObserver?.disconnect();
     timelineObserver = null;
+    if (conflictActionClickListener) {
+      document.removeEventListener("click", conflictActionClickListener, true);
+      conflictActionClickListener = null;
+    }
   });
 
   function setupConflicts(result: RawData) {
@@ -661,10 +440,6 @@
       allianceIdsByCoalition[conName] = [
         conflict[ConflictIndex.C1_ID] as number[],
         conflict[ConflictIndex.C2_ID] as number[],
-      ];
-      colNames[conName] = [
-        conflict[ConflictIndex.C1_NAME] as string,
-        conflict[ConflictIndex.C2_NAME] as string,
       ];
       const id = conflict[ConflictIndex.ID] as number;
       const c1_ids = conflict[ConflictIndex.C1_ID] as number[];
@@ -771,6 +546,20 @@
           row.classList.add("bg-warning-subtle");
         }
       },
+      onSelectionChange: (selection) => {
+        const next = new Set<number>();
+        for (const row of selection.selectedRows) {
+          const id = Number(row[ConflictIndex.ID]);
+          if (Number.isFinite(id)) {
+            next.add(id);
+          }
+        }
+        selectedConflictIds = next;
+        selectionMessage =
+          selectedConflictIds.size > MAX_COMPOSITE_CONFLICT_IDS
+            ? `Composite selection is limited to ${MAX_COMPOSITE_CONFLICT_IDS} conflicts.`
+            : null;
+      },
       sort: sort,
     };
 
@@ -810,6 +599,271 @@
     if (!event) return;
     event.preventDefault();
     event.stopPropagation();
+  }
+
+  function parseConflictActionTarget(event: MouseEvent): HTMLElement | null {
+    const path = typeof event.composedPath === "function"
+      ? event.composedPath()
+      : [];
+
+    for (const node of path) {
+      if (!(node instanceof Element)) continue;
+      const candidate = node.closest("[data-conflict-action]");
+      if (candidate instanceof HTMLElement) {
+        return candidate;
+      }
+    }
+
+    const rawTarget = event.target;
+    if (rawTarget instanceof Element) {
+      const candidate = rawTarget.closest("[data-conflict-action]");
+      if (candidate instanceof HTMLElement) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  function parseConflictId(value: string | undefined): number | null {
+    if (!value) return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function isPlainLeftClick(event?: MouseEvent): boolean {
+    return !!event &&
+      event.button === 0 &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      !event.altKey;
+  }
+
+  function getConflictAlliances(
+    conflictName: string,
+    index: number,
+  ): { alliance_ids: number[]; alliance_names: string[] } | null {
+    const coalitionIds = allianceIdsByCoalition[conflictName]?.[index];
+    if (!coalitionIds) return null;
+    return {
+      alliance_ids: coalitionIds,
+      alliance_names: coalitionIds.map((id) =>
+        formatAllianceName(allianceNameById[id], id)
+      ),
+    };
+  }
+
+  function copyToClipboard(value: string): void {
+    navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        alert("Copied to clipboard");
+      })
+      .catch((error) => {
+        alert("Failed to copy to clipboard" + error);
+      });
+  }
+
+  function openConflictCardFromName(
+    event: MouseEvent | undefined,
+    conflictId: number,
+  ): boolean {
+    if (!event) {
+      openConflictCard(undefined, conflictId);
+      return false;
+    }
+
+    event.stopPropagation();
+    if (!isPlainLeftClick(event)) {
+      return true;
+    }
+
+    event.preventDefault();
+    openConflictCard(undefined, conflictId);
+    return false;
+  }
+
+  function openConflictField(
+    event: Event | undefined,
+    conflictId: number,
+    field: "status" | "cb" | "posts",
+  ): void {
+    stopTableEvent(event);
+    const details = conflictDetailsById[conflictId];
+    if (!details) return;
+
+    const title = `${details.name} - ${field.toUpperCase()}`;
+    modalStrWithCloseButton(
+      title,
+      buildConflictFieldBody(details, field),
+    );
+  }
+
+  function openConflictFieldFromCard(
+    event: Event | undefined,
+    conflictId: number,
+    field: "status" | "cb" | "posts",
+  ): void {
+    stopTableEvent(event);
+    const details = conflictDetailsById[conflictId];
+    if (!details) return;
+
+    const title = `${details.name} - ${field.toUpperCase()}`;
+    modalStrWithCloseButton(
+      conflictModalTitleWithBack(title, conflictId),
+      buildConflictFieldBody(details, field),
+    );
+  }
+
+  function openCoalitionForConflict(
+    event: Event | undefined,
+    conflictId: number,
+    index: number,
+    fromCard: boolean = false,
+  ): void {
+    stopTableEvent(event);
+    const details = conflictDetailsById[conflictId];
+    if (!details) return;
+
+    const coalition = getConflictAlliances(details.name, index);
+    if (!coalition) return;
+
+    const alliance_ids = coalition.alliance_ids;
+    const ul = document.createElement("ul");
+    ul.className = "mb-0";
+    for (let i = 0; i < alliance_ids.length; i++) {
+      const alliance_id = alliance_ids[i];
+      const alliance_name = formatAllianceName(
+        coalition.alliance_names[i],
+        alliance_id,
+      );
+      const a = document.createElement("a");
+      a.setAttribute(
+        "href",
+        `https://politicsandwar.com/alliance/id=${alliance_id}`,
+      );
+      a.setAttribute("target", "_blank");
+      a.setAttribute("rel", "noopener noreferrer");
+      a.textContent = alliance_name;
+      const li = document.createElement("li");
+      li.appendChild(a);
+      ul.appendChild(li);
+    }
+
+    const modalBody = document.createElement("div");
+    const idsStr = alliance_ids.join(",");
+    const areaElem = document.createElement("kbd");
+    areaElem.textContent = idsStr;
+    areaElem.setAttribute("readonly", "true");
+    areaElem.setAttribute("class", "form-control m-0");
+    modalBody.appendChild(areaElem);
+    modalBody.innerHTML += `<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' data-conflict-action='copy-ids' data-copy-value='${escapeHtml(idsStr)}' aria-label='Copy alliance ids'><i class='bi bi-clipboard'></i></button>`;
+    modalBody.appendChild(ul);
+
+    modalStrWithCloseButton(
+      fromCard
+        ? conflictModalTitleWithBack(
+            `Coalition ${index + 1}: ${details.name}`,
+            conflictId,
+          )
+        : `Coalition ${index + 1}: ${details.name}`,
+      modalBody.outerHTML,
+    );
+  }
+
+  function openConflictCard(
+    event: Event | undefined,
+    conflictId: number,
+  ): void {
+    stopTableEvent(event);
+    const details = conflictDetailsById[conflictId];
+    if (!details) return;
+
+    const wikiValue = details.wiki ?? "";
+    const hasWiki = wikiValue.trim().length > 0;
+    const hasStatus = (details.status ?? "").trim().length > 0;
+    const hasCb = (details.cb ?? "").trim().length > 0;
+    const hasPosts = details.posts && typeof details.posts === "object";
+    const wikiUrl = hasWiki ? normalizeWikiUrl(wikiValue) : "#";
+    const conflictUrl = `${base}/conflict?id=${conflictId}`;
+    const safeName = escapeHtml(details.name);
+    const hasPinnedInfo = (details.pinnedInfo ?? "").trim().length > 0;
+
+    const bodyHtml = `
+      <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' data-conflict-action='open-conflict-page' data-conflict-id='${conflictId}' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
+
+      <div class='ux-conflict-popup-actions' role='group' aria-label='Conflict actions'>
+        <button type='button' class='btn ux-btn fw-bold' data-conflict-action='open-coalition' data-conflict-id='${conflictId}' data-conflict-index='0' data-conflict-from-card='true' aria-label='Show coalition 1 alliances for ${safeName}'>C1</button>
+        <button type='button' class='btn ux-btn fw-bold' data-conflict-action='open-coalition' data-conflict-id='${conflictId}' data-conflict-index='1' data-conflict-from-card='true' aria-label='Show coalition 2 alliances for ${safeName}'>C2</button>
+        <button type='button' class='btn ux-btn fw-bold' data-conflict-action='open-field' data-conflict-id='${conflictId}' data-conflict-field='status' data-conflict-from-card='true' ${hasStatus ? "" : "disabled"} aria-label='Open status for ${safeName}'>Status</button>
+        <button type='button' class='btn ux-btn fw-bold' data-conflict-action='open-field' data-conflict-id='${conflictId}' data-conflict-field='cb' data-conflict-from-card='true' ${hasCb ? "" : "disabled"} aria-label='Open casus belli for ${safeName}'>CB</button>
+        <button type='button' class='btn ux-btn fw-bold' data-conflict-action='open-field' data-conflict-id='${conflictId}' data-conflict-field='posts' data-conflict-from-card='true' ${hasPosts ? "" : "disabled"} aria-label='Open posts for ${safeName}'>Posts</button>
+        <a class='btn ux-btn fw-bold' href='${wikiUrl}' ${hasWiki ? "target='_blank' rel='noopener noreferrer'" : "aria-disabled='true' tabindex='-1'"} aria-label='Open wiki for ${safeName} in a new tab'>Wiki</a>
+      </div>
+
+      <div class='ux-conflict-popup-meta mt-2' role='group' aria-label='Conflict basic info'>
+        <div><span class='ux-muted'>C1:</span> ${escapeHtml(details.c1Name)}</div>
+        <div><span class='ux-muted'>C2:</span> ${escapeHtml(details.c2Name)}</div>
+        <div><span class='ux-muted'>Category:</span> ${escapeHtml(details.category)}</div>
+        <div><span class='ux-muted'>Start:</span> ${escapeHtml(formatConflictDate(details.start))}</div>
+        <div><span class='ux-muted'>End:</span> ${escapeHtml(formatConflictDate(details.end))}</div>
+        <div><span class='ux-muted'>Wars:</span> ${details.wars}</div>
+        <div><span class='ux-muted'>Active wars:</span> ${details.activeWars}</div>
+        <div><span class='ux-muted'>C1 dealt:</span> ${escapeHtml(formatConflictMoney(details.c1Dealt))}</div>
+        <div><span class='ux-muted'>C2 dealt:</span> ${escapeHtml(formatConflictMoney(details.c2Dealt))}</div>
+        <div><span class='ux-muted'>Total dealt:</span> ${escapeHtml(formatConflictMoney(details.totalDealt))}</div>
+        ${hasPinnedInfo ? `<div><span class='ux-muted'>Pinned:</span> ${escapeHtml(details.pinnedInfo ?? "")}</div>` : ""}
+      </div>
+    `;
+
+    modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
+
+    const detailUrl = getConflictDataUrl(
+      String(conflictId),
+      config.version.conflict_data,
+    );
+    queueUrlPrefetch(detailUrl, { priority: "high", crossRoute: true });
+    const graphUrl = getConflictGraphDataUrl(
+      String(conflictId),
+      config.version.graph_data,
+    );
+    queueUrlPrefetch(graphUrl, { priority: "high", crossRoute: true });
+    queueRuntimePrefetch("table", {
+      priority: "idle",
+      crossRoute: true,
+    });
+  }
+
+  function openConflictPageFromCard(
+    event: Event | undefined,
+    conflictId: number,
+  ): boolean {
+    const mouseEvent = event as MouseEvent | undefined;
+    if (!isPlainLeftClick(mouseEvent)) {
+      incrementPerfCounter("journey.conflicts_to_conflict.navMode", 1, {
+        mode: "document-or-new-tab",
+      });
+      return true;
+    }
+
+    stopTableEvent(event);
+    const href = `${base}/conflict?id=${conflictId}`;
+    beginJourneySpan("journey.conflicts_to_conflict.routeTransition", {
+      mode: "spa",
+      source: "conflict-card",
+      conflictId,
+    });
+    incrementPerfCounter("journey.conflicts_to_conflict.navMode", 1, {
+      mode: "spa",
+    });
+    const modalElem = document.getElementById("exampleModal");
+    const modalInstance = getBootstrapModalInstance(modalElem);
+    modalInstance?.hide?.();
+    window.setTimeout(() => {
+      void goto(href, { keepFocus: true, noScroll: false });
+    }, 80);
+    return false;
   }
 
   function formatConflictDate(value: number): string {
@@ -887,7 +941,7 @@
     conflictId: number,
   ): string {
     const safeTitle = escapeHtml(title);
-    return `<button type='button' class='btn ux-btn btn-sm fw-bold me-2' onclick='openConflictCard(undefined,${conflictId})' aria-label='Back to conflict actions for ${safeTitle}' title='Back to actions'><i class='bi bi-arrow-left'></i></button>${safeTitle}`;
+    return `<button type='button' class='btn ux-btn btn-sm fw-bold me-2' data-conflict-action='open-card' data-conflict-id='${conflictId}' aria-label='Back to conflict actions for ${safeTitle}' title='Back to actions'><i class='bi bi-arrow-left'></i></button>${safeTitle}`;
   }
 
   function escapeHtml(value: string): string {
@@ -945,8 +999,10 @@
     guildParam = null;
     currSource = ["All", 0];
     selectedCategories = new Set();
+    selectedConflictIds = new Set();
+    selectionMessage = null;
     showAllianceModal = false;
-    resetQueryParams(["ids", "guild", "guild_id"]);
+    resetQueryParams(["ids", "guild"]);
     saveCurrentQueryParams();
     setupConflicts(_rawData);
     requestTimelineRender(true);
@@ -954,6 +1010,25 @@
 
   function retryLoad() {
     window.location.reload();
+  }
+
+  function openCompositeSelection(): void {
+    if (selectedConflictIds.size < 2) {
+      selectionMessage = "Select at least two conflicts before opening composite view.";
+      return;
+    }
+
+    if (selectedConflictIds.size > MAX_COMPOSITE_CONFLICT_IDS) {
+      selectionMessage = `Composite selection is limited to ${MAX_COMPOSITE_CONFLICT_IDS} conflicts.`;
+      return;
+    }
+
+    const ids = Array.from(selectedConflictIds).map((id) => String(id));
+    const encoded = encodeCompositeSelectionIds(ids);
+    void goto(`${base}/conflicts/view?ids=${encodeURIComponent(encoded)}`, {
+      keepFocus: true,
+      noScroll: false,
+    });
   }
 
   function ensureTimelineScriptLoaded(): Promise<void> {
@@ -1118,10 +1193,16 @@
             {/each}
           </select>
           <a
-            class="btn ux-btn fw-bold"
+            class="btn ux-btn fw-bold ux-btn-success"
             href="http://locutus.link/#/command/conflict%20create_temp"
             target="_blank"
             rel="noopener noreferrer">Create Conflict</a
+          >
+          <a
+            class="btn ux-btn fw-bold ux-btn-danger"
+            href="https://locutus.link/#/conflicts"
+            target="_blank"
+            rel="noopener noreferrer">Edit Conflicts</a
           >
         </div>
       </div>
@@ -1170,8 +1251,14 @@
         Filter Alliances ({_allowedAllianceIds.size}/{_rawData.alliance_ids
           .length})
       </button>
+      <button class="btn ux-btn" on:click={openCompositeSelection}>
+        Open composite ({selectedConflictIds.size}/{MAX_COMPOSITE_CONFLICT_IDS})
+      </button>
       <ShareResetBar onReset={resetFilters} resetDirty={isResetDirty} />
     </div>
+    {#if selectionMessage}
+      <div class="alert alert-warning m-2 py-2">{selectionMessage}</div>
+    {/if}
     <SelectionModal
       open={showAllianceModal}
       title="Filter Alliances"

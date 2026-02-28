@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { base } from "$app/paths";
     import { getConflictDataUrl, getConflictGraphDataUrl } from "$lib/runtime";
     import {
         queueRuntimePrefetch,
@@ -21,16 +22,34 @@
     export let mode: "links" | "layout-picker" = "links";
     export let currentLayout: number = 0;
     export let onLayoutSelect: ((layout: number) => void) | null = null;
+    export let disabledTabs: ConflictTab[] = [];
 
     /** Tabs that use graph_data; everything else uses conflict_data. */
     const GRAPH_TABS: Set<ConflictTab> = new Set(["tiering", "bubble"]);
 
+    function isTabDisabled(tab: ConflictTab): boolean {
+        return disabledTabs.includes(tab);
+    }
+
+    function buildTabHref(tab: ConflictTab): string {
+        if (tab === "coalition" || tab === "alliance" || tab === "nation") {
+            return `${base}/conflict?id=${conflictId}&layout=${tab}`;
+        }
+        if (tab === "aava") return `${base}/aava?id=${conflictId}`;
+        if (tab === "tiering") return `${base}/tiering?id=${conflictId}`;
+        if (tab === "bubble") return `${base}/bubble?id=${conflictId}`;
+        return `${base}/chord?id=${conflictId}`;
+    }
+
     function prefetchTab(tab: ConflictTab) {
-        if (!conflictId || tab === active) return;
+        if (!conflictId || tab === active || isTabDisabled(tab)) return;
         const url = GRAPH_TABS.has(tab)
             ? getConflictGraphDataUrl(conflictId, config.version.graph_data)
             : getConflictDataUrl(conflictId, config.version.conflict_data);
-        queueUrlPrefetch(url, { priority: "high", crossRoute: true });
+        queueUrlPrefetch(url, {
+            priority: "high",
+            crossRoute: true,
+        });
         if (tab === "bubble") {
             beginJourneySpan("journey.conflict_to_bubble.firstMount", {
                 conflictId,
@@ -72,7 +91,7 @@
         </button>
     {:else}
         <a
-            href="conflict?id={conflictId}&layout=coalition"
+            href={buildTabHref("coalition")}
             class="col ps-0 pe-0 btn {active === 'coalition'
                 ? 'is-active'
                 : ''}"
@@ -82,7 +101,7 @@
             ◑&nbsp;Coalition
         </a>
         <a
-            href="conflict?id={conflictId}&layout=alliance"
+            href={buildTabHref("alliance")}
             class="col btn ps-0 pe-0 {active === 'alliance' ? 'is-active' : ''}"
             on:mouseenter={() => prefetchTab("alliance")}
             data-sveltekit-preload-code="hover"
@@ -90,7 +109,7 @@
             𖣯&nbsp;Alliance
         </a>
         <a
-            href="conflict?id={conflictId}&layout=nation"
+            href={buildTabHref("nation")}
             class="col ps-0 pe-0 btn {active === 'nation' ? 'is-active' : ''}"
             on:mouseenter={() => prefetchTab("nation")}
             data-sveltekit-preload-code="hover"
@@ -99,37 +118,53 @@
         </a>
     {/if}
 
-    <a
-        class="col ps-0 pe-0 btn {active === 'aava' ? 'is-active' : ''}"
-        href="aava?id={conflictId}"
-        on:mouseenter={() => prefetchTab("aava")}
-        data-sveltekit-preload-code="hover"
-    >
-        ⚔️&nbsp;AA vs AA
-    </a>
+    {#if isTabDisabled("aava")}
+        <button class="col ps-0 pe-0 btn" disabled>⚔️&nbsp;AA vs AA</button>
+    {:else}
+        <a
+            class="col ps-0 pe-0 btn {active === 'aava' ? 'is-active' : ''}"
+            href={buildTabHref("aava")}
+            on:mouseenter={() => prefetchTab("aava")}
+            data-sveltekit-preload-code="hover"
+        >
+            ⚔️&nbsp;AA vs AA
+        </a>
+    {/if}
 
-    <a
-        class="col ps-0 pe-0 btn {active === 'tiering' ? 'is-active' : ''}"
-        href="tiering?id={conflictId}"
-        on:mouseenter={() => prefetchTab("tiering")}
-        data-sveltekit-preload-code="hover"
-    >
-        📊&nbsp;Tier/Time
-    </a>
-    <a
-        class="col ps-0 pe-0 btn {active === 'bubble' ? 'is-active' : ''}"
-        href="bubble?id={conflictId}"
-        on:mouseenter={() => prefetchTab("bubble")}
-        data-sveltekit-preload-code="hover"
-    >
-        📈&nbsp;Bubble/Time
-    </a>
-    <a
-        class="col ps-0 pe-0 btn {active === 'chord' ? 'is-active' : ''}"
-        href="chord?id={conflictId}"
-        on:mouseenter={() => prefetchTab("chord")}
-        data-sveltekit-preload-code="hover"
-    >
-        🌐&nbsp;Web
-    </a>
+    {#if isTabDisabled("tiering")}
+        <button class="col ps-0 pe-0 btn" disabled>📊&nbsp;Tier/Time</button>
+    {:else}
+        <a
+            class="col ps-0 pe-0 btn {active === 'tiering' ? 'is-active' : ''}"
+            href={buildTabHref("tiering")}
+            on:mouseenter={() => prefetchTab("tiering")}
+            data-sveltekit-preload-code="hover"
+        >
+            📊&nbsp;Tier/Time
+        </a>
+    {/if}
+    {#if isTabDisabled("bubble")}
+        <button class="col ps-0 pe-0 btn" disabled>📈&nbsp;Bubble/Time</button>
+    {:else}
+        <a
+            class="col ps-0 pe-0 btn {active === 'bubble' ? 'is-active' : ''}"
+            href={buildTabHref("bubble")}
+            on:mouseenter={() => prefetchTab("bubble")}
+            data-sveltekit-preload-code="hover"
+        >
+            📈&nbsp;Bubble/Time
+        </a>
+    {/if}
+    {#if isTabDisabled("chord")}
+        <button class="col ps-0 pe-0 btn" disabled>🌐&nbsp;Web</button>
+    {:else}
+        <a
+            class="col ps-0 pe-0 btn {active === 'chord' ? 'is-active' : ''}"
+            href={buildTabHref("chord")}
+            on:mouseenter={() => prefetchTab("chord")}
+            data-sveltekit-preload-code="hover"
+        >
+            🌐&nbsp;Web
+        </a>
+    {/if}
 </div>

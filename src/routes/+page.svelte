@@ -14,6 +14,8 @@
     label: string;
   };
 
+  const locutusBaseUrl = "https://www.locutus.link/#";
+
   export const _adTemplates: AdTemplate[] = [
     {
       id: "1",
@@ -36,10 +38,39 @@
       label: "Open Editor",
     },
     {
+      id: "status",
+      img: "images/home/status.svg",
+      desc: "Check live system health, incidents, and component uptime.",
+      subtitle: "Service Status",
+      invite: `${locutusBaseUrl}/status`,
+      bg: "#0f172a",
+      ad: false,
+      label: "Open Status",
+    },
+    {
+      id: "commands",
+      img: "images/home/commands.svg",
+      desc: "Run and explore available bot commands from the web UI.",
+      subtitle: "Commands",
+      invite: `${locutusBaseUrl}/commands`,
+      bg: "#0f172a",
+      ad: false,
+      label: "Open Commands",
+    },
+    {
+      id: "multi_v2",
+      img: "images/home/multi-v2.svg",
+      desc: "Inspect the newer multi-check flow for a selected nation.",
+      subtitle: "Multi Checker v2",
+      invite: `${locutusBaseUrl}/multi_v2/`,
+      bg: "#0f172a",
+      ad: false,
+      label: "Open Multi v2",
+    },
+    {
       id: "4",
       img: "graph.png",
-      // graph
-      desc: "Browse a selection of game charts. Share or export options available.",
+      desc: "Browse templates or create your custom chart from a variety of game data. Share or export options available.",
       subtitle: "Chart Viewer",
       invite: "https://www.locutus.link/#/edit_graph",
       bg: "#FFC929",
@@ -56,16 +87,6 @@
       ad: false,
       label: "Find Targets",
     },
-    // {
-    //   id: "4",
-    //   img: "graph.png",
-    //   desc: "Browse templates or create your custom chart from a variety of game data. Share or export options available.",
-    //   subtitle: "Chart Viewer",
-    //   invite: "#",
-    //   bg: "#FFC929",
-    //   ad: false,
-    //   label: "View Graphs",
-    // },
     {
       id: "1244684694956675113",
       img: "media2.png",

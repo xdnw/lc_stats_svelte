@@ -26,8 +26,7 @@
         type TierMetric,
         arrayEquals,
         setQueryParam,
-        getCurrentQueryParams,
-        bootstrapIdRoute,
+        bootstrapIdRouteLifecycle,
         resolveMetricAccessors,
         toNumberSelection,
         getConflictDataUrl,
@@ -311,13 +310,10 @@
             );
         }
 
-        bootstrapIdRoute({
+        bootstrapIdRouteLifecycle({
             restoreParams: ["selected", "normalize", "unicolor", "cityband", "ids"],
             preserveParams: ["id"],
-            beforeResolveId: () => {
-                const queryParams = getCurrentQueryParams();
-                loadQueryParams(queryParams);
-            },
+            onBeforeResolve: loadQueryParams,
             onMissingId: () => {
                 _loadError = "Missing conflict id in URL";
                 _loaded = true;

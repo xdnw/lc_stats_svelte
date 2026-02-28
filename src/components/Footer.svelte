@@ -1,12 +1,13 @@
 <script lang=ts>
 import { appConfig as config } from "$lib/appConfig";
+import { base } from "$app/paths";
 </script>
 <footer class="bd-footer border-top border-1 mt-3 py-4 bg-body-tertiary">
     <div class="container-md p-3 p-md-4">
         <div class="row g-4">
             <div class="col-12 col-md-4">
                 <div class="d-flex align-items-center gap-2">
-                    <img src="favicon-large.webp" alt="Logo" width="20" height="20">
+                    <img src="{base}/favicon-large.webp" alt="Logo" width="20" height="20">
                     <h5 class="fw-semibold m-0">{config.application}</h5>
                 </div>
                 <hr class="my-2">

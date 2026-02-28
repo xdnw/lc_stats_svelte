@@ -133,6 +133,13 @@ export function getConflictKpiStorageKey(
     return `lc_stats:conflict:${normalizeConflictId(conflictId)}:kpi-config`;
 }
 
+export function getCompositeConflictKpiStorageKey(
+    conflictSignature: string | null | undefined,
+): string {
+    const normalized = (conflictSignature ?? "").trim() || "unknown";
+    return `lc_stats:conflicts:${normalized}:kpi-config`;
+}
+
 export function readSharedKpiConfig(
     conflictId: string | null | undefined,
 ): SharedKpiConfig {
@@ -169,6 +176,45 @@ export function saveSharedKpiConfig(
         );
     } catch (error) {
         console.warn("Failed to save shared KPI config", error);
+    }
+}
+
+export function readCompositeSharedKpiConfig(
+    conflictSignature: string | null | undefined,
+): SharedKpiConfig {
+    try {
+        const key = getCompositeConflictKpiStorageKey(conflictSignature);
+        const raw = localStorage.getItem(key);
+        if (!raw) return { ...DEFAULT_SHARED_KPI_CONFIG };
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") {
+            return { ...DEFAULT_SHARED_KPI_CONFIG };
+        }
+        return {
+            version: 1,
+            widgets: Array.isArray(parsed.widgets) ? parsed.widgets : [],
+        };
+    } catch (error) {
+        console.warn("Failed to read composite shared KPI config", error);
+        return { ...DEFAULT_SHARED_KPI_CONFIG };
+    }
+}
+
+export function saveCompositeSharedKpiConfig(
+    conflictSignature: string | null | undefined,
+    config: SharedKpiConfig,
+): void {
+    try {
+        const key = getCompositeConflictKpiStorageKey(conflictSignature);
+        localStorage.setItem(
+            key,
+            JSON.stringify({
+                version: 1,
+                widgets: config.widgets ?? [],
+            }),
+        );
+    } catch (error) {
+        console.warn("Failed to save composite shared KPI config", error);
     }
 }
 

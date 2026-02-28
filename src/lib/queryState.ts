@@ -146,6 +146,22 @@ export function getPageStorageKey(pathname?: string): string {
     return `lc_stats:view:${path}`;
 }
 
+function normalizeStorageScope(scope: string | null | undefined): string | null {
+    if (scope == null) return null;
+    const trimmed = scope.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+export function getScopedPageStorageKey(
+    pathname?: string,
+    entityScope?: string | null,
+): string {
+    const baseKey = getPageStorageKey(pathname);
+    const normalizedScope = normalizeStorageScope(entityScope);
+    if (!normalizedScope) return baseKey;
+    return `${baseKey}::${normalizedScope}`;
+}
+
 export function saveCurrentQueryParams(
     storageKey?: string,
     includeEmpty = false,

@@ -13,10 +13,24 @@ export {
 } from './queryState';
 export {
     bootstrapIdRoute,
+    bootstrapIdRouteLifecycle,
 } from './routeBootstrap';
 export type {
     IdRouteBootstrapOptions,
+    IdRouteLifecycleOptions,
 } from './routeBootstrap';
+export {
+    createIdPrefetchLoader,
+    createStaticPrefetchLoader,
+} from './routeLoaders';
+export {
+    EXPORT_ACTIONS,
+    resolveExportActions,
+} from './exportActions';
+export type {
+    ExportActionDefinition,
+    ExportActionCapabilities,
+} from './exportActions';
 export {
     appConfig,
     appRoutes,

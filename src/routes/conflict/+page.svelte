@@ -28,7 +28,7 @@
     import { trimHeader } from "$lib/warWeb";
     import { buildAavaSelectionRows } from "$lib/aavaSelection";
     import { yieldToMain } from "$lib/misc";
-    import { bootstrapIdRoute } from "$lib/routeBootstrap";
+    import { bootstrapIdRouteLifecycle } from "$lib/routeBootstrap";
     import type { TableCallbacks } from "$lib/tableCallbacks";
     import type { Conflict, TableData } from "$lib/types";
     import {
@@ -72,6 +72,9 @@
 
     let conflictName = "";
     let conflictId: string | null = null;
+    let trimmedConflictId = "";
+    let isVirtualConflictId = false;
+    let virtualConflictEditUrl: string | null = null;
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
@@ -1485,7 +1488,7 @@
 
         kpiCollapsed = localStorage.getItem(kpiCollapseStorageKey()) === "1";
 
-        bootstrapIdRoute({
+        bootstrapIdRouteLifecycle({
             restoreParams: ["layout", "sort", "order", "columns", "kpiw"],
             preserveParams: ["id"],
             onMissingId: () => {
@@ -1528,6 +1531,13 @@
             selectedLayoutPresetKey = detectedKey;
         }
     }
+
+    $: trimmedConflictId = conflictId?.trim() ?? "";
+    $: isVirtualConflictId =
+        trimmedConflictId.length > 0 && !/^\d+$/.test(trimmedConflictId);
+    $: virtualConflictEditUrl = trimmedConflictId
+        ? `https://locutus.link/#/temporary-conflicts?conflictId=${encodeURIComponent(trimmedConflictId)}`
+        : null;
 
     $: if (layoutPresetViewportEl && layoutPresetButtonsEl) {
         updateLayoutPresetMode();
@@ -1768,13 +1778,25 @@
             />
             <span class="ux-page-title-main">Conflict: {conflictName}</span>
         </div>
-        {#if _rawData?.wiki}
-            <a
-                class="btn ux-btn fw-bold"
-                href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}"
-                >Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"
-                ></i></a
-            >
+        {#if (isVirtualConflictId && virtualConflictEditUrl) || _rawData?.wiki}
+            <div class="d-flex align-items-center gap-2">
+                {#if isVirtualConflictId && virtualConflictEditUrl}
+                    <a
+                        class="btn ux-btn ux-btn-danger fw-bold"
+                        href={virtualConflictEditUrl}
+                        target="_blank"
+                        rel="noopener noreferrer">Edit</a
+                    >
+                {/if}
+                {#if _rawData?.wiki}
+                    <a
+                        class="btn ux-btn fw-bold"
+                        href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}"
+                        >Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"
+                        ></i></a
+                    >
+                {/if}
+            </div>
         {/if}
     </h1>
 

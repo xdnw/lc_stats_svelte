@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { ExportFormat, ExportTarget } from "$lib";
+    import { resolveExportActions } from "$lib/exportActions";
     import type {
         ExportMenuDataset,
         ExportMenuHandler,
@@ -14,49 +14,7 @@
             ? `export-dataset-select-${crypto.randomUUID()}`
             : `export-dataset-select-${Math.random().toString(36).slice(2, 10)}`;
 
-    const actions: {
-        label: string;
-        format: ExportFormat;
-        target: ExportTarget;
-        icon: string;
-    }[] = [
-        {
-            label: "Download CSV",
-            format: "CSV",
-            target: "download",
-            icon: "bi-download",
-        },
-        {
-            label: "Copy CSV",
-            format: "CSV",
-            target: "clipboard",
-            icon: "bi-clipboard",
-        },
-        {
-            label: "Download TSV",
-            format: "TSV",
-            target: "download",
-            icon: "bi-download",
-        },
-        {
-            label: "Copy TSV",
-            format: "TSV",
-            target: "clipboard",
-            icon: "bi-clipboard",
-        },
-        {
-            label: "Download JSON",
-            format: "JSON",
-            target: "download",
-            icon: "bi-filetype-json",
-        },
-        {
-            label: "Copy JSON",
-            format: "JSON",
-            target: "clipboard",
-            icon: "bi-clipboard",
-        },
-    ];
+    const actions = resolveExportActions();
 
     $: if (!selectedDatasetKey && datasets.length > 0) {
         selectedDatasetKey = datasets[0].key;

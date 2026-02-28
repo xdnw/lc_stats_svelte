@@ -17,8 +17,7 @@
         Palette,
         generateColors,
         setQueryParam,
-        getCurrentQueryParams,
-        bootstrapIdRoute,
+        bootstrapIdRouteLifecycle,
         arrayEquals,
         type TierMetric,
         resolveMetricAccessors,
@@ -274,13 +273,10 @@
             );
         }
 
-        bootstrapIdRoute({
+        bootstrapIdRouteLifecycle({
             restoreParams: ["city_min", "city_max", "time", "normalize", "selected"],
             preserveParams: ["id"],
-            beforeResolveId: () => {
-                const queryParams = getCurrentQueryParams();
-                loadQueryParams(queryParams);
-            },
+            onBeforeResolve: loadQueryParams,
             onMissingId: () => {
                 _loadError = "Missing conflict id in URL";
                 _loaded = true;

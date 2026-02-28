@@ -22,7 +22,7 @@
         firstSelectedString,
         formatAllianceName,
         formatDatasetProvenance,
-        bootstrapIdRoute,
+        bootstrapIdRouteLifecycle,
         getDefaultWarWebHeader,
         getConflictDataUrl,
         getConflictGraphDataUrl,
@@ -215,38 +215,6 @@
             if (normalizeColumnToken(labels[key]) === normalized) {
                 return key;
             }
-        }
-
-        const legacyMap: Record<string, ColumnKey> = {
-            alliance: "name",
-            "primary → row": "primary_to_row",
-            "row → primary": "row_to_primary",
-            net: "net",
-            total: "total",
-            "primary share %": "primary_share_pct",
-            "selected share %": "primary_share_pct",
-            "row share %": "row_share_pct",
-            "compared share %": "row_share_pct",
-            "abs net": "abs_net",
-        };
-
-        if (legacyMap[normalized]) {
-            return legacyMap[normalized];
-        }
-
-        // Legacy: old "sent by / received from" labels
-        if (normalized.endsWith("sent by selected coalition")) {
-            return "primary_to_row";
-        }
-        if (normalized.endsWith("received from compared coalition")) {
-            return "row_to_primary";
-        }
-        // New semantic labels contain "selected" or "compared" (but not "share")
-        if (normalized.includes("selected") && !normalized.includes("share")) {
-            return "primary_to_row";
-        }
-        if (normalized.includes("compared") && !normalized.includes("share")) {
-            return "row_to_primary";
         }
 
         return null;
@@ -863,10 +831,10 @@
     }
 
     onMount(() => {
-        bootstrapIdRoute({
+        bootstrapIdRouteLifecycle({
             restoreParams: ["header", "pc", "columns", "cols"],
             preserveParams: ["id"],
-            beforeResolveId: () => {
+            onBeforeResolve: () => {
                 addFormatters();
             },
             onMissingId: () => {

@@ -9,7 +9,7 @@
         type Conflict,
         rafDelay,
         getCurrentQueryParams,
-        bootstrapIdRoute,
+        bootstrapIdRouteLifecycle,
         setQueryParam,
         generateColorsFromPalettes,
         Palette,
@@ -108,7 +108,7 @@
     })();
 
     onMount(() => {
-        bootstrapIdRoute({
+        bootstrapIdRouteLifecycle({
             restoreParams: ["header", "ids"],
             preserveParams: ["id"],
             onMissingId: () => {
