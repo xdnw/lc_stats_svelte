@@ -1,22 +1,13 @@
 import {
-    applySavedQueryParamsIfMissing,
     getCurrentQueryParams,
 } from "./queryState";
+import { applySavedQueryParamsIfMissing } from "./queryStorage";
 import {
     getCompositeConflictSignature,
     parseCompositeSelectionIds,
 } from "./conflictIds";
 
-export type IdRouteBootstrapOptions = {
-    restoreParams?: string[];
-    preserveParams?: string[];
-    storageKey?: string | ((query: URLSearchParams) => string | undefined);
-    beforeResolveId?: () => void;
-    onMissingId: () => void;
-    onResolvedId: (id: string, query: URLSearchParams) => void | Promise<void>;
-};
-
-export type IdRouteLifecycleOptions = {
+export type IdRouteOptions = {
     restoreParams?: string[];
     preserveParams?: string[];
     storageKey?: string | ((query: URLSearchParams) => string | undefined);
@@ -98,26 +89,8 @@ function bootstrapRoute<T>(options: RouteBootstrapOptions<T>): void {
     void options.onResolved(validated, query);
 }
 
-export function bootstrapIdRoute(options: IdRouteBootstrapOptions): void {
-    bootstrapRoute<string>({
-        restoreParams: options.restoreParams,
-        preserveParams: options.preserveParams,
-        storageKey: options.storageKey,
-        beforeResolve: () => {
-            options.beforeResolveId?.();
-        },
-        resolveFromQuery: (query) => query.get("id"),
-        validateResolved: (id) => {
-            const trimmed = id.trim();
-            return trimmed.length > 0 ? trimmed : null;
-        },
-        onMissing: options.onMissingId,
-        onResolved: options.onResolvedId,
-    });
-}
-
 export function bootstrapIdRouteLifecycle(
-    options: IdRouteLifecycleOptions,
+    options: IdRouteOptions,
 ): void {
     bootstrapRoute<string>({
         restoreParams: options.restoreParams,

@@ -1,6 +1,5 @@
 <script lang="ts">
     // @ts-nocheck
-    import { page } from "$app/stores";
     import { base } from "$app/paths";
     import {
         buildCoalitionAllianceItems,
@@ -26,8 +25,10 @@
         formatAllianceName,
         getDefaultWarWebHeader,
         resolveWarWebMetricMeta,
-        toNumberSelection,
         validateSingleSelection,
+        validateAtLeastOneSelection,
+        getSelectedAllianceIdsForCoalition,
+        mergeCoalitionAllianceSelection,
         yieldToMain,
         startPerfSpan,
         buildSettingsRows,
@@ -51,13 +52,6 @@
 
     let conflictName = "";
     let conflictId: string | null = null;
-
-    $: {
-        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
-        if (!conflictId && urlConflictId.length > 0) {
-            conflictId = urlConflictId;
-        }
-    }
 
     let _rawData: Conflict | null = null;
     let _allowedAllianceIds: Set<number> = new Set();
@@ -247,15 +241,16 @@
     })();
 
     function validateAllianceSelection(ids: SelectionId[]): string | null {
-        return ids.length > 0 ? null : "Keep at least one alliance selected.";
+        return validateAtLeastOneSelection(ids);
     }
 
     function openAllianceModal(coalitionIndex: 0 | 1) {
         activeAllianceCoalitionIndex = coalitionIndex;
-        if (_rawData)
-            allianceModalSelectedIds = _rawData.coalitions[
-                coalitionIndex
-            ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
+        allianceModalSelectedIds = getSelectedAllianceIdsForCoalition(
+            _rawData?.coalitions,
+            coalitionIndex,
+            _allowedAllianceIds,
+        );
         showAllianceModal = true;
     }
 
@@ -265,14 +260,12 @@
 
     function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
         if (!_rawData) return;
-        const nextIds = toNumberSelection(event.detail.ids);
-        const otherIndex = (activeAllianceCoalitionIndex === 0 ? 1 : 0) as
-            | 0
-            | 1;
-        const preservedOther = _rawData.coalitions[
-            otherIndex
-        ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
-        _allowedAllianceIds = new Set([...preservedOther, ...nextIds]);
+        _allowedAllianceIds = mergeCoalitionAllianceSelection(
+            _rawData.coalitions,
+            activeAllianceCoalitionIndex,
+            _allowedAllianceIds,
+            event.detail.ids,
+        );
         showAllianceModal = false;
         setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
         saveCurrentQueryParams();

@@ -8,9 +8,9 @@ import {
 
 describe("conflictTabs", () => {
     it("resolves active route tab from pathname", () => {
-        expect(resolveActiveTabFromUrl("https://example.com/conflict?id=123&layout=alliance", "single")).toBe("alliance");
-        expect(resolveActiveTabFromUrl("https://example.com/aava?id=123", "single")).toBe("aava");
-        expect(resolveActiveTabFromUrl("https://example.com/conflicts/view?ids=10.20&aid=7&layout=nation", "composite")).toBe("nation");
+        expect(resolveActiveTabFromUrl(new URL("https://example.com/conflict?id=123&layout=alliance"), "single")).toBe("alliance");
+        expect(resolveActiveTabFromUrl(new URL("https://example.com/aava?id=123"), "single")).toBe("aava");
+        expect(resolveActiveTabFromUrl(new URL("https://example.com/conflicts/view?ids=10.20&aid=7&layout=nation"), "composite")).toBe("nation");
     });
 
     it("returns null href when route context is incomplete", () => {

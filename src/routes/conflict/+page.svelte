@@ -1,46 +1,54 @@
 <script lang="ts">
-    import { page } from "$app/stores";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import { base } from "$app/paths";
     import { onDestroy, onMount } from "svelte";
-    import { addFormatters } from "$lib/formatterInit";
     import { buildStringSelectionItems, firstSelectedString, validateSingleSelection } from "$lib/selectionModalHelpers";
     import { decompressBson } from "$lib/binary";
-    import { formatDate, formatDuration, formatAllianceName, formatNationName } from "$lib/formatting";
-    import { setupContainer } from "$lib/containerSetup";
+    import {
+        commafy,
+        formatDate,
+        formatDuration,
+        formatAllianceName,
+        formatNationName,
+    } from "$lib/formatting";
+    import { setupContainer } from "$lib/tableAdapter";
     import { computeLayoutTableData } from "$lib/layoutTable";
     import {
-        getPageStorageKey,
         setQueryParams,
         decodeQueryParamValue,
-        saveCurrentQueryParams,
-        resetQueryParams,
     } from "$lib/queryState";
+    import { getPageStorageKey, saveCurrentQueryParams } from "$lib/queryStorage";
     import { ExportTypes, downloadTableElem } from "$lib/dataExport";
     import { queueUrlPrefetch } from "$lib/prefetchCoordinator";
+    import { registerFormatters } from "$lib/formatters";
+    import { modalWithCloseButton } from "$lib/modals";
     import {
         formatDatasetProvenance,
         getConflictGraphDataUrl,
         prewarmRuntimeGroup,
     } from "$lib/runtime";
     import { trimHeader } from "$lib/warWeb";
-    import { buildAavaSelectionRows } from "$lib/aavaSelection";
+    import {
+        createConflictKpiComputations,
+    } from "$lib/conflictKpiComputations";
+    import {
+        computeCoalitionSummary,
+        computeDurationSoFar,
+        computeLeadingCoalition,
+        computeOffWarsPerNationStats,
+    } from "$lib/conflictKpiPresetComputations";
+    import { createConflictKpiPresentation } from "$lib/conflictKpiPresentation";
+    import { createConflictKpiWidgetActions } from "$lib/conflictKpiWidgetActions";
     import { yieldToMain } from "$lib/misc";
     import { bootstrapIdRouteLifecycle } from "$lib/routeBootstrap";
     import type { TableCallbacks } from "$lib/tableCallbacks";
     import type { Conflict, TableData } from "$lib/types";
+    import type { ColumnPreset } from "$lib/columnPresets";
     import {
         makeKpiId,
-        readSharedKpiConfig,
-        saveSharedKpiConfig,
-        sanitizeKpiWidget,
-        serializeKpiWidgetsForQuery,
-        parseKpiWidgetsFromQuery,
-        moveWidgetByDelta,
-        moveWidgetToIndex as moveWidgetToIndexInList,
         type ConflictKPIWidget,
         type MetricCard,
         type PresetCard,
@@ -50,11 +58,29 @@
         type WidgetEntity,
         type WidgetScope,
     } from "$lib/kpi";
+    import {
+        DEFAULT_KPI_WIDGETS,
+        PRESET_CARD_LABELS,
+        PRESET_CARD_DESCRIPTIONS,
+        formatKpiNumber,
+        splitKpiWidgets,
+        buildSelectionSnapshot as buildSelectionSnapshotFromState,
+        scopeLabel as scopeLabelFromState,
+        hasSelectionForScope as hasSelectionForScopeFromState,
+        kpiAddReasonForScope as kpiAddReasonForScopeFromState,
+        stripWidgetIds,
+        serializeKpiWidgetsForUrl as serializeKpiWidgetsForUrlWithId,
+        parseKpiWidgetsFromUrl as parseKpiWidgetsFromUrlWithId,
+        sanitizeKpiWidgets,
+        persistSharedKpiWidgets,
+        loadSharedKpiWidgets,
+    } from "$lib/conflictKpiState";
     import { getAavaMetricLabel } from "$lib/aava";
     import { getVisGlobal, setWindowGlobal } from "$lib/globals";
     import ColumnPresetManager from "../../components/ColumnPresetManager.svelte";
     import SelectionModal from "../../components/SelectionModal.svelte";
     import KpiBuilderModal from "../../components/KpiBuilderModal.svelte";
+    import ConflictKpiSection from "../../components/ConflictKpiSection.svelte";
     import type {
         SelectionId,
         SelectionModalItem,
@@ -81,13 +107,6 @@
     let _loadError: string | null = null;
     let datasetProvenance = "";
     let _rawData: Conflict | null = null;
-
-    $: {
-        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
-        if (!conflictId && urlConflictId.length > 0) {
-            conflictId = urlConflictId;
-        }
-    }
 
     let breakdownCols = [
         "GROUND_TANKS_MUNITIONS_USED_UNNECESSARY",
@@ -300,69 +319,12 @@
     let _currentRowData: TableData;
     const getVis = (): any => getVisGlobal();
 
-    const DEFAULT_PRESET_CARDS: PresetCard[] = [
-        { id: "preset-duration", kind: "preset", key: "duration" },
-        { id: "preset-total-dmg", kind: "preset", key: "damage-total" },
-        { id: "preset-net-gap", kind: "preset", key: "net-gap" },
-    ];
-
-    const DEFAULT_RANKING_CARDS: RankingCard[] = [
-        {
-            id: "rank-alliance-net",
-            kind: "ranking",
-            entity: "alliance",
-            metric: "net:damage",
-            scope: "all",
-            limit: 8,
-        },
-        {
-            id: "rank-nation-net",
-            kind: "ranking",
-            entity: "nation",
-            metric: "net:damage",
-            scope: "all",
-            limit: 10,
-        },
-    ];
-
-    const PRESET_CARD_LABELS: Record<PresetCardKey, string> = {
-        duration: "Duration",
-        wars: "Wars tracked",
-        "damage-total": "Total damage exchanged",
-        "net-gap": "Damage gap",
-        "c1-dealt": "Coalition 1 dealt",
-        "c2-dealt": "Coalition 2 dealt",
-        "off-wars-per-nation": "Offensive wars per nation",
-    };
-
-    const PRESET_CARD_DESCRIPTIONS: Record<PresetCardKey, string> = {
-        duration: "Elapsed time for the conflict from start to now/end.",
-        wars: "Maximum wars tracked by either coalition in the summary.",
-        "damage-total": "Combined damage dealt by both coalitions.",
-        "net-gap": "Absolute net-damage lead of the currently leading side.",
-        "c1-dealt": "Raw total damage dealt by Coalition 1.",
-        "c2-dealt": "Raw total damage dealt by Coalition 2.",
-        "off-wars-per-nation":
-            "Average offensive wars launched per nation across summary rows.",
-    };
     $: currentLayoutLabel =
         _layoutData.layout === Layout.ALLIANCE
             ? "Alliance"
             : _layoutData.layout === Layout.NATION
               ? "Nation"
               : "Coalition";
-
-    const SCOPE_LABELS: Record<WidgetScope, string> = {
-        all: "All",
-        coalition1: "Coalition 1",
-        coalition2: "Coalition 2",
-        selection: "Selection snapshot",
-    };
-
-    const DEFAULT_KPI_WIDGETS: KPIWidget[] = [
-        ...DEFAULT_PRESET_CARDS,
-        ...DEFAULT_RANKING_CARDS,
-    ];
 
     let kpiWidgets: KPIWidget[] = [...DEFAULT_KPI_WIDGETS];
     let presetCards: PresetCard[] = [];
@@ -393,80 +355,79 @@
     let metricScopeToAdd: WidgetScope = "all";
     let metricAggToAdd: "sum" | "avg" = "sum";
     let metricNormalizeByToAdd = "";
+    let metricsOptions: string[] = [];
+
+    function arraysEqual<T>(left: T[], right: T[]): boolean {
+        return (
+            left.length === right.length &&
+            left.every((value, idx) => value === right[idx])
+        );
+    }
+
+    function isSameLayoutState(input: {
+        sort: string;
+        order: string;
+        columns: string[];
+    }): boolean {
+        return (
+            _layoutData.sort === input.sort &&
+            _layoutData.order === input.order &&
+            arraysEqual(_layoutData.columns, input.columns)
+        );
+    }
 
     $: {
-        const nextPresetCards: PresetCard[] = [];
-        const nextRankingCards: RankingCard[] = [];
-        const nextMetricCards: MetricCard[] = [];
-        for (const widget of kpiWidgets) {
-            if (widget.kind === "preset") nextPresetCards.push(widget);
-            else if (widget.kind === "ranking") nextRankingCards.push(widget);
-            else if (widget.kind === "metric") nextMetricCards.push(widget);
-        }
-        presetCards = nextPresetCards;
-        rankingCards = nextRankingCards;
-        metricCards = nextMetricCards;
+        const split = splitKpiWidgets(kpiWidgets);
+        presetCards = split.presetCards;
+        rankingCards = split.rankingCards;
+        metricCards = split.metricCards;
     }
 
     const kpiCollapseStorageKey = () => `${getPageStorageKey()}:kpi-collapsed`;
 
-    function formatKpiNumber(value: number | null | undefined): string {
-        if (value == null || isNaN(value)) return "N/A";
-        return value.toLocaleString();
-    }
-
-    function makeId(prefix: string): string {
-        return makeKpiId(prefix);
-    }
-
     function saveKpiConfig() {
-        if (!conflictId) return;
-        const config = readSharedKpiConfig(conflictId);
-        config.widgets = kpiWidgets;
-        saveSharedKpiConfig(conflictId, config);
+        persistSharedKpiWidgets(conflictId, kpiWidgets);
     }
+
+    const kpiWidgetActions = createConflictKpiWidgetActions({
+        getWidgets: () => kpiWidgets,
+        setWidgets: (widgets) => {
+            kpiWidgets = widgets;
+        },
+        persistWidgets: (widgets) => {
+            persistSharedKpiWidgets(conflictId, widgets);
+        },
+        makeId: makeKpiId,
+        hasSelectionForScope: (scope) =>
+            hasSelectionForScopeFromState(
+                scope,
+                selectedAllianceIdsForKpi,
+                selectedNationIdsForKpi,
+            ),
+        buildSelectionSnapshot: () =>
+            buildSelectionSnapshotFromState(
+                selectedAllianceIdsForKpi,
+                selectedNationIdsForKpi,
+            ),
+    });
 
     function applyKpiConfig(config: any) {
         if (!config || typeof config !== "object") return;
-        if (!Array.isArray(config.widgets)) return;
-        const parsedWidgets: KPIWidget[] = config.widgets
-            .map((item: any) => sanitizeKpiWidget(item, makeId))
-            .filter(
-                (item: KPIWidget | null): item is KPIWidget => item !== null,
-            );
-        if (parsedWidgets.length > 0) {
-            kpiWidgets = parsedWidgets;
+        const parsed = sanitizeKpiWidgets(config.widgets, makeKpiId);
+        if (parsed.length > 0) {
+            kpiWidgets = parsed;
         }
     }
 
     function loadKpiConfigFromStorage() {
         try {
-            if (!conflictId) return;
-            const sharedConfig = readSharedKpiConfig(conflictId);
-            if (
-                Array.isArray(sharedConfig.widgets) &&
-                sharedConfig.widgets.length > 0
-            ) {
-                applyKpiConfig({ widgets: sharedConfig.widgets });
+            const widgets = loadSharedKpiWidgets(conflictId, makeKpiId);
+            if (widgets && widgets.length > 0) {
+                kpiWidgets = widgets;
             }
         } catch (error) {
             console.warn("Failed to read KPI config", error);
         }
-    }
-
-    function removeWidget(id: string) {
-        kpiWidgets = kpiWidgets.filter((w) => w.id !== id);
-        saveKpiConfig();
-    }
-
-    function moveWidget(id: string, delta: number) {
-        kpiWidgets = moveWidgetByDelta(kpiWidgets, id, delta);
-        saveKpiConfig();
-    }
-
-    function moveWidgetToIndex(id: string, targetIndex: number) {
-        kpiWidgets = moveWidgetToIndexInList(kpiWidgets, id, targetIndex);
-        saveKpiConfig();
     }
 
     function startWidgetDrag(widgetId: string) {
@@ -489,53 +450,8 @@
             draggingWidgetId = null;
             return;
         }
-        moveWidgetToIndex(draggingWidgetId, targetIndex);
+        kpiWidgetActions.moveWidgetToIndex(draggingWidgetId, targetIndex);
         draggingWidgetId = null;
-    }
-
-    function buildSelectionSnapshot(): ScopeSnapshot {
-        const allianceIds = Array.from(selectedAllianceIdsForKpi);
-        const nationIds = Array.from(selectedNationIdsForKpi);
-        const labelParts: string[] = [];
-        if (allianceIds.length > 0)
-            labelParts.push(
-                `${allianceIds.length} alliance${allianceIds.length === 1 ? "" : "s"}`,
-            );
-        if (nationIds.length > 0)
-            labelParts.push(
-                `${nationIds.length} nation${nationIds.length === 1 ? "" : "s"}`,
-            );
-        return {
-            allianceIds,
-            nationIds,
-            label:
-                labelParts.length > 0 ? labelParts.join(" · ") : "No selection",
-        };
-    }
-
-    function scopeLabel(scope: WidgetScope, snapshot?: ScopeSnapshot): string {
-        if (scope !== "selection") return SCOPE_LABELS[scope];
-        return snapshot?.label
-            ? `Selection (${snapshot.label})`
-            : SCOPE_LABELS.selection;
-    }
-
-    function hasSelectionForScope(scope: WidgetScope): boolean {
-        if (scope !== "selection") return true;
-        return (
-            selectedAllianceIdsForKpi.size > 0 ||
-            selectedNationIdsForKpi.size > 0
-        );
-    }
-
-    function kpiAddReasonForScope(scope: WidgetScope): string {
-        if (scope !== "selection") return "";
-        if (hasSelectionForScope(scope)) return "";
-        return "Selection scope requires at least one selected alliance or nation row in the current table.";
-    }
-
-    function hasPresetCard(key: PresetCardKey): boolean {
-        return kpiWidgets.some((w) => w.kind === "preset" && w.key === key);
     }
 
     function updateSelectedEntitiesFromRows(layoutType: number, rows: any[][]) {
@@ -571,64 +487,11 @@
 
         selectedAllianceIdsForKpi = allianceIds;
         selectedNationIdsForKpi = nationIds;
-        const snapshot = buildSelectionSnapshot();
+        const snapshot: ScopeSnapshot = buildSelectionSnapshotFromState(
+            selectedAllianceIdsForKpi,
+            selectedNationIdsForKpi,
+        );
         selectedSnapshotLabel = snapshot.label;
-    }
-
-    function addWidget(widget: KPIWidget) {
-        kpiWidgets = [...kpiWidgets, widget];
-        saveKpiConfig();
-    }
-
-    function addPresetCard(key: PresetCardKey) {
-        if (hasPresetCard(key)) return;
-        addWidget({ id: makeId("preset"), kind: "preset", key });
-    }
-
-    function addRankingCard() {
-        const snapshot =
-            rankingScopeToAdd === "selection"
-                ? buildSelectionSnapshot()
-                : undefined;
-        if (
-            rankingScopeToAdd === "selection" &&
-            !hasSelectionForScope(rankingScopeToAdd)
-        ) {
-            return;
-        }
-        addWidget({
-            id: makeId("ranking"),
-            kind: "ranking",
-            entity: rankingEntityToAdd,
-            metric: rankingMetricToAdd,
-            scope: rankingScopeToAdd,
-            limit: Math.max(1, rankingLimitToAdd),
-            snapshot,
-        });
-    }
-
-    function addMetricCard() {
-        const snapshot =
-            metricScopeToAdd === "selection"
-                ? buildSelectionSnapshot()
-                : undefined;
-        if (
-            metricScopeToAdd === "selection" &&
-            !hasSelectionForScope(metricScopeToAdd)
-        ) {
-            return;
-        }
-        addWidget({
-            id: makeId("metric"),
-            kind: "metric",
-            entity: metricEntityToAdd,
-            metric: metricMetricToAdd,
-            scope: metricScopeToAdd,
-            aggregation: metricAggToAdd,
-            source: "conflict",
-            normalizeBy: metricNormalizeByToAdd || null,
-            snapshot,
-        });
     }
 
     function toggleKpiCollapsed() {
@@ -643,11 +506,7 @@
     }
 
     $: durationSoFar = (() => {
-        if (!_rawData) return "N/A";
-        const start = _rawData.start;
-        const end = _rawData.end === -1 ? Date.now() : _rawData.end;
-        if (!start) return "N/A";
-        return formatDuration(Math.max(0, Math.round((end - start) / 1000)));
+        return computeDurationSoFar(_rawData, formatDuration);
     })();
 
     $: summaryCoalitionTable = _rawData
@@ -669,32 +528,7 @@
         : null;
 
     $: coalitionSummary = (() => {
-        if (!_rawData || !summaryCoalitionTable) return null;
-        const raw = _rawData;
-        const table = summaryCoalitionTable;
-        const dealtIdx = table.columns.indexOf("dealt:damage");
-        const lossIdx = table.columns.indexOf("loss:damage");
-        const netIdx = table.columns.indexOf("net:damage");
-        const offWarsIdx = table.columns.indexOf("off:wars");
-        const defWarsIdx = table.columns.indexOf("def:wars");
-        if (
-            dealtIdx === -1 ||
-            lossIdx === -1 ||
-            netIdx === -1 ||
-            offWarsIdx === -1 ||
-            defWarsIdx === -1
-        ) {
-            return null;
-        }
-        return table.data.slice(0, 2).map((row, idx) => ({
-            idx,
-            name: raw.coalitions[idx]?.name ?? `Coalition ${idx + 1}`,
-            dealt: Number(row[dealtIdx]) || 0,
-            received: Number(row[lossIdx]) || 0,
-            net: Number(row[netIdx]) || 0,
-            wars:
-                (Number(row[offWarsIdx]) || 0) + (Number(row[defWarsIdx]) || 0),
-        }));
+        return computeCoalitionSummary(_rawData, summaryCoalitionTable);
     })();
 
     $: totalDamage = coalitionSummary
@@ -710,27 +544,11 @@
         : null;
 
     $: offWarsPerNationStats = (() => {
-        if (!summaryNationTable) return null;
-        const table = summaryNationTable;
-        const offIdx = table.columns.indexOf("off:wars");
-        if (offIdx === -1) return null;
-        const totalNations = table.data.length;
-        if (totalNations === 0) return null;
-        const totalOffWars = table.data.reduce((sum, row) => {
-            return sum + (Number(row[offIdx]) || 0);
-        }, 0);
-        return {
-            totalOffWars,
-            totalNations,
-            perNation: totalOffWars / totalNations,
-        };
+        return computeOffWarsPerNationStats(summaryNationTable);
     })();
 
     $: leadingCoalition = coalitionSummary
-        ? coalitionSummary.reduce(
-              (best, c) => (c.net > best.net ? c : best),
-              coalitionSummary[0],
-          )
+        ? computeLeadingCoalition(coalitionSummary)
         : null;
 
     // Invariant: KPI derivations are raw-data scoped; table presets/sort/order must not invalidate them.
@@ -752,35 +570,36 @@
           })
         : null;
 
-    $: metricsOptions = nationMetricTable
-        ? nationMetricTable.columns.filter((_, i) => {
-              if (i === 0) return false;
-              const fm = nationMetricTable.cell_format?.formatMoney ?? [];
-              const fn = nationMetricTable.cell_format?.formatNumber ?? [];
-              return fm.includes(i) || fn.includes(i);
-          })
-        : [];
+    $: {
+        const nextMetricsOptions = nationMetricTable
+            ? nationMetricTable.columns.filter((_, i) => {
+                  if (i === 0) return false;
+                  const fm = nationMetricTable.cell_format?.formatMoney ?? [];
+                  const fn = nationMetricTable.cell_format?.formatNumber ?? [];
+                  return fm.includes(i) || fn.includes(i);
+              })
+            : [];
+        metricsOptions = nextMetricsOptions;
 
-    $: if (metricsOptions.length > 0) {
-        if (!metricsOptions.includes(rankingMetricToAdd)) {
-            rankingMetricToAdd = metricsOptions[0];
+        const fallbackMetric = nextMetricsOptions[0] ?? "net:damage";
+        if (!nextMetricsOptions.includes(rankingMetricToAdd)) {
+            rankingMetricToAdd = fallbackMetric;
         }
-        if (!metricsOptions.includes(metricMetricToAdd)) {
-            metricMetricToAdd = metricsOptions[0];
+        if (!nextMetricsOptions.includes(metricMetricToAdd)) {
+            metricMetricToAdd = fallbackMetric;
         }
     }
 
-    let scopedRowsCache = new Map<string, any[]>();
-    let rankingRowsCache = new Map<string, RankingViewRow[]>();
-    let metricValueCache = new Map<string, number | null>();
-    let aavaRowsCache = new Map<string, ReturnType<typeof buildAavaSelectionRows>>();
-
-    function clearKpiCaches() {
-        scopedRowsCache.clear();
-        rankingRowsCache.clear();
-        metricValueCache.clear();
-        aavaRowsCache.clear();
-    }
+    const kpiComputations = createConflictKpiComputations({
+        getRawData: () => _rawData,
+        getEntityTable: (entity) =>
+            entity === "alliance"
+                ? (kpiAllianceTable as TableData | null)
+                : (nationMetricTable as TableData | null),
+        getNamesByAllianceId: () => namesByAllianceId,
+        formatAllianceName,
+        formatNationName,
+    });
 
     $: {
         // Invariant: widget/raw-data changes invalidate KPI caches; layout preset churn should not.
@@ -788,380 +607,20 @@
         kpiAllianceTable;
         nationMetricTable;
         kpiWidgets;
-        clearKpiCaches();
+        kpiComputations.clearCaches();
     }
 
-    function snapshotCacheKey(snapshot?: ScopeSnapshot): string {
-        if (!snapshot) return "-";
-        const allianceIds = snapshot.allianceIds?.join(".") ?? "";
-        const nationIds = snapshot.nationIds?.join(".") ?? "";
-        return `${allianceIds}|${nationIds}`;
-    }
-
-    function aavaSnapshotCacheKey(
-        snapshot: {
-            header: string;
-            primaryIds: number[];
-            vsIds: number[];
-            primaryCoalitionIndex?: 0 | 1;
-        },
-    ): string {
-        return `${snapshot.header}|${snapshot.primaryCoalitionIndex === 1 ? 1 : 0}|${snapshot.primaryIds.join(".")}|${snapshot.vsIds.join(".")}`;
-    }
-
-    function getAavaRows(
-        snapshot: {
-            header: string;
-            primaryIds: number[];
-            vsIds: number[];
-            primaryCoalitionIndex?: 0 | 1;
-        },
-    ): ReturnType<typeof buildAavaSelectionRows> {
-        if (!_rawData) return [];
-        const cacheKey = aavaSnapshotCacheKey(snapshot);
-        const cached = aavaRowsCache.get(cacheKey);
-        if (cached) return cached;
-        const rows = buildAavaSelectionRows(_rawData, {
-            header: snapshot.header,
-            primaryIds: snapshot.primaryIds,
-            vsIds: snapshot.vsIds,
-            primaryCoalitionIndex: snapshot.primaryCoalitionIndex,
-        });
-        aavaRowsCache.set(cacheKey, rows);
-        return rows;
-    }
-
-    function getEntityTable(entity: WidgetEntity): TableData | null {
-        return entity === "alliance"
-            ? (kpiAllianceTable as TableData | null)
-            : (nationMetricTable as TableData | null);
-    }
-
-    function getAavaMetricValue(row: any, metric: string): number {
-        return Number(row?.[metric]) || 0;
-    }
-
-    type RankingViewRow = {
-        label: string;
-        nationId?: number;
-        allianceName?: string;
-        allianceId?: number;
-        value: number;
-        valueText: string;
-    };
-
-    function formatMetricValue(
-        table: TableData | null,
-        metricIndex: number,
-        value: number,
-        isAavaMetric = false,
-    ): string {
-        if (isAavaMetric && metricIndex === -1) {
-            if (Number.isFinite(value)) {
-                if (Math.abs(value) <= 100 && `${value}`.includes(".")) {
-                    return value.toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
-                    });
-                }
-                return value.toLocaleString();
-            }
-            return "0";
-        }
-
-        const moneyColumns = table?.cell_format?.formatMoney ?? [];
-        const isMoney = moneyColumns.includes(metricIndex);
-        const formatted = Number(value || 0).toLocaleString(undefined, {
-            maximumFractionDigits: 2,
-        });
-        return isMoney ? `$${formatted}` : formatted;
-    }
-
-    function getScopedRows(
-        entity: WidgetEntity,
-        scope: WidgetScope,
-        table: TableData,
-        snapshot?: ScopeSnapshot,
-    ): any[] {
-        const cacheKey = `${entity}|${scope}|${snapshotCacheKey(snapshot)}`;
-        const cached = scopedRowsCache.get(cacheKey);
-        if (cached) return cached;
-
-        let rows: any[];
-        if (scope === "all") return table.data;
-
-        if (scope === "selection") {
-            const allianceIds = new Set<number>(snapshot?.allianceIds ?? []);
-            const nationIds = new Set<number>(snapshot?.nationIds ?? []);
-            if (entity === "alliance") {
-                if (allianceIds.size === 0) {
-                    rows = [];
-                } else {
-                    rows = table.data.filter((row) => {
-                        const allianceId = Number(row[0]?.[1]);
-                        return allianceIds.has(allianceId);
-                    });
-                }
-            } else if (nationIds.size > 0) {
-                rows = table.data.filter((row) => {
-                    const nationId = Number(row[0]?.[1]);
-                    return nationIds.has(nationId);
-                });
-            } else if (allianceIds.size > 0) {
-                rows = table.data.filter((row) => {
-                    const nationAllianceId = Number(row[0]?.[2]);
-                    return allianceIds.has(nationAllianceId);
-                });
-            } else {
-                rows = [];
-            }
-            scopedRowsCache.set(cacheKey, rows);
-            return rows;
-        }
-
-        if (!_rawData) {
-            rows = table.data;
-            scopedRowsCache.set(cacheKey, rows);
-            return rows;
-        }
-
-        const coalitionAllianceIds =
-            scope === "coalition1"
-                ? new Set<number>(_rawData.coalitions[0]?.alliance_ids ?? [])
-                : new Set<number>(_rawData.coalitions[1]?.alliance_ids ?? []);
-
-        rows = table.data.filter((row) => {
-            if (entity === "alliance") {
-                const allianceId = Number(row[0]?.[1]);
-                return coalitionAllianceIds.has(allianceId);
-            }
-            const nationAllianceId = Number(row[0]?.[2]);
-            return coalitionAllianceIds.has(nationAllianceId);
-        });
-        scopedRowsCache.set(cacheKey, rows);
-        return rows;
-    }
-
-    function getRankingRows(card: RankingCard): RankingViewRow[] {
-        const cached = rankingRowsCache.get(card.id);
-        if (cached) return cached;
-
-        let rowsForCard: RankingViewRow[];
-        if (card.source === "aava") {
-            if (!card.aavaSnapshot || card.entity !== "alliance") return [];
-            if (!_rawData) return [];
-            rowsForCard = getAavaRows(card.aavaSnapshot)
-                .map((row) => ({
-                    label: row.alliance[0],
-                    allianceId: row.alliance[1],
-                    value: getAavaMetricValue(row, card.metric),
-                }))
-                .sort((a, b) => b.value - a.value)
-                .map((row) => ({
-                    ...row,
-                    valueText: formatMetricValue(null, -1, row.value, true),
-                }))
-                .slice(0, Math.max(1, card.limit));
-            rankingRowsCache.set(card.id, rowsForCard);
-            return rowsForCard;
-        }
-
-        const table = getEntityTable(card.entity);
-        if (!table) return [];
-        const metricIndex = table.columns.indexOf(card.metric);
-        if (metricIndex === -1) return [];
-
-        const rows = getScopedRows(
-            card.entity,
-            card.scope,
-            table,
-            card.snapshot,
-        );
-        rowsForCard = rows
-            .map((row) => {
-                if (card.entity === "alliance") {
-                    const allianceId = Number(row[0]?.[1]);
-                    return {
-                        label: formatAllianceName(row[0]?.[0], allianceId),
-                        allianceId,
-                        value: Number(row[metricIndex]) || 0,
-                    };
-                }
-                const nationId = Number(row[0]?.[1]);
-                const allianceId = Number(row[0]?.[2]);
-                return {
-                    label: formatNationName(row[0]?.[0], nationId),
-                    nationId,
-                    allianceName: formatAllianceName(
-                        namesByAllianceId[allianceId],
-                        allianceId,
-                    ),
-                    allianceId,
-                    value: Number(row[metricIndex]) || 0,
-                };
-            })
-            .sort((a, b) => b.value - a.value)
-            .map((row) => ({
-                ...row,
-                valueText: formatMetricValue(table, metricIndex, row.value),
-            }))
-            .slice(0, Math.max(1, card.limit));
-        rankingRowsCache.set(card.id, rowsForCard);
-        return rowsForCard;
-    }
-
-    function getMetricCardValue(card: MetricCard): number | null {
-        const cached = metricValueCache.get(card.id);
-        if (cached !== undefined) return cached;
-
-        let value: number | null = null;
-        if (card.source === "aava") {
-            if (!card.aavaSnapshot || card.entity !== "alliance") return null;
-            if (!_rawData) return null;
-            const rows = getAavaRows(card.aavaSnapshot);
-            const vals = rows.map((row) =>
-                getAavaMetricValue(row, card.metric),
-            );
-            if (vals.length === 0) return null;
-
-            if (card.normalizeBy) {
-                const denoms = rows.map((row) =>
-                    getAavaMetricValue(row, card.normalizeBy as string),
-                );
-                if (card.aggregation === "sum") {
-                    const numerator = vals.reduce((a, b) => a + b, 0);
-                    const denominator = denoms.reduce((a, b) => a + b, 0);
-                    value = denominator === 0 ? null : numerator / denominator;
-                    metricValueCache.set(card.id, value);
-                    return value;
-                }
-                const ratios = vals
-                    .map((value, idx) => {
-                        const denominator = denoms[idx];
-                        return denominator === 0 ? null : value / denominator;
-                    })
-                    .filter((value): value is number => value != null);
-                if (ratios.length === 0) {
-                    metricValueCache.set(card.id, null);
-                    return null;
-                }
-                value = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-                metricValueCache.set(card.id, value);
-                return value;
-            }
-
-            const sum = vals.reduce((a, b) => a + b, 0);
-            value = card.aggregation === "avg" ? sum / vals.length : sum;
-            metricValueCache.set(card.id, value);
-            return value;
-        }
-
-        const table = getEntityTable(card.entity);
-        if (!table) return null;
-        const metricIndex = table.columns.indexOf(card.metric);
-        if (metricIndex === -1) return null;
-        const rows = getScopedRows(
-            card.entity,
-            card.scope,
-            table,
-            card.snapshot,
-        );
-        const vals = rows.map((row) => Number(row[metricIndex]) || 0);
-        if (vals.length === 0) return null;
-
-        if (card.normalizeBy) {
-            const normalizeIndex = table.columns.indexOf(card.normalizeBy);
-            if (normalizeIndex === -1) return null;
-            const denoms = rows.map((row) => Number(row[normalizeIndex]) || 0);
-            if (card.aggregation === "sum") {
-                const numerator = vals.reduce((a, b) => a + b, 0);
-                const denominator = denoms.reduce((a, b) => a + b, 0);
-                value = denominator === 0 ? null : numerator / denominator;
-                metricValueCache.set(card.id, value);
-                return value;
-            }
-            const ratios = vals
-                .map((value, idx) => {
-                    const denominator = denoms[idx];
-                    return denominator === 0 ? null : value / denominator;
-                })
-                .filter((value): value is number => value != null);
-            if (ratios.length === 0) {
-                metricValueCache.set(card.id, null);
-                return null;
-            }
-            value = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-            metricValueCache.set(card.id, value);
-            return value;
-        }
-
-        const sum = vals.reduce((a, b) => a + b, 0);
-        value = card.aggregation === "avg" ? sum / vals.length : sum;
-        metricValueCache.set(card.id, value);
-        return value;
-    }
-
-    function metricLabel(metric: string): string {
-        return trimHeader(metric);
-    }
-
-    function metricDescription(metric: string): string {
-        const label = metricLabel(metric);
-        const [prefix] = metric.split(":", 1);
-        if (prefix === "net")
-            return `${label}: dealt value minus received value.`;
-        if (prefix === "dealt")
-            return `${label}: value dealt by the selected entity.`;
-        if (prefix === "loss")
-            return `${label}: value received/lost by the selected entity.`;
-        if (prefix === "off")
-            return `${label}: offensive activity count for the selected entity.`;
-        if (prefix === "def")
-            return `${label}: defensive activity count for the selected entity.`;
-        return `${label}: summed or averaged over the selected scope.`;
-    }
-
-    function widgetMetricLabel(widget: RankingCard | MetricCard): string {
-        if (widget.source === "aava") {
-            const header = widget.aavaSnapshot?.header ?? "wars";
-            return getAavaMetricLabel(widget.metric, header);
-        }
-        return metricLabel(widget.metric);
-    }
-
-    function widgetNormalizeLabel(widget: MetricCard): string | null {
-        if (!widget.normalizeBy) return null;
-        if (widget.source === "aava") {
-            const header = widget.aavaSnapshot?.header ?? "wars";
-            return getAavaMetricLabel(widget.normalizeBy, header);
-        }
-        return metricLabel(widget.normalizeBy);
-    }
-
-    function widgetScopeLabel(widget: KPIWidget): string {
-        if (
-            (widget.kind === "ranking" || widget.kind === "metric") &&
-            widget.source === "aava"
-        ) {
-            const snapshotLabel = widget.aavaSnapshot?.label || "AAvA snapshot";
-            const header = widget.aavaSnapshot?.header || "wars";
-            return `AAvA (${snapshotLabel} · ${header})`;
-        }
-        if (widget.kind === "preset") return "Preset";
-        return scopeLabel(widget.scope, widget.snapshot);
-    }
-
-    function widgetManagerLabel(widget: KPIWidget): string {
-        if (widget.kind === "preset") {
-            return PRESET_CARD_LABELS[widget.key];
-        }
-        if (widget.kind === "ranking") {
-            return `${widget.entity} · ${widgetMetricLabel(widget)} · ${widgetScopeLabel(widget)} · top ${widget.limit}`;
-        }
-        const normalized = widgetNormalizeLabel(widget)
-            ? ` per ${widgetNormalizeLabel(widget)}`
-            : "";
-        return `${widget.aggregation.toUpperCase()} ${widget.entity} · ${widgetMetricLabel(widget)}${normalized} · ${widgetScopeLabel(widget)}`;
-    }
+    const {
+        metricLabel,
+        metricDescription,
+        widgetScopeLabel,
+        widgetManagerLabel,
+    } = createConflictKpiPresentation({
+        scopeLabel: (scope, snapshot) => scopeLabelFromState(scope, snapshot),
+        presetCardLabels: PRESET_CARD_LABELS,
+        trimHeader,
+        getAavaMetricLabel,
+    });
 
     function loadLayout(
         rawData: Conflict,
@@ -1235,9 +694,9 @@
         const decodedWidgets = decodeQueryParamValue("kpiw", query.get("kpiw"));
         if (decodedWidgets) {
             try {
-                const widgets = parseKpiWidgetsFromQuery(
+                const widgets = parseKpiWidgetsFromUrlWithId(
                     decodedWidgets,
-                    makeId,
+                    makeKpiId,
                 );
                 if (widgets.length > 0) {
                     kpiWidgets = widgets;
@@ -1278,77 +737,49 @@
         });
     }
 
-    function serializeKpiWidgetsForUrl(
-        widgets: KPIWidget[] = kpiWidgets,
-    ): string | null {
-        return serializeKpiWidgetsForQuery(widgets, makeId);
-    }
-
     function queryDefaults() {
         return {
             layout: Layout.COALITION,
             sort: layouts.Summary.sort,
             order: "desc",
             columns: layouts.Summary.columns.join("."),
-            kpiw: serializeKpiWidgetsForUrl(DEFAULT_KPI_WIDGETS),
+            kpiw: serializeKpiWidgetsForUrlWithId(DEFAULT_KPI_WIDGETS, makeKpiId),
         };
     }
 
-    function syncShareStateToUrl() {
-        const encodedWidgets = serializeKpiWidgetsForUrl();
-        setQueryParams(
-            {
-                layout: _layoutData.layout,
-                sort: _layoutData.sort,
-                order: _layoutData.order,
-                columns: _layoutData.columns.join("."),
-                kpiw: encodedWidgets,
-            },
-            {
-                replace: true,
-                defaults: queryDefaults(),
-            },
-        );
-        saveCurrentQueryParams();
-    }
+    type SyncUrlStateOptions = {
+        includeKpi?: boolean;
+        replace?: boolean;
+        persist?: boolean;
+        clearLayoutSortAndColumns?: boolean;
+    };
 
-    function syncLayoutQueryState(replace = false) {
-        setQueryParams(
-            {
-                layout: _layoutData.layout,
-                sort: _layoutData.sort,
-                order: _layoutData.order,
-                columns: _layoutData.columns.join("."),
-            },
-            {
-                replace,
-                defaults: queryDefaults(),
-            },
-        );
-    }
+    function syncUrlState(options: SyncUrlStateOptions = {}): void {
+        const values: Record<string, string | number | boolean | null | undefined> = {
+            layout: _layoutData.layout,
+            sort: options.clearLayoutSortAndColumns ? null : _layoutData.sort,
+            order: _layoutData.order,
+            columns: options.clearLayoutSortAndColumns
+                ? null
+                : _layoutData.columns.join("."),
+        };
 
-    function syncLayoutAndKpiState(replace = true) {
-        const encodedWidgets = serializeKpiWidgetsForUrl();
-        setQueryParams(
-            {
-                layout: _layoutData.layout,
-                sort: _layoutData.sort,
-                order: _layoutData.order,
-                columns: _layoutData.columns.join("."),
-                kpiw: encodedWidgets,
-            },
-            {
-                replace,
-                defaults: queryDefaults(),
-            },
-        );
-    }
+        if (options.includeKpi) {
+            values.kpiw = serializeKpiWidgetsForUrlWithId(kpiWidgets, makeKpiId);
+        }
 
-    function stripWidgetIds(widgets: KPIWidget[]) {
-        return widgets.map((item) => {
-            const { id: _id, ...rest } = item;
-            return rest;
+        setQueryParams(values, {
+            replace: options.replace ?? false,
+            defaults: queryDefaults(),
         });
+
+        if (options.persist) {
+            saveCurrentQueryParams();
+        }
+    }
+
+    function syncShareStateToUrl() {
+        syncUrlState({ includeKpi: true, replace: true, persist: true });
     }
 
     $: isResetDirty = (() => {
@@ -1488,7 +919,12 @@
     }
 
     onMount(() => {
-        addFormatters();
+        registerFormatters({
+            commafy,
+            formatDate,
+            formatAllianceName,
+            modalWithCloseButton,
+        });
         prewarmRuntimeGroup("table").catch((error) => {
             console.warn("Failed to prewarm table runtime", error);
         });
@@ -1565,17 +1001,7 @@
 
     function handleClick(layout: number): void {
         _layoutData.layout = layout;
-        setQueryParams(
-            {
-                layout: _layoutData.layout,
-                sort: null,
-                columns: null,
-            },
-            {
-                defaults: queryDefaults(),
-            },
-        );
-        saveCurrentQueryParams();
+        syncUrlState({ clearLayoutSortAndColumns: true, persist: true });
         loadCurrentLayout();
     }
 
@@ -1583,12 +1009,13 @@
         const layout = layouts[key];
         if (!layout) return;
         const nextOrder = layout.order ?? "desc";
-        const noOp =
-            _layoutData.sort === layout.sort &&
-            _layoutData.order === nextOrder &&
-            _layoutData.columns.length === layout.columns.length &&
-            _layoutData.columns.every((value, idx) => value === layout.columns[idx]);
-        if (noOp) {
+        if (
+            isSameLayoutState({
+                sort: layout.sort,
+                order: nextOrder,
+                columns: layout.columns,
+            })
+        ) {
             logConflictDebug("applyLayoutPresetKey no-op", { key });
             return;
         }
@@ -1609,8 +1036,7 @@
         _layoutData.order = nextOrder;
         selectedLayoutPresetKey = key;
         const syncStartedAt = performance.now();
-        syncLayoutQueryState();
-        saveCurrentQueryParams();
+        syncUrlState({ persist: true });
         logConflictDebug("applyLayoutPresetKey query sync complete", {
             key,
             elapsedMs: Number((performance.now() - syncStartedAt).toFixed(2)),
@@ -1627,18 +1053,91 @@
         return buildStringSelectionItems(layoutPresetKeys);
     }
 
+    function applyAndPersistKpiConfig(config: unknown): void {
+        applyKpiConfig(config);
+        saveKpiConfig();
+    }
+
+    function replaceWithPresetCards(keys: PresetCardKey[]): void {
+        if (keys.length === 0) return;
+        kpiWidgets = keys.map((key) => ({
+            id: makeKpiId("preset"),
+            kind: "preset",
+            key,
+        }));
+        saveKpiConfig();
+    }
+
+    function handleColumnPresetLoad(preset: ColumnPreset): void {
+        const startedAt = performance.now();
+
+        const nextSort = preset.sort || _layoutData.sort;
+        const nextOrder = preset.order || _layoutData.order;
+        const nextColumns = Array.isArray(preset.columns)
+            ? [...preset.columns]
+            : [..._layoutData.columns];
+
+        const noLayoutChange = isSameLayoutState({
+            sort: nextSort,
+            order: nextOrder,
+            columns: nextColumns,
+        });
+
+        logConflictDebug("column preset load start", {
+            hasKpiConfig: !!preset.kpiConfig,
+            noLayoutChange,
+            columns: nextColumns.length,
+            sort: nextSort,
+            order: nextOrder,
+        });
+
+        incrementPerfCounter("conflict.layout.columnPreset.load");
+        const finishSpan = startPerfSpan("conflict.layout.columnPreset.apply", {
+            noLayoutChange,
+            columns: nextColumns.length,
+        });
+
+        _layoutData.columns = nextColumns;
+        _layoutData.sort = nextSort;
+        _layoutData.order = nextOrder;
+
+        selectedLayoutPresetKey = detectLayoutPresetKey();
+
+        if (preset.kpiConfig) {
+            applyAndPersistKpiConfig(preset.kpiConfig);
+        } else if (Array.isArray(preset.kpis) && preset.kpis.length > 0) {
+            const keys = preset.kpis
+                .filter((key: string) => key in PRESET_CARD_LABELS)
+                .map((key: string) => key as PresetCardKey);
+            if (keys.length > 0) {
+                replaceWithPresetCards(keys);
+            }
+        }
+
+        syncUrlState({ persist: true });
+
+        if (!noLayoutChange) {
+            loadCurrentLayout();
+        }
+
+        finishSpan();
+        logConflictDebug("column preset load end", {
+            noLayoutChange,
+            elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
+        });
+    }
+
     function detectLayoutPresetKey(): string | null {
         return (
             layoutPresetKeys.find((key) => {
                 const layout = layouts[key];
                 const expectedOrder = layout.order ?? "desc";
                 return (
-                    layout.sort === _layoutData.sort &&
-                    expectedOrder === _layoutData.order &&
-                    layout.columns.length === _layoutData.columns.length &&
-                    layout.columns.every(
-                        (col, idx) => col === _layoutData.columns[idx],
-                    )
+                    isSameLayoutState({
+                        sort: layout.sort,
+                        order: expectedOrder,
+                        columns: layout.columns,
+                    })
                 );
             }) ?? null
         );
@@ -1649,10 +1148,8 @@
             showPresetOverflowMenu = true;
             return;
         }
-
-        const available = layoutPresetViewportEl.clientWidth;
-        const required = layoutPresetButtonsEl.scrollWidth;
-        showPresetOverflowMenu = required > available;
+        showPresetOverflowMenu =
+            layoutPresetButtonsEl.scrollWidth > layoutPresetViewportEl.clientWidth;
     }
 
     function openLayoutPresetModal(): void {
@@ -1687,15 +1184,9 @@
         _layoutData.order = "desc";
         selectedLayoutPresetKey = "Summary";
 
-        kpiWidgets = [...DEFAULT_KPI_WIDGETS];
-        saveKpiConfig();
+        kpiWidgetActions.setWidgets([...DEFAULT_KPI_WIDGETS]);
 
-        resetQueryParams(
-            ["layout", "sort", "order", "columns", "kpiw"],
-            ["id"],
-        );
-        syncLayoutAndKpiState(true);
-        saveCurrentQueryParams();
+        syncUrlState({ includeKpi: true, replace: true, persist: true });
         loadCurrentLayout();
     }
 
@@ -1870,67 +1361,7 @@
                     rankingCards,
                     metricCards,
                 }}
-                on:load={(e) => {
-                    const startedAt = performance.now();
-                    const p = e.detail.preset;
-                    const nextSort = p.sort || _layoutData.sort;
-                    const nextOrder = p.order || _layoutData.order;
-                    const nextColumns = Array.isArray(p.columns)
-                        ? [...p.columns]
-                        : [..._layoutData.columns];
-                    const noLayoutChange =
-                        nextSort === _layoutData.sort &&
-                        nextOrder === _layoutData.order &&
-                        nextColumns.length === _layoutData.columns.length &&
-                        nextColumns.every(
-                            (value, idx) => value === _layoutData.columns[idx],
-                        );
-                    logConflictDebug("column preset load start", {
-                        hasKpiConfig: !!p.kpiConfig,
-                        noLayoutChange,
-                        columns: nextColumns.length,
-                        sort: nextSort,
-                        order: nextOrder,
-                    });
-                    incrementPerfCounter("conflict.layout.columnPreset.load");
-                    const finishSpan = startPerfSpan(
-                        "conflict.layout.columnPreset.apply",
-                        {
-                            noLayoutChange,
-                            columns: nextColumns.length,
-                        },
-                    );
-                    _layoutData.columns = nextColumns;
-                    _layoutData.sort = nextSort;
-                    _layoutData.order = nextOrder;
-                    selectedLayoutPresetKey = detectLayoutPresetKey();
-                    if (p.kpiConfig) {
-                        applyKpiConfig(p.kpiConfig);
-                        saveKpiConfig();
-                    } else if (Array.isArray(p.kpis) && p.kpis.length > 0) {
-                        const keys = p.kpis
-                            .filter((key: string) => key in PRESET_CARD_LABELS)
-                            .map((key: string) => key as PresetCardKey);
-                        if (keys.length > 0) {
-                            kpiWidgets = keys.map((key: PresetCardKey) => ({
-                                id: makeId("preset"),
-                                kind: "preset",
-                                key,
-                            }));
-                            saveKpiConfig();
-                        }
-                    }
-                    syncLayoutQueryState();
-                    saveCurrentQueryParams();
-                    if (!noLayoutChange) {
-                        loadCurrentLayout();
-                    }
-                    finishSpan();
-                    logConflictDebug("column preset load end", {
-                        noLayoutChange,
-                        elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
-                    });
-                }}
+                on:load={(e) => handleColumnPresetLoad(e.detail.preset)}
             />
         </li>
 
@@ -1957,217 +1388,29 @@
         </li>
     </ul>
 
-    {#if _rawData && !kpiCollapsed}
-        <div class="ux-surface p-2 mb-3 rounded border">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-                <h5 class="m-0">KPI</h5>
-                <button
-                    type="button"
-                    class="btn-close"
-                    aria-label="Hide KPI"
-                    on:click={toggleKpiCollapsed}
-                ></button>
-            </div>
-
-            <div class="row g-2">
-                {#each kpiWidgets as card}
-                    {@const isRankingCard = card.kind === "ranking"}
-                    <div
-                        class={isRankingCard
-                            ? "col-12 col-lg-6"
-                            : "col-12 col-sm-6 col-xl-4"}
-                    >
-                        <div
-                            class="ux-surface p-3 rounded border h-100 position-relative kpi-card"
-                            class:kpi-card-dragging={draggingWidgetId ===
-                                card.id}
-                            role="group"
-                            draggable="true"
-                            on:dragstart={() => startWidgetDrag(card.id)}
-                            on:dragend={endWidgetDrag}
-                            on:dragover|preventDefault
-                            on:drop|preventDefault={() => dropWidgetOn(card.id)}
-                        >
-                            <button
-                                type="button"
-                                class="btn-close kpi-card-close"
-                                aria-label="Remove KPI card"
-                                on:click={() => removeWidget(card.id)}
-                            ></button>
-                            {#if card.kind === "preset"}
-                                {#if card.key === "duration"}
-                                    <div class="small text-muted">Duration</div>
-                                    <div class="h6 m-0">{durationSoFar}</div>
-                                {:else if card.key === "wars"}
-                                    <div class="small text-muted">
-                                        Wars tracked
-                                    </div>
-                                    <div class="h6 m-0">
-                                        {formatKpiNumber(warsTracked)}
-                                    </div>
-                                {:else if card.key === "damage-total"}
-                                    <div class="small text-muted">
-                                        Total damage exchanged
-                                    </div>
-                                    <div class="h6 m-0">
-                                        {formatKpiNumber(totalDamage)}
-                                    </div>
-                                {:else if card.key === "net-gap"}
-                                    <div class="small text-muted">
-                                        Damage gap
-                                    </div>
-                                    <div class="h6 m-0">
-                                        {formatKpiNumber(damageGap)}
-                                    </div>
-                                    {#if leadingCoalition}
-                                        <div class="small text-muted">
-                                            Lead: {leadingCoalition.name}
-                                        </div>
-                                    {/if}
-                                {:else if card.key === "c1-dealt"}
-                                    <div class="small text-muted">
-                                        {coalitionSummary?.[0]?.name ??
-                                            "Coalition 1"} dealt
-                                    </div>
-                                    <div class="h6 m-0">
-                                        {formatKpiNumber(
-                                            coalitionSummary?.[0]?.dealt,
-                                        )}
-                                    </div>
-                                {:else if card.key === "c2-dealt"}
-                                    <div class="small text-muted">
-                                        {coalitionSummary?.[1]?.name ??
-                                            "Coalition 2"} dealt
-                                    </div>
-                                    <div class="h6 m-0">
-                                        {formatKpiNumber(
-                                            coalitionSummary?.[1]?.dealt,
-                                        )}
-                                    </div>
-                                {:else if card.key === "off-wars-per-nation"}
-                                    <div class="small text-muted">
-                                        Offensive wars per nation
-                                    </div>
-                                    <div class="h6 m-0">
-                                        {offWarsPerNationStats
-                                            ? offWarsPerNationStats.perNation.toFixed(
-                                                  2,
-                                              )
-                                            : "N/A"}
-                                    </div>
-                                    {#if offWarsPerNationStats}
-                                        <div class="small text-muted">
-                                            {formatKpiNumber(
-                                                offWarsPerNationStats.totalOffWars,
-                                            )}
-                                            offensive / {formatKpiNumber(
-                                                offWarsPerNationStats.totalNations,
-                                            )}
-                                            nations
-                                        </div>
-                                    {/if}
-                                {/if}
-                            {:else if card.kind === "ranking"}
-                                {@const rows = getRankingRows(card)}
-                                <div class="small text-muted mb-1">
-                                    Top {card.limit}
-                                    {card.entity}s by
-                                    {card.source === "aava"
-                                        ? getAavaMetricLabel(
-                                              card.metric,
-                                              card.aavaSnapshot?.header ??
-                                                  "wars",
-                                          )
-                                        : metricLabel(card.metric)}
-                                    ({widgetScopeLabel(card)})
-                                </div>
-                                <div class="table-responsive">
-                                    <table
-                                        class="table table-sm table-striped m-0"
-                                    >
-                                        <thead>
-                                            <tr>
-                                                <th>#</th>
-                                                <th
-                                                    >{card.entity === "alliance"
-                                                        ? "Alliance"
-                                                        : "Nation"}</th
-                                                >
-                                                {#if card.entity === "nation"}
-                                                    <th>Alliance</th>
-                                                {/if}
-                                                <th class="text-end">Value</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {#each rows as row, i}
-                                                <tr>
-                                                    <td>{i + 1}</td>
-                                                    <td>
-                                                        {#if card.entity === "alliance"}
-                                                            <a
-                                                                href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}
-                                                                >{row.label}</a
-                                                            >
-                                                        {:else}
-                                                            <a
-                                                                href={`https://politicsandwar.com/nation/id=${row.nationId}`}
-                                                                >{row.label}</a
-                                                            >
-                                                        {/if}
-                                                    </td>
-                                                    {#if card.entity === "nation"}
-                                                        <td>
-                                                            <a
-                                                                href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}
-                                                                >{row.allianceName}</a
-                                                            >
-                                                        </td>
-                                                    {/if}
-                                                    <td class="text-end"
-                                                        >{row.valueText}</td
-                                                    >
-                                                </tr>
-                                            {/each}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            {:else}
-                                <div class="small text-muted">
-                                    {card.aggregation.toUpperCase()}
-                                    {card.entity}
-                                    {card.source === "aava"
-                                        ? getAavaMetricLabel(
-                                              card.metric,
-                                              card.aavaSnapshot?.header ??
-                                                  "wars",
-                                          )
-                                        : metricLabel(card.metric)}
-                                    {card.normalizeBy
-                                        ? ` per ${
-                                              card.source === "aava"
-                                                  ? getAavaMetricLabel(
-                                                        card.normalizeBy,
-                                                        card.aavaSnapshot
-                                                            ?.header ?? "wars",
-                                                    )
-                                                  : metricLabel(
-                                                        card.normalizeBy,
-                                                    )
-                                          }`
-                                        : ""}
-                                    ({widgetScopeLabel(card)})
-                                </div>
-                                <div class="h6 m-0">
-                                    {formatKpiNumber(getMetricCardValue(card))}
-                                </div>
-                            {/if}
-                        </div>
-                    </div>
-                {/each}
-            </div>
-        </div>
-    {/if}
+    <ConflictKpiSection
+        visible={!!_rawData && !kpiCollapsed}
+        {kpiWidgets}
+        {draggingWidgetId}
+        {durationSoFar}
+        {warsTracked}
+        {totalDamage}
+        {damageGap}
+        {leadingCoalition}
+        {coalitionSummary}
+        {offWarsPerNationStats}
+        {formatKpiNumber}
+        getRankingRows={(card) => kpiComputations.getRankingRows(card)}
+        getMetricCardValue={(card) => kpiComputations.getMetricCardValue(card)}
+        {metricLabel}
+        {widgetScopeLabel}
+        {getAavaMetricLabel}
+        on:toggleCollapse={toggleKpiCollapsed}
+        on:startDrag={(event) => startWidgetDrag(event.detail.id)}
+        on:endDrag={endWidgetDrag}
+        on:dropOn={(event) => dropWidgetOn(event.detail.id)}
+        on:removeWidget={(event) => kpiWidgetActions.removeWidget(event.detail.id)}
+    />
 
     <SelectionModal
         open={showLayoutPresetModal}
@@ -2201,22 +1444,51 @@
         ]}
         {metricsOptions}
         {selectedSnapshotLabel}
-        canAddRanking={hasSelectionForScope(rankingScopeToAdd)}
-        canAddMetric={hasSelectionForScope(metricScopeToAdd)}
-        canAddRankingReason={kpiAddReasonForScope(rankingScopeToAdd)}
-        canAddMetricReason={kpiAddReasonForScope(metricScopeToAdd)}
+        canAddRanking={hasSelectionForScopeFromState(
+            rankingScopeToAdd,
+            selectedAllianceIdsForKpi,
+            selectedNationIdsForKpi,
+        )}
+        canAddMetric={hasSelectionForScopeFromState(
+            metricScopeToAdd,
+            selectedAllianceIdsForKpi,
+            selectedNationIdsForKpi,
+        )}
+        canAddRankingReason={kpiAddReasonForScopeFromState(
+            rankingScopeToAdd,
+            selectedAllianceIdsForKpi,
+            selectedNationIdsForKpi,
+        )}
+        canAddMetricReason={kpiAddReasonForScopeFromState(
+            metricScopeToAdd,
+            selectedAllianceIdsForKpi,
+            selectedNationIdsForKpi,
+        )}
         {widgetManagerLabel}
         {metricLabel}
         {metricDescription}
         showAavaHint={!!conflictId}
         aavaHref={conflictId ? `aava?id=${conflictId}` : null}
         on:close={closeKpiBuilderModal}
-        on:removeWidget={(event) => removeWidget(event.detail.id)}
+        on:removeWidget={(event) => kpiWidgetActions.removeWidget(event.detail.id)}
         on:moveWidget={(event) =>
-            moveWidget(event.detail.id, event.detail.delta)}
-        on:addPreset={(event) => addPresetCard(event.detail.key)}
-        on:addRanking={addRankingCard}
-        on:addMetric={addMetricCard}
+            kpiWidgetActions.moveWidget(event.detail.id, event.detail.delta)}
+        on:addPreset={(event) => kpiWidgetActions.addPresetCard(event.detail.key)}
+        on:addRanking={() =>
+            kpiWidgetActions.addRankingCard({
+                entity: rankingEntityToAdd,
+                metric: rankingMetricToAdd,
+                scope: rankingScopeToAdd,
+                limit: rankingLimitToAdd,
+            })}
+        on:addMetric={() =>
+            kpiWidgetActions.addMetricCard({
+                entity: metricEntityToAdd,
+                metric: metricMetricToAdd,
+                scope: metricScopeToAdd,
+                aggregation: metricAggToAdd,
+                normalizeBy: metricNormalizeByToAdd,
+            })}
         bind:rankingEntityToAdd
         bind:rankingMetricToAdd
         bind:rankingScopeToAdd
@@ -2320,3 +1592,4 @@
         }
     }
 </style>
+

@@ -1,5 +1,5 @@
 import type { SharedKpiConfig } from "./kpi";
-import { getPageStorageKey } from "./queryState";
+import { getPageStorageKey } from "./queryStorage";
 
 export type ColumnPreset = {
     columns: string[];

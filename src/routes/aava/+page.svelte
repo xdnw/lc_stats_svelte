@@ -14,7 +14,6 @@
     } from "$lib/selection/types";
     import { base } from "$app/paths";
     import {
-        addFormatters,
         buildAavaSelectionRows,
         buildCoalitionAllianceItems,
         buildStringSelectionItems,
@@ -42,6 +41,9 @@
         validateSingleSelection,
         yieldToMain,
     } from "$lib";
+    import { registerFormatters } from "$lib/formatters";
+    import { modalWithCloseButton } from "$lib/modals";
+    import { commafy, formatDate } from "$lib/formatting";
     import { AAVA_METRIC_KEYS, getAavaMetricLabels } from "$lib/aava";
     import {
         makeKpiId,
@@ -61,7 +63,7 @@
     import {
         getCompositeContextStorageScope,
         getScopedPageStorageKey,
-    } from "$lib/queryState";
+    } from "$lib/queryStorage";
     import { appConfig as config } from "$lib/appConfig";
     import type { ConflictTabCapabilities } from "$lib/conflictTabs";
     import { deriveAavaCapability } from "$lib/aava";
@@ -1058,7 +1060,12 @@
             preserveParams: ["id", "ids", "aid"],
             storageKey: (query) => getAavaQueryStorageKey(query),
             onBeforeResolve: () => {
-                addFormatters();
+                registerFormatters({
+                    commafy,
+                    formatDate,
+                    formatAllianceName,
+                    modalWithCloseButton,
+                });
             },
             onMissingContext: () => {
                 _loadError = "Missing conflict context in URL (expected id or ids+aid).";

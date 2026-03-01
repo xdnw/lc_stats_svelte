@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { browser } from "$app/environment";
     import { base } from "$app/paths";
     import { page } from "$app/stores";
     import { onMount, tick } from "svelte";
@@ -7,20 +8,22 @@
     import Progress from "../../../components/Progress.svelte";
     import ShareResetBar from "../../../components/ShareResetBar.svelte";
     import { appConfig as config } from "$lib/appConfig";
-    import { addFormatters } from "$lib/formatterInit";
     import { decompressBson } from "$lib/binary";
     import { computeLayoutTableData } from "$lib/layoutTable";
-    import { setupContainer } from "$lib/containerSetup";
-    import { formatAllianceName, formatNationName } from "$lib/formatting";
+    import { setupContainer } from "$lib/tableAdapter";
+    import { commafy, formatAllianceName, formatDate, formatNationName } from "$lib/formatting";
+    import { registerFormatters } from "$lib/formatters";
     import { modalWithCloseButton } from "$lib/modals";
+    import {
+        getCurrentQueryParams,
+        setQueryParams,
+    } from "$lib/queryState";
     import {
         applySavedQueryParamsIfMissing,
         getCompositeContextStorageScope,
-        getCurrentQueryParams,
         getScopedPageStorageKey,
         saveCurrentQueryParams,
-        setQueryParams,
-    } from "$lib/queryState";
+    } from "$lib/queryStorage";
     import { encodeCompositeSelectionIds } from "$lib/conflictIds";
     import { getConflictDataUrl } from "$lib/runtime";
     import type { CompositeMergeDiagnostics } from "$lib/compositeMerge";
@@ -98,10 +101,12 @@
     };
 
     $: {
-        const nextSearch = $page.url.search;
-        if (nextSearch !== lastParsedUrlSearch) {
-            lastParsedUrlSearch = nextSearch;
-            parseLayoutFromQuery($page.url.searchParams);
+        if (browser) {
+            const nextSearch = $page.url.search;
+            if (nextSearch !== lastParsedUrlSearch) {
+                lastParsedUrlSearch = nextSearch;
+                parseLayoutFromQuery($page.url.searchParams);
+            }
         }
     }
 
@@ -549,7 +554,12 @@
     }
 
     onMount(() => {
-        addFormatters();
+        registerFormatters({
+            commafy,
+            formatDate,
+            formatAllianceName,
+            modalWithCloseButton,
+        });
 
         applySavedQueryParamsIfMissing(
             ["aid", "layout", "sort", "order", "columns"],

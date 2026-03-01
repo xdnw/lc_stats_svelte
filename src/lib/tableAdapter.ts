@@ -12,6 +12,10 @@ import {
     bindExportActions,
     getColumnToneClass,
 } from "./tableAdapter/tableShell";
+import { commafy } from "./formatting";
+import { htmlToElement, uuidv4 } from "./misc";
+import { setQueryParam } from "./queryState";
+import { ensureScriptsLoaded, ensureStylesLoaded } from "./runtime";
 import type { TableData } from "./types";
 
 type DataTableRender = NonNullable<
@@ -26,6 +30,7 @@ type TableContainerState = {
     schemaKey: string;
     tableElem: HTMLTableElement;
     containerId: string;
+    instrumentation: ResolvedTableAdapterInstrumentation;
     runtimeState: TableRuntimeState;
     bootstrappedData: TableData;
     tableApi: any | null;
@@ -37,22 +42,65 @@ type TableContainerState = {
 
 const containerStateByElem = new WeakMap<HTMLElement, TableContainerState>();
 
-function shouldLogContainer(containerId: string): boolean {
-    return containerId === "conflict-table-1" || containerId === "aava-table";
+type TableAdapterInstrumentationTags = Record<
+    string,
+    string | number | boolean | null | undefined
+>;
+
+export type TableAdapterInstrumentation = {
+    startSpan?: (name: string, tags?: TableAdapterInstrumentationTags) => () => void;
+    incrementCounter?: (
+        name: string,
+        delta?: number,
+        tags?: TableAdapterInstrumentationTags,
+    ) => void;
+    shouldLog?: (containerId: string) => boolean;
+    log?: (
+        containerId: string,
+        message: string,
+        meta?: Record<string, unknown>,
+    ) => void;
+};
+
+type ResolvedTableAdapterInstrumentation = {
+    startSpan: (name: string, tags?: TableAdapterInstrumentationTags) => () => void;
+    incrementCounter: (
+        name: string,
+        delta?: number,
+        tags?: TableAdapterInstrumentationTags,
+    ) => void;
+    log: (message: string, meta?: Record<string, unknown>) => void;
+};
+
+function resolveInstrumentation(
+    deps: TableAdapterDeps,
+    containerId: string,
+): ResolvedTableAdapterInstrumentation {
+    const hooks = deps.instrumentation;
+    const shouldLog = hooks?.shouldLog ?? (() => false);
+    const baseLog = hooks?.log;
+
+    return {
+        startSpan: hooks?.startSpan ?? startPerfSpan,
+        incrementCounter: hooks?.incrementCounter ?? incrementPerfCounter,
+        log: (message, meta) => {
+            if (!baseLog || !shouldLog(containerId)) return;
+            baseLog(containerId, message, meta);
+        },
+    };
 }
 
-function logTableAdapter(
-    containerId: string,
-    message: string,
-    meta?: Record<string, unknown>,
-): void {
-    if (!shouldLogContainer(containerId)) return;
-    if (meta) {
-        console.info(`[table-adapter:${containerId}] ${message}`, meta);
-        return;
-    }
-    console.info(`[table-adapter:${containerId}] ${message}`);
-}
+const defaultInstrumentation: TableAdapterInstrumentation = {
+    shouldLog: (containerId) =>
+        containerId === "conflict-table-1" || containerId === "aava-table",
+    log: (containerId, message, meta) => {
+        if (meta) {
+            console.info(`[table-adapter:${containerId}] ${message}`, meta);
+            return;
+        }
+        console.info(`[table-adapter:${containerId}] ${message}`);
+    },
+};
 
 export type TableAdapterDeps = {
     uuidv4: () => string;
@@ -65,6 +113,7 @@ export type TableAdapterDeps = {
     ) => void;
     ensureScriptsLoaded: (scriptIds: string[]) => Promise<void>;
     ensureStylesLoaded: (styleIds: string[]) => Promise<void>;
+    instrumentation?: TableAdapterInstrumentation;
 };
 
 function ensureJqueryLoaded(deps: TableAdapterDeps): Promise<void> {
@@ -86,21 +135,21 @@ function setupTable(
     containerElem: HTMLElement,
     tableElem: HTMLElement,
     runtimeState: TableRuntimeState,
+    instrumentation: ResolvedTableAdapterInstrumentation,
     callbacks: TableCallbacks | undefined,
     deps: TableAdapterDeps,
     onTableReady?: () => void,
     onApiReady?: (tableApi: any, resetSelection: () => void) => void,
 ) {
-    const containerId = containerElem.id || "(anonymous-container)";
     const setupStartedAt = performance.now();
-    logTableAdapter(containerId, "setupTable start", {
+    instrumentation.log("setupTable start", {
         rows: runtimeState.dataSet.data.length,
         columns: runtimeState.dataSet.columns.length,
     });
 
     const jqueryLoadStartedAt = performance.now();
     ensureJqueryLoaded(deps).then(() => {
-        logTableAdapter(containerId, "jQuery ready", {
+        instrumentation.log("jQuery ready", {
             elapsedMs: Number((performance.now() - jqueryLoadStartedAt).toFixed(2)),
         });
         const jqTable = $(tableElem);
@@ -208,13 +257,13 @@ function setupTable(
             getColumnToneClass,
             getTableApi: () => tableArr[0],
         });
-        logTableAdapter(containerId, "filters scaffold ready", {
+        instrumentation.log("filters scaffold ready", {
             elapsedMs: Number((performance.now() - scaffoldStartedAt).toFixed(2)),
         });
 
         const dtLoadStartedAt = performance.now();
         ensureDTLoaded(deps).then(() => {
-            logTableAdapter(containerId, "DataTables assets ready", {
+            instrumentation.log("DataTables assets ready", {
                 elapsedMs: Number((performance.now() - dtLoadStartedAt).toFixed(2)),
             });
             const selectionController = createSelectionController({
@@ -271,14 +320,14 @@ function setupTable(
                     if (shouldDeferInitialSort) {
                         requestAnimationFrame(() => {
                             api.order([sort]).draw(false);
-                            logTableAdapter(containerId, "deferred initial sort applied", {
+                            instrumentation.log("deferred initial sort applied", {
                                 sortIndex: sort[0],
                                 sortDir: sort[1],
                             });
                         });
                     }
                     readyForReorderRedraw = true;
-                    logTableAdapter(containerId, "DataTable initComplete", {
+                    instrumentation.log("DataTable initComplete", {
                         elapsedMs: Number((performance.now() - dataTableInitStartedAt).toFixed(2)),
                     });
                     onTableReady?.();
@@ -392,7 +441,7 @@ function setupTable(
             requestAnimationFrame(() => {
                 table.columns.adjust();
             });
-            logTableAdapter(containerId, "setupTable end", {
+            instrumentation.log("setupTable end", {
                 elapsedMs: Number((performance.now() - setupStartedAt).toFixed(2)),
             });
         });
@@ -423,14 +472,14 @@ function applyIncrementalUpdate(state: TableContainerState, data: TableData): vo
 
     if (!state.tableApi) {
         if (data === state.bootstrappedData) {
-            logTableAdapter(state.containerId, "incremental update skipped (matches bootstrap data)", {
+            state.instrumentation.log("incremental update skipped (matches bootstrap data)", {
                 rows: data.data.length,
                 columns: data.columns.length,
             });
             return;
         }
         state.pendingData = data;
-        logTableAdapter(state.containerId, "incremental update deferred (api not ready)", {
+        state.instrumentation.log("incremental update deferred (api not ready)", {
             rows: data.data.length,
             columns: data.columns.length,
         });
@@ -510,7 +559,7 @@ function applyIncrementalUpdate(state: TableContainerState, data: TableData): vo
     tableApi.draw(false);
     const drawMs = performance.now() - drawStartedAt;
 
-    logTableAdapter(state.containerId, "incremental update applied", {
+    state.instrumentation.log("incremental update applied", {
         rows: data.data.length,
         columns: data.columns.length,
         visibilityChanges,
@@ -536,7 +585,7 @@ function disposeContainerState(container: HTMLElement): void {
     containerStateByElem.delete(container);
 }
 
-export function setupContainer(
+export function setupContainerWithDeps(
     container: HTMLElement,
     data: TableData,
     deps: TableAdapterDeps,
@@ -544,32 +593,33 @@ export function setupContainer(
 ): HTMLTableElement {
     const containerId = container.id || "(anonymous-container)";
     const setupStartedAt = performance.now();
-    const finishSpan = startPerfSpan("table.setupContainer", {
+    const instrumentation = resolveInstrumentation(deps, containerId);
+    const finishSpan = instrumentation.startSpan("table.setupContainer", {
         rows: data.data.length,
         columns: data.columns.length,
     });
     const schemaKey = buildSchemaKey(data);
     const existingState = containerStateByElem.get(container);
     if (existingState && existingState.schemaKey === schemaKey) {
-        incrementPerfCounter("table.incremental.reuse", 1, {
+        instrumentation.incrementCounter("table.incremental.reuse", 1, {
             reason: "schema-match",
         });
-        logTableAdapter(containerId, "reuse schema-match", {
+        instrumentation.log("reuse schema-match", {
             rows: data.data.length,
             columns: data.columns.length,
         });
         applyIncrementalUpdate(existingState, data);
         finishSpan();
-        logTableAdapter(containerId, "setupContainer end (reuse)", {
+        instrumentation.log("setupContainer end (reuse)", {
             elapsedMs: Number((performance.now() - setupStartedAt).toFixed(2)),
         });
         return existingState.tableElem;
     }
 
-    incrementPerfCounter("table.incremental.rebuild", 1, {
+    instrumentation.incrementCounter("table.incremental.rebuild", 1, {
         reason: existingState ? "schema-change" : "first-build",
     });
-    logTableAdapter(containerId, "rebuild", {
+    instrumentation.log("rebuild", {
         reason: existingState ? "schema-change" : "first-build",
         rows: data.data.length,
         columns: data.columns.length,
@@ -590,6 +640,7 @@ export function setupContainer(
         schemaKey,
         tableElem: table,
         containerId,
+        instrumentation,
         runtimeState,
         bootstrappedData: data,
         tableApi: null,
@@ -605,13 +656,14 @@ export function setupContainer(
         container,
         table,
         runtimeState,
+        instrumentation,
         callbacks,
         deps,
         finishSpan,
         (tableApi, resetSelection) => {
             nextState.tableApi = tableApi;
             nextState.resetSelection = resetSelection;
-            logTableAdapter(containerId, "table api ready", {
+            instrumentation.log("table api ready", {
                 elapsedMs: Number((performance.now() - setupStartedAt).toFixed(2)),
             });
             if (nextState.pendingData) {
@@ -622,10 +674,31 @@ export function setupContainer(
                         applyIncrementalUpdate(nextState, pending);
                     });
                 } else {
-                    logTableAdapter(containerId, "pending update skipped (already bootstrapped)");
+                    instrumentation.log("pending update skipped (already bootstrapped)");
                 }
             }
         },
     );
     return table;
+}
+
+export function setupContainer(
+    container: HTMLElement,
+    data: TableData,
+    callbacks?: TableCallbacks,
+): HTMLTableElement {
+    return setupContainerWithDeps(
+        container,
+        data,
+        {
+            uuidv4,
+            htmlToElement,
+            commafy,
+            setQueryParam,
+            ensureScriptsLoaded,
+            ensureStylesLoaded,
+            instrumentation: defaultInstrumentation,
+        },
+        callbacks,
+    );
 }

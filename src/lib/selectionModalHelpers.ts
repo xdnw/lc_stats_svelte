@@ -6,6 +6,10 @@ type CoalitionAllianceShape = {
     name?: string;
 };
 
+type CoalitionAllianceIdsShape = {
+    alliance_ids: number[];
+};
+
 function parseNumber(value: unknown): number | null {
     if (typeof value === "number") {
         return Number.isFinite(value) ? value : null;
@@ -14,11 +18,7 @@ function parseNumber(value: unknown): number | null {
         const trimmed = value.trim();
         if (trimmed.length === 0) return null;
         const parsed = Number(trimmed);
-        if (Number.isFinite(parsed)) return parsed;
-        const match = trimmed.match(/-?\d+(?:\.\d+)?/);
-        if (!match) return null;
-        const extracted = Number(match[0]);
-        return Number.isFinite(extracted) ? extracted : null;
+        return Number.isFinite(parsed) ? parsed : null;
     }
     return null;
 }
@@ -33,14 +33,6 @@ function toRecord<T>(value: Array<T> | Record<string, T> | null | undefined): Re
         return out;
     }
     return value;
-}
-
-function isSetLike(value: unknown): value is Set<unknown> {
-    return typeof Set !== "undefined" && value instanceof Set;
-}
-
-function isMapLike(value: unknown): value is Map<unknown, unknown> {
-    return typeof Map !== "undefined" && value instanceof Map;
 }
 
 function notNull<T>(value: T | null): value is T {
@@ -69,54 +61,16 @@ function extractCoalitionAlliancePairs(
             .filter(notNull);
     }
 
-    if (isSetLike(idsRaw)) {
-        const names = Array.isArray(namesRaw) ? namesRaw : [];
-        return Array.from(idsRaw)
-            .map((rawId, index) => {
-                const id = parseNumber(rawId);
-                return id === null ? null : { id, name: names[index] };
-            })
-            .filter(notNull);
-    }
-
-    if (isMapLike(idsRaw)) {
-        const pairs = Array.from(idsRaw.entries())
-            .map(([key, value]) => {
-                const id = parseNumber(key) ?? parseNumber(value);
-                const name = typeof value === "string" ? value : null;
-                return id === null ? null : { id, name };
-            })
-            .filter(notNull);
-        if (pairs.length > 0) return pairs;
-    }
-
-    const idRecord = idsRaw;
+    const idRecord = toRecord(idsRaw as Record<string, number | string | null | undefined>);
     const nameRecord = toRecord(namesRaw as any);
     const entries = Object.entries(idRecord);
 
-    const parsedByValue = entries
+    return entries
         .map(([key, value]) => {
             const id = parseNumber(value);
-            return id === null ? null : { key, id, name: asOptionalString(nameRecord[key]) };
+            return id === null ? null : { id, name: asOptionalString(nameRecord[key]) };
         })
         .filter(notNull);
-    if (parsedByValue.length > 0) {
-        return parsedByValue.map(({ id, name }) => ({ id, name }));
-    }
-
-    const parsedByKey = entries
-        .map(([key, value]) => {
-            const id = parseNumber(key);
-            return id === null
-                ? null
-                : {
-                    id,
-                    name: typeof value === "string" ? value : asOptionalString(nameRecord[key]),
-                };
-        })
-        .filter(notNull);
-
-    return parsedByKey;
 }
 
 export function toNumberSelection(ids: SelectionId[]): number[] {
@@ -136,6 +90,10 @@ export function validateSingleSelection(
     label: string,
 ): string | null {
     return ids.length === 1 ? null : `Select exactly one ${label}.`;
+}
+
+export function validateAtLeastOneSelection(ids: SelectionId[]): string | null {
+    return ids.length > 0 ? null : "Keep at least one alliance selected.";
 }
 
 export function buildStringSelectionItems(values: string[]): SelectionModalItem[] {
@@ -176,4 +134,30 @@ export function validateAtLeastOnePerCoalition(
     return everyCoalitionHasSelection
         ? null
         : "Keep at least one alliance selected in each coalition.";
+}
+
+export function getSelectedAllianceIdsForCoalition(
+    coalitions: CoalitionAllianceIdsShape[] | null | undefined,
+    coalitionIndex: 0 | 1,
+    selectedIds: Set<number>,
+): number[] {
+    const coalition = coalitions?.[coalitionIndex];
+    if (!coalition) return [];
+    return coalition.alliance_ids.filter((id) => selectedIds.has(id));
+}
+
+export function mergeCoalitionAllianceSelection(
+    coalitions: CoalitionAllianceIdsShape[] | null | undefined,
+    coalitionIndex: 0 | 1,
+    selectedIds: Set<number>,
+    modalSelection: SelectionId[],
+): Set<number> {
+    const nextIds = toNumberSelection(modalSelection);
+    const otherIndex = (coalitionIndex === 0 ? 1 : 0) as 0 | 1;
+    const preservedOther = getSelectedAllianceIdsForCoalition(
+        coalitions,
+        otherIndex,
+        selectedIds,
+    );
+    return new Set([...preservedOther, ...nextIds]);
 }

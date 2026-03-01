@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { page } from "$app/stores";
     import { onMount, onDestroy, tick } from "svelte";
     import Select from "svelte-select";
     import ExportDataMenu from "../../components/ExportDataMenu.svelte";
@@ -48,9 +47,12 @@
         WorkerDatasetComputeResult,
         WorkerDatasetInitRequest,
         WorkerDatasetInitResult,
-        WorkerDatasetReleaseRequest,
-        WorkerDatasetReleaseResult,
     } from "$lib/workerDatasetProtocol";
+    import {
+        createModuleWorker,
+        releaseWorkerDataset,
+        terminateWorker,
+    } from "$lib/workerDatasetLifecycle";
 
     function getPlotly(): any {
         return getPlotlyGlobal();
@@ -62,13 +64,6 @@
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
-
-    $: {
-        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
-        if (!conflictId && urlConflictId.length > 0) {
-            conflictId = urlConflictId;
-        }
-    }
 
     let normalize_x: boolean = false;
     let normalize_y: boolean = false;
@@ -268,18 +263,10 @@
     }
     let graphDiv: HTMLDivElement;
     onMount(async () => {
-        try {
-            bubbleWorker = new Worker(
-                new URL("../../workers/bubbleTraceWorker.ts", import.meta.url),
-                { type: "module" },
-            );
-        } catch (error) {
-            bubbleWorker = null;
-            console.warn(
-                "Bubble worker unavailable, using main-thread fallback",
-                error,
-            );
-        }
+        bubbleWorker = createModuleWorker(
+            new URL("../../workers/bubbleTraceWorker.ts", import.meta.url),
+            "Bubble worker unavailable, using main-thread fallback",
+        );
 
         bootstrapIdRouteLifecycle({
             restoreParams: ["city_min", "city_max", "time", "normalize", "selected"],
@@ -344,26 +331,13 @@
         latestGraphRunId++;
         lastBubbleRenderKey = null;
         lastPlotSchemaKey = null;
-        if (bubbleWorker && bubbleWorkerDatasetKey) {
-            void requestWorkerRpc<
-                WorkerDatasetReleaseRequest,
-                WorkerDatasetReleaseResult
-            >(
-                bubbleWorker,
-                {
-                    action: "release",
-                    datasetKey: bubbleWorkerDatasetKey,
-                },
-                {
-                    timeoutMs: 2_000,
-                    operation: "bubble dataset release",
-                },
-            ).catch(() => {});
-        }
-        if (bubbleWorker) {
-            bubbleWorker.terminate();
-            bubbleWorker = null;
-        }
+        releaseWorkerDataset(
+            bubbleWorker,
+            bubbleWorkerDatasetKey,
+            "bubble dataset release",
+        );
+        terminateWorker(bubbleWorker);
+        bubbleWorker = null;
         bubbleWorkerDatasetKey = null;
         bubbleWorkerDatasetReady = null;
         const sliderApi = getSliderApi();

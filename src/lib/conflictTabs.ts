@@ -64,29 +64,15 @@ const SINGLE_DEFAULT_CAPABILITIES: Record<ConflictTab, boolean> = {
     chord: true,
 };
 
-function resolvePathname(urlOrSearchParams: URL | URLSearchParams | string): string | null {
+function resolvePathname(urlOrSearchParams: URL | URLSearchParams): string | null {
     if (urlOrSearchParams instanceof URLSearchParams) return null;
     if (urlOrSearchParams instanceof URL) return urlOrSearchParams.pathname;
-    if (typeof urlOrSearchParams === "string") {
-        try {
-            return new URL(urlOrSearchParams, "https://local.invalid").pathname;
-        } catch {
-            return null;
-        }
-    }
     return null;
 }
 
-function resolveSearchParams(urlOrSearchParams: URL | URLSearchParams | string): URLSearchParams {
+function resolveSearchParams(urlOrSearchParams: URL | URLSearchParams): URLSearchParams {
     if (urlOrSearchParams instanceof URLSearchParams) return urlOrSearchParams;
     if (urlOrSearchParams instanceof URL) return urlOrSearchParams.searchParams;
-    if (typeof urlOrSearchParams === "string") {
-        try {
-            return new URL(urlOrSearchParams, "https://local.invalid").searchParams;
-        } catch {
-            return new URLSearchParams();
-        }
-    }
     return new URLSearchParams();
 }
 
@@ -107,13 +93,13 @@ export function layoutTabFromIndex(layout: number): ConflictLayoutTab {
 }
 
 export function resolveLayoutTabFromUrl(
-    urlOrSearchParams: URL | URLSearchParams | string,
+    urlOrSearchParams: URL | URLSearchParams,
 ): ConflictLayoutTab {
     return normalizeLayoutTab(resolveSearchParams(urlOrSearchParams).get("layout"));
 }
 
 export function resolveActiveTabFromUrl(
-    urlOrSearchParams: URL | URLSearchParams | string,
+    urlOrSearchParams: URL | URLSearchParams,
     routeKind: ConflictRouteKind,
 ): ConflictTab {
     const pathname = resolvePathname(urlOrSearchParams);

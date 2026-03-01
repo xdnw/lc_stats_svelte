@@ -5,21 +5,21 @@ export {
     getCurrentQueryParams,
     encodeQueryParamValue,
     decodeQueryParamValue,
-    getPageStorageKey,
-    getCompositeContextStorageScope,
-    saveCurrentQueryParams,
-    readSavedQueryParams,
-    applySavedQueryParamsIfMissing,
     resetQueryParams,
 } from './queryState';
 export {
-    bootstrapIdRoute,
+    getPageStorageKey,
+    getScopedPageStorageKey,
+    getCompositeContextStorageScope,
+    saveCurrentQueryParams,
+    applySavedQueryParamsIfMissing,
+} from './queryStorage';
+export {
     bootstrapIdRouteLifecycle,
     bootstrapConflictRouteLifecycle,
 } from './routeBootstrap';
 export type {
-    IdRouteBootstrapOptions,
-    IdRouteLifecycleOptions,
+    IdRouteOptions,
     ConflictRouteContext,
     ConflictRouteLifecycleOptions,
 } from './routeBootstrap';
@@ -108,11 +108,15 @@ export {
     getPerfSnapshot,
     clearPerfSnapshot,
 } from './perf';
-export { addFormatters } from './formatterInit';
 export { computeLayoutTableData } from './layoutTable';
-export { setupContainer } from './containerSetup';
+export { setupContainer, setupContainerWithDeps } from './tableAdapter';
 export { requestWorkerRpc } from './workerRpc';
 export type { WorkerRpcOptions } from './workerRpc';
+export {
+    createModuleWorker,
+    releaseWorkerDataset,
+    terminateWorker,
+} from './workerDatasetLifecycle';
 export {
     resolveCellFormatter,
 } from './tableCallbacks';
@@ -179,9 +183,12 @@ export {
     toNumberSelection,
     firstSelectedString,
     validateSingleSelection,
+    validateAtLeastOneSelection,
     buildStringSelectionItems,
     buildCoalitionAllianceItems,
     validateAtLeastOnePerCoalition,
+    getSelectedAllianceIdsForCoalition,
+    mergeCoalitionAllianceSelection,
 } from './selectionModalHelpers';
 export type {
     SelectionId,

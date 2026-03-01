@@ -2,7 +2,6 @@
     /**
      * This page is for viewing tiering charts for a conflict
      */
-    import { page } from "$app/stores";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ExportDataMenu from "../../components/ExportDataMenu.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
@@ -29,7 +28,9 @@
         setQueryParam,
         bootstrapIdRouteLifecycle,
         resolveMetricAccessors,
-        toNumberSelection,
+        getSelectedAllianceIdsForCoalition,
+        mergeCoalitionAllianceSelection,
+        validateAtLeastOneSelection,
         getConflictDataUrl,
         getConflictGraphDataUrl,
         formatDaysToDate,
@@ -57,9 +58,12 @@
         WorkerDatasetComputeResult,
         WorkerDatasetInitRequest,
         WorkerDatasetInitResult,
-        WorkerDatasetReleaseRequest,
-        WorkerDatasetReleaseResult,
     } from "$lib/workerDatasetProtocol";
+    import {
+        createModuleWorker,
+        releaseWorkerDataset,
+        terminateWorker,
+    } from "$lib/workerDatasetLifecycle";
     import Select from "svelte-select";
     import * as d3 from "d3";
     import noUiSlider from "nouislider";
@@ -69,13 +73,6 @@
     let conflictName = "";
     let conflictId: string | null = null;
     let datasetProvenance = "";
-
-    $: {
-        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
-        if (!conflictId && urlConflictId.length > 0) {
-            conflictId = urlConflictId;
-        }
-    }
 
     let normalize: boolean = false;
     let previous_normalize: boolean = false;
@@ -243,15 +240,16 @@
     })();
 
     function validateAllianceSelection(ids: SelectionId[]): string | null {
-        return ids.length > 0 ? null : "Keep at least one alliance selected.";
+        return validateAtLeastOneSelection(ids);
     }
 
     function openAllianceModal(coalitionIndex: 0 | 1) {
         activeAllianceCoalitionIndex = coalitionIndex;
-        if (_rawData)
-            allianceModalSelectedIds = _rawData.coalitions[
-                coalitionIndex
-            ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
+        allianceModalSelectedIds = getSelectedAllianceIdsForCoalition(
+            _rawData?.coalitions,
+            coalitionIndex,
+            _allowedAllianceIds,
+        );
         showAllianceModal = true;
     }
 
@@ -261,14 +259,12 @@
 
     function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
         if (!_rawData) return;
-        const nextIds = toNumberSelection(event.detail.ids);
-        const otherIndex = (activeAllianceCoalitionIndex === 0 ? 1 : 0) as
-            | 0
-            | 1;
-        const preservedOther = _rawData.coalitions[
-            otherIndex
-        ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
-        _allowedAllianceIds = new Set([...preservedOther, ...nextIds]);
+        _allowedAllianceIds = mergeCoalitionAllianceSelection(
+            _rawData.coalitions,
+            activeAllianceCoalitionIndex,
+            _allowedAllianceIds,
+            event.detail.ids,
+        );
         showAllianceModal = false;
         setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
             replace: true,
@@ -305,18 +301,10 @@
     // onMount runs when this component (i.e. the page) is loaded
     // This gets the conflict id from the url query string, fetches the data from s3 and creates the charts
     onMount(() => {
-        try {
-            tieringWorker = new Worker(
-                new URL("../../workers/tieringDataWorker.ts", import.meta.url),
-                { type: "module" },
-            );
-        } catch (error) {
-            tieringWorker = null;
-            console.warn(
-                "Tiering worker unavailable, using main-thread fallback",
-                error,
-            );
-        }
+        tieringWorker = createModuleWorker(
+            new URL("../../workers/tieringDataWorker.ts", import.meta.url),
+            "Tiering worker unavailable, using main-thread fallback",
+        );
 
         bootstrapIdRouteLifecycle({
             restoreParams: ["selected", "normalize", "unicolor", "cityband", "ids"],
@@ -343,26 +331,13 @@
     onDestroy(() => {
         latestSetupRunId++;
         lastTieringRenderKey = null;
-        if (tieringWorker && tieringWorkerDatasetKey) {
-            void requestWorkerRpc<
-                WorkerDatasetReleaseRequest,
-                WorkerDatasetReleaseResult
-            >(
-                tieringWorker,
-                {
-                    action: "release",
-                    datasetKey: tieringWorkerDatasetKey,
-                },
-                {
-                    timeoutMs: 2_000,
-                    operation: "tiering dataset release",
-                },
-            ).catch(() => {});
-        }
-        if (tieringWorker) {
-            tieringWorker.terminate();
-            tieringWorker = null;
-        }
+        releaseWorkerDataset(
+            tieringWorker,
+            tieringWorkerDatasetKey,
+            "tiering dataset release",
+        );
+        terminateWorker(tieringWorker);
+        tieringWorker = null;
         tieringWorkerDatasetKey = null;
         tieringWorkerDatasetReady = null;
         if (chartInstanceRef) {

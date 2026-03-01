@@ -16,15 +16,17 @@
   import { onDestroy, onMount } from "svelte";
   import { decompressBson } from "$lib/binary";
   import { modalStrWithCloseButton } from "$lib/modals";
-  import { setupContainer } from "$lib/containerSetup";
+  import { setupContainer } from "$lib/tableAdapter";
   import { ExportTypes, downloadTableElem } from "$lib/dataExport";
   import {
     getCurrentQueryParams,
     setQueryParam,
-    applySavedQueryParamsIfMissing,
-    saveCurrentQueryParams,
     resetQueryParams,
   } from "$lib/queryState";
+  import {
+    applySavedQueryParamsIfMissing,
+    saveCurrentQueryParams,
+  } from "$lib/queryStorage";
   import {
     MAX_COMPOSITE_CONFLICT_IDS,
     encodeCompositeSelectionIds,
@@ -183,18 +185,24 @@
         if (!target) return;
 
         const action = target.dataset.conflictAction;
-        const conflictId = parseConflictId(target.dataset.conflictId);
         if (!action) return;
 
+        if (action === "copy-ids") {
+          const value = target.dataset.copyValue ?? "";
+          copyToClipboard(value);
+          return;
+        }
+
+        const conflictId = parseConflictId(target.dataset.conflictId);
+        if (conflictId == null) return;
+
         if (action === "open-card-from-name") {
-          if (conflictId == null) return;
           const allowDefault = openConflictCardFromName(event, conflictId);
           if (!allowDefault) stopTableEvent(event);
           return;
         }
 
         if (action === "open-conflict-page") {
-          if (conflictId == null) return;
           const allowDefault = openConflictPageFromCard(event, conflictId);
           if (!allowDefault) stopTableEvent(event);
           return;
@@ -203,12 +211,11 @@
         stopTableEvent(event);
 
         if (action === "open-card") {
-          if (conflictId != null) openConflictCard(undefined, conflictId);
+          openConflictCard(undefined, conflictId);
           return;
         }
 
         if (action === "open-coalition") {
-          if (conflictId == null) return;
           const index = parseConflictId(target.dataset.conflictIndex);
           if (index == null || (index !== 0 && index !== 1)) return;
           openCoalitionForConflict(
@@ -221,7 +228,6 @@
         }
 
         if (action === "open-field") {
-          if (conflictId == null) return;
           const field = target.dataset.conflictField;
           if (field === "status" || field === "cb" || field === "posts") {
             if (target.dataset.conflictFromCard === "true") {
@@ -230,12 +236,6 @@
               openConflictField(undefined, conflictId, field);
             }
           }
-          return;
-        }
-
-        if (action === "copy-ids") {
-          const value = target.dataset.copyValue ?? "";
-          copyToClipboard(value);
           return;
         }
 

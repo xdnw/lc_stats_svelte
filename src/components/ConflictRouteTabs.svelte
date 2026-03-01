@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { browser } from "$app/environment";
     import { base } from "$app/paths";
     import { getConflictDataUrl, getConflictGraphDataUrl } from "$lib/runtime";
     import {
@@ -64,13 +65,24 @@
 
     $: effectiveRouteKind = resolveRouteKind();
 
+    function readConflictIdFromLocation(): string | null {
+        if (!browser) return null;
+        const rawId = new URLSearchParams(window.location.search).get("id");
+        const trimmed = rawId?.trim() ?? "";
+        return trimmed.length > 0 ? trimmed : null;
+    }
+
+    $: effectiveConflictId =
+        (conflictId?.trim() ? conflictId.trim() : null) ??
+        (effectiveRouteKind === "single" ? readConflictIdFromLocation() : null);
+
     $: tabDescriptors = buildConflictTabDescriptors({
         activeTab: active,
         routeKind: effectiveRouteKind,
         capabilities,
         hrefContext: {
             routeKind: effectiveRouteKind,
-            conflictId,
+            conflictId: effectiveConflictId,
             compositeIds,
             selectedAllianceId,
             basePath: base,
@@ -91,22 +103,22 @@
         const tab = descriptor.tab;
         if (
             effectiveRouteKind !== "single" ||
-            !conflictId ||
+            !effectiveConflictId ||
             tab === active ||
             descriptor.disabled
         ) {
             return;
         }
         const url = GRAPH_TABS.has(tab)
-            ? getConflictGraphDataUrl(conflictId, config.version.graph_data)
-            : getConflictDataUrl(conflictId, config.version.conflict_data);
+            ? getConflictGraphDataUrl(effectiveConflictId, config.version.graph_data)
+            : getConflictDataUrl(effectiveConflictId, config.version.conflict_data);
         queueUrlPrefetch(url, {
             priority: "high",
             crossRoute: true,
         });
         if (tab === "bubble") {
             beginJourneySpan("journey.conflict_to_bubble.firstMount", {
-                conflictId,
+                conflictId: effectiveConflictId,
                 trigger: "tab-intent",
             });
             queueRuntimePrefetch("plotly", {
