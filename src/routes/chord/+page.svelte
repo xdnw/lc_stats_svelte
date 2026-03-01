@@ -17,8 +17,6 @@
         commafy,
         toggleCoalitionAllianceSelection,
         getConflictDataUrl,
-        getConflictGraphDataUrl,
-        queueUrlPrefetch,
         saveCurrentQueryParams,
         resetQueryParams,
         formatDatasetProvenance,
@@ -34,6 +32,10 @@
         buildSettingsRows,
         exportBundleData,
         type ExportDatasetOption,
+        warmBubbleDefaultArtifact,
+        warmConflictGraphPayload,
+        warmConflictTableArtifact,
+        warmTieringDefaultArtifact,
     } from "$lib";
     import { onMount } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
@@ -171,13 +173,29 @@
                 saveCurrentQueryParams();
 
                 // Warm graph payload cache so switching to Tiering/Bubble is faster.
-                const graphUrl = getConflictGraphDataUrl(
-                    conflictId,
-                    config.version.graph_data,
-                );
-                queueUrlPrefetch(graphUrl, {
+                warmConflictGraphPayload(conflictId, {
                     priority: "idle",
-                    crossRoute: true,
+                    reason: "route-chord-idle-graph-payload",
+                    routeTarget: "/chord",
+                    intentStrength: "idle",
+                });
+                warmBubbleDefaultArtifact(conflictId, {
+                    priority: "idle",
+                    reason: "route-chord-idle-bubble-default",
+                    routeTarget: "/bubble",
+                    intentStrength: "idle",
+                });
+                warmTieringDefaultArtifact(conflictId, {
+                    priority: "idle",
+                    reason: "route-chord-idle-tiering-default",
+                    routeTarget: "/tiering",
+                    intentStrength: "idle",
+                });
+                warmConflictTableArtifact(conflictId, {
+                    priority: "idle",
+                    reason: "route-chord-backpath-table",
+                    routeTarget: "/conflict",
+                    intentStrength: "idle",
                 });
             })
             .catch((error) => {

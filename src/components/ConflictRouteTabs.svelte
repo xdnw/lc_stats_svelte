@@ -1,13 +1,16 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { base } from "$app/paths";
-    import { getConflictDataUrl, getConflictGraphDataUrl } from "$lib/runtime";
     import {
-        queueRuntimePrefetch,
-        queueUrlPrefetch,
-    } from "$lib/prefetchCoordinator";
-    import { beginJourneySpan } from "$lib/journeyPerf";
-    import { appConfig as config } from "$lib/appConfig";
+        promoteArtifactTarget,
+        warmBubbleDefaultArtifact,
+        warmConflictGraphPayload,
+        warmConflictPayload,
+        warmConflictTableArtifact,
+        warmRuntimeArtifact,
+        warmTieringDefaultArtifact,
+    } from "$lib/prefetchArtifacts";
+    import { beginJourneySpan } from "$lib/perf";
     import {
         buildConflictTabDescriptors,
         type ConflictLayoutTab,
@@ -27,9 +30,6 @@
     export let onLayoutSelect: ((layout: number) => void) | null = null;
     export let capabilities: ConflictTabCapabilities = {};
     export let disabledTabs: ConflictTab[] = [];
-
-    /** Tabs that use graph_data; everything else uses conflict_data. */
-    const GRAPH_TABS: Set<ConflictTab> = new Set(["tiering", "bubble"]);
 
     const LAYOUT_TABS: ConflictLayoutTab[] = ["coalition", "alliance", "nation"];
     const NON_LAYOUT_TABS: Array<Exclude<ConflictTab, ConflictLayoutTab>> = [
@@ -99,7 +99,10 @@
         };
     }
 
-    function prefetchTab(descriptor: ConflictTabDescriptor) {
+    function prefetchTab(
+        descriptor: ConflictTabDescriptor,
+        intentStrength: "hover" | "focus" | "pointerdown",
+    ) {
         const tab = descriptor.tab;
         if (
             effectiveRouteKind !== "single" ||
@@ -109,29 +112,102 @@
         ) {
             return;
         }
-        const url = GRAPH_TABS.has(tab)
-            ? getConflictGraphDataUrl(effectiveConflictId, config.version.graph_data)
-            : getConflictDataUrl(effectiveConflictId, config.version.conflict_data);
-        queueUrlPrefetch(url, {
-            priority: "high",
-            crossRoute: true,
-        });
+
+        const conflictId = effectiveConflictId;
+        if (!conflictId) return;
+
+        const isStrongIntent = intentStrength === "pointerdown";
+        const primaryPriority = "high";
+        const runtimePriority = isStrongIntent ? "high" : "idle";
+
+        if (tab === "bubble") {
+            warmConflictGraphPayload(conflictId, {
+                priority: primaryPriority,
+                reason: `tabs-${intentStrength}-bubble-graph-payload`,
+                routeTarget: "/bubble",
+                intentStrength,
+            });
+            warmBubbleDefaultArtifact(conflictId, {
+                priority: primaryPriority,
+                reason: `tabs-${intentStrength}-bubble-default-trace`,
+                routeTarget: "/bubble",
+                intentStrength,
+            });
+            warmRuntimeArtifact("plotly", {
+                priority: runtimePriority,
+                reason: `tabs-${intentStrength}-bubble-runtime`,
+                routeTarget: "/bubble",
+                intentStrength,
+            });
+        } else if (tab === "tiering") {
+            warmConflictGraphPayload(conflictId, {
+                priority: primaryPriority,
+                reason: `tabs-${intentStrength}-tiering-graph-payload`,
+                routeTarget: "/tiering",
+                intentStrength,
+            });
+            warmTieringDefaultArtifact(conflictId, {
+                priority: primaryPriority,
+                reason: `tabs-${intentStrength}-tiering-default-dataset`,
+                routeTarget: "/tiering",
+                intentStrength,
+            });
+        } else {
+            warmConflictPayload(conflictId, {
+                priority: primaryPriority,
+                reason: `tabs-${intentStrength}-${tab}-payload`,
+                routeTarget: tab === "chord" ? "/chord" : tab === "aava" ? "/aava" : "/conflict",
+                intentStrength,
+            });
+            warmConflictTableArtifact(conflictId, {
+                priority: primaryPriority,
+                reason: `tabs-${intentStrength}-${tab}-table`,
+                routeTarget: "/conflict",
+                intentStrength,
+            });
+            if (tab === "coalition" || tab === "alliance" || tab === "nation") {
+                warmRuntimeArtifact("table", {
+                    priority: runtimePriority,
+                    reason: `tabs-${intentStrength}-table-runtime`,
+                    routeTarget: "/conflict",
+                    intentStrength,
+                });
+            }
+        }
+
         if (tab === "bubble") {
             beginJourneySpan("journey.conflict_to_bubble.firstMount", {
                 conflictId: effectiveConflictId,
                 trigger: "tab-intent",
             });
-            queueRuntimePrefetch("plotly", {
-                priority: "idle",
-                crossRoute: true,
-            });
         }
-        if (tab === "coalition" || tab === "alliance" || tab === "nation") {
-            queueRuntimePrefetch("table", {
-                priority: "idle",
-                crossRoute: true,
-            });
-        }
+    }
+
+    function promoteTabTarget(descriptor: ConflictTabDescriptor): void {
+        if (descriptor.disabled) return;
+        const target = descriptor.tab === "bubble"
+            ? "/bubble"
+            : descriptor.tab === "tiering"
+              ? "/tiering"
+              : descriptor.tab === "chord"
+                ? "/chord"
+                : descriptor.tab === "aava"
+                  ? "/aava"
+                  : "/conflict";
+        promoteArtifactTarget(target);
+    }
+
+    function onTabHover(descriptor: ConflictTabDescriptor): void {
+        prefetchTab(descriptor, "hover");
+    }
+
+    function onTabFocus(descriptor: ConflictTabDescriptor): void {
+        prefetchTab(descriptor, "focus");
+    }
+
+    function onTabPointerDown(descriptor: ConflictTabDescriptor): void {
+        promoteTabTarget(descriptor);
+        prefetchTab(descriptor, "pointerdown");
     }
 </script>
 
@@ -166,7 +242,9 @@
                 <a
                     href={descriptor.href ?? undefined}
                     class="col ps-0 pe-0 btn {active === tab ? 'is-active' : ''}"
-                    on:mouseenter={() => prefetchTab(descriptor)}
+                    on:mouseenter={() => onTabHover(descriptor)}
+                    on:focus={() => onTabFocus(descriptor)}
+                    on:pointerdown={() => onTabPointerDown(descriptor)}
                     data-sveltekit-preload-code="hover"
                 >
                     {TAB_LABELS[tab]}
@@ -185,7 +263,9 @@
             <a
                 class="col ps-0 pe-0 btn {active === tab ? 'is-active' : ''}"
                 href={descriptor.href ?? undefined}
-                on:mouseenter={() => prefetchTab(descriptor)}
+                on:mouseenter={() => onTabHover(descriptor)}
+                on:focus={() => onTabFocus(descriptor)}
+                on:pointerdown={() => onTabPointerDown(descriptor)}
                 data-sveltekit-preload-code="hover"
             >
                 {TAB_LABELS[tab]}

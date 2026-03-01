@@ -24,7 +24,6 @@
         formatAllianceName,
         formatDatasetProvenance,
         getDefaultWarWebHeader,
-        getConflictGraphDataUrl,
         getCurrentQueryParams,
         normalizeAllianceIds,
         resetQueryParams,
@@ -32,7 +31,6 @@
         saveCurrentQueryParams,
         setQueryParam,
         setupContainer,
-        queueUrlPrefetch,
         toNumberSelection,
         type ConflictRouteContext,
         type Conflict,
@@ -40,6 +38,11 @@
         type TableData,
         validateSingleSelection,
         yieldToMain,
+        warmBubbleDefaultArtifact,
+        warmCompositeContextArtifact,
+        warmCompositeDefaultTableArtifact,
+        warmConflictGraphPayload,
+        warmTieringDefaultArtifact,
     } from "$lib";
     import { registerFormatters } from "$lib/formatters";
     import { modalWithCloseButton } from "$lib/modals";
@@ -1035,13 +1038,45 @@
                 saveCurrentQueryParams(getAavaQueryStorageKey());
 
                 if (resolved.mode === "single" && resolved.conflictId) {
-                    const graphUrl = getConflictGraphDataUrl(
-                        resolved.conflictId,
-                        config.version.graph_data,
-                    );
-                    queueUrlPrefetch(graphUrl, {
+                    warmConflictGraphPayload(resolved.conflictId, {
                         priority: "idle",
-                        crossRoute: true,
+                        reason: "route-aava-single-idle-graph-payload",
+                        routeTarget: "/bubble",
+                        intentStrength: "idle",
+                    });
+                    warmBubbleDefaultArtifact(resolved.conflictId, {
+                        priority: "idle",
+                        reason: "route-aava-single-idle-bubble-default",
+                        routeTarget: "/bubble",
+                        intentStrength: "idle",
+                    });
+                    warmTieringDefaultArtifact(resolved.conflictId, {
+                        priority: "idle",
+                        reason: "route-aava-single-idle-tiering-default",
+                        routeTarget: "/tiering",
+                        intentStrength: "idle",
+                    });
+                }
+
+                if (
+                    resolved.mode === "composite" &&
+                    resolved.sourceConflictIds.length >= 2 &&
+                    selectedAllianceId != null
+                ) {
+                    warmCompositeContextArtifact({
+                        ids: resolved.sourceConflictIds,
+                        aid: selectedAllianceId,
+                        priority: "idle",
+                        reason: "route-aava-composite-context",
+                        routeTarget: "/conflicts/view",
+                        intentStrength: "idle",
+                    });
+                    warmCompositeDefaultTableArtifact({
+                        ids: resolved.sourceConflictIds,
+                        aid: selectedAllianceId,
+                        priority: "idle",
+                        reason: "route-aava-composite-table",
+                        routeTarget: "/conflicts/view",
                     });
                 }
             })

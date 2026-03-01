@@ -4,10 +4,10 @@ import {
     type ConflictKPIWidget,
     type MetricCard,
     type PresetCardKey,
-    type ScopeSnapshot,
     type WidgetEntity,
     type WidgetScope,
 } from "./kpi";
+import type { ConflictKpiContext } from "./conflictKpiTypes";
 
 type RankingCardDraft = {
     entity: WidgetEntity;
@@ -25,24 +25,22 @@ type MetricCardDraft = {
 };
 
 type CreateConflictKpiWidgetActionsOptions = {
-    getWidgets: () => ConflictKPIWidget[];
-    setWidgets: (widgets: ConflictKPIWidget[]) => void;
-    persistWidgets: (widgets: ConflictKPIWidget[]) => void;
-    makeId: (prefix: string) => string;
-    hasSelectionForScope: (scope: WidgetScope) => boolean;
-    buildSelectionSnapshot: () => ScopeSnapshot;
+    context: ConflictKpiContext;
 };
 
 export function createConflictKpiWidgetActions(
     options: CreateConflictKpiWidgetActionsOptions,
 ) {
+    const widgetContext = options.context.widgets;
+    const selectionContext = options.context.selection;
+
     function commit(nextWidgets: ConflictKPIWidget[]): void {
-        options.setWidgets(nextWidgets);
-        options.persistWidgets(nextWidgets);
+        widgetContext.setWidgets(nextWidgets);
+        widgetContext.persistWidgets(nextWidgets);
     }
 
     function hasPresetCard(key: PresetCardKey): boolean {
-        return options
+        return widgetContext
             .getWidgets()
             .some((widget) => widget.kind === "preset" && widget.key === key);
     }
@@ -52,23 +50,23 @@ export function createConflictKpiWidgetActions(
     }
 
     function removeWidget(id: string): void {
-        commit(options.getWidgets().filter((widget) => widget.id !== id));
+        commit(widgetContext.getWidgets().filter((widget) => widget.id !== id));
     }
 
     function moveWidget(id: string, delta: number): void {
-        commit(moveWidgetByDelta(options.getWidgets(), id, delta));
+        commit(moveWidgetByDelta(widgetContext.getWidgets(), id, delta));
     }
 
     function moveWidgetToIndex(id: string, targetIndex: number): void {
-        commit(moveWidgetToIndexInList(options.getWidgets(), id, targetIndex));
+        commit(moveWidgetToIndexInList(widgetContext.getWidgets(), id, targetIndex));
     }
 
     function addPresetCard(key: PresetCardKey): boolean {
         if (hasPresetCard(key)) return false;
         commit([
-            ...options.getWidgets(),
+            ...widgetContext.getWidgets(),
             {
-                id: options.makeId("preset"),
+                id: widgetContext.makeId("preset"),
                 kind: "preset",
                 key,
             },
@@ -77,14 +75,14 @@ export function createConflictKpiWidgetActions(
     }
 
     function addRankingCard(draft: RankingCardDraft): boolean {
-        if (draft.scope === "selection" && !options.hasSelectionForScope(draft.scope)) {
+        if (draft.scope === "selection" && !selectionContext.hasSelectionForScope(draft.scope)) {
             return false;
         }
 
         commit([
-            ...options.getWidgets(),
+            ...widgetContext.getWidgets(),
             {
-                id: options.makeId("ranking"),
+                id: widgetContext.makeId("ranking"),
                 kind: "ranking",
                 entity: draft.entity,
                 metric: draft.metric,
@@ -92,7 +90,7 @@ export function createConflictKpiWidgetActions(
                 limit: Math.max(1, draft.limit),
                 snapshot:
                     draft.scope === "selection"
-                        ? options.buildSelectionSnapshot()
+                        ? selectionContext.buildSelectionSnapshot()
                         : undefined,
             },
         ]);
@@ -100,14 +98,14 @@ export function createConflictKpiWidgetActions(
     }
 
     function addMetricCard(draft: MetricCardDraft): boolean {
-        if (draft.scope === "selection" && !options.hasSelectionForScope(draft.scope)) {
+        if (draft.scope === "selection" && !selectionContext.hasSelectionForScope(draft.scope)) {
             return false;
         }
 
         commit([
-            ...options.getWidgets(),
+            ...widgetContext.getWidgets(),
             {
-                id: options.makeId("metric"),
+                id: widgetContext.makeId("metric"),
                 kind: "metric",
                 entity: draft.entity,
                 metric: draft.metric,
@@ -117,7 +115,7 @@ export function createConflictKpiWidgetActions(
                 normalizeBy: draft.normalizeBy || null,
                 snapshot:
                     draft.scope === "selection"
-                        ? options.buildSelectionSnapshot()
+                        ? selectionContext.buildSelectionSnapshot()
                         : undefined,
             },
         ]);

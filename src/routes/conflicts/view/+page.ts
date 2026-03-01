@@ -5,6 +5,10 @@ import {
     getCompositeConflictSignature,
     parseCompositeSelectionIds,
 } from "$lib/conflictIds";
+import {
+    warmCompositeContextArtifact,
+    warmCompositeDefaultTableArtifact,
+} from "$lib/prefetchArtifacts";
 import type { PageLoad } from "./$types";
 
 export type CompositePageData = {
@@ -17,6 +21,15 @@ export type CompositePageData = {
 
 export const load: PageLoad = ({ url }) => {
     if (!browser) {
+    if (!browser) {
+        return {
+            conflictIds: [],
+            invalidTokens: [],
+            limited: false,
+            selectedAllianceId: null,
+            signature: "",
+        } satisfies CompositePageData;
+    }
         return {
             conflictIds: [],
             invalidTokens: [],
@@ -38,6 +51,24 @@ export const load: PageLoad = ({ url }) => {
     const selectedAllianceId = /^\d+$/.test(rawAid)
         ? Number.parseInt(rawAid, 10)
         : null;
+
+    if (selectedAllianceId != null) {
+        warmCompositeContextArtifact({
+            ids: parsed.ids,
+            aid: selectedAllianceId,
+            priority: "high",
+            reason: "route-composite-load-context",
+            routeTarget: "/conflicts/view",
+            intentStrength: "load",
+        });
+        warmCompositeDefaultTableArtifact({
+            ids: parsed.ids,
+            aid: selectedAllianceId,
+            priority: "high",
+            reason: "route-composite-load-default-table",
+            routeTarget: "/conflicts/view",
+        });
+    }
 
     return {
         conflictIds: parsed.ids,

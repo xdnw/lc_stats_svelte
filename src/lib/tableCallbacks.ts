@@ -1,4 +1,5 @@
-import { commafy, formatDate } from "./formatting";
+import { formatDate } from "./formatting";
+import { formatMoneyValue, formatNumberValue } from "./numberFormatting";
 
 export type DataTableRender = (
     data: unknown,
@@ -19,15 +20,11 @@ export type TableCallbacks = {
 const builtInCellFormatters: Record<string, DataTableRender> = {
     formatNumber: (data: unknown): string => {
         const value = typeof data === "number" ? data : Number(data ?? 0);
-        if (value === 0) return "0";
-        if (value < 1000 && value > -1000) return value.toString();
-        return commafy(value);
+        return formatNumberValue(value);
     },
     formatMoney: (data: unknown): string => {
         const value = typeof data === "number" ? data : Number(data ?? 0);
-        if (value === 0) return "$0";
-        if (value < 1000 && value > -1000) return `$${value.toString()}`;
-        return `$${commafy(value)}`;
+        return formatMoneyValue(value);
     },
     formatDate: (data: unknown): string => {
         const value = typeof data === "number" ? data : null;

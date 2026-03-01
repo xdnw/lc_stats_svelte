@@ -1,7 +1,10 @@
-import { appConfig as config } from "$lib/appConfig";
-import { getConflictsIndexUrl } from "$lib/runtime";
-import { createStaticPrefetchLoader } from "$lib/routeLoaders";
+import { warmConflictsIndexPayload } from "$lib/prefetchArtifacts";
 
-export const load = createStaticPrefetchLoader(() =>
-    getConflictsIndexUrl(config.version.conflicts),
-);
+export const load = () => {
+    warmConflictsIndexPayload({
+        priority: "high",
+        reason: "route-conflicts-load-index",
+        intentStrength: "load",
+    });
+    return {};
+};

@@ -20,15 +20,11 @@
         bootstrapIdRouteLifecycle,
         arrayEquals,
         type TierMetric,
-        resolveMetricAccessors,
-        getConflictDataUrl,
         getConflictGraphDataUrl,
         ensureScriptsLoaded,
         saveCurrentQueryParams,
-        queueUrlPrefetch,
         resetQueryParams,
         formatDatasetProvenance,
-        formatAllianceName,
         yieldToMain,
         incrementPerfCounter,
         startPerfSpan,
@@ -36,12 +32,15 @@
         exportBundleData,
         type ExportBundle,
         type ExportDatasetOption,
+        warmConflictTableArtifact,
+        warmBubbleDefaultArtifact,
     } from "$lib";
     import { requestWorkerRpc } from "$lib/workerRpc";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { getPlotlyGlobal } from "$lib/globals";
     import { appConfig as config } from "$lib/appConfig";
-    import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
+    import { generateTraces } from "$lib/bubbleTraceCompute";
+    import { beginJourneySpan, endJourneySpan } from "$lib/perf";
     import type {
         WorkerDatasetComputeRequest,
         WorkerDatasetComputeResult,
@@ -53,6 +52,15 @@
         releaseWorkerDataset,
         terminateWorker,
     } from "$lib/workerDatasetLifecycle";
+    import {
+        clearDatasetReadyHandle,
+        ensureBubbleDatasetReady,
+        getBubbleTrace,
+        invalidateGraphDerived,
+        warmBubbleDefaultTrace,
+        type Trace as BubbleTrace,
+        type TraceBuildResult,
+    } from "$lib/graphDerivedCache";
 
     function getPlotly(): any {
         return getPlotlyGlobal();
@@ -76,11 +84,9 @@
     let sliderSetListener: ((values: string[]) => void) | null = null;
     let plotlyAnimatedListener: (() => void) | null = null;
     let plotlySliderChangeListener: ((sliderData: any) => void) | null = null;
-    let traceCache = new Map<string, TraceBuildResult>();
     let graphUpdateQueued = false;
     let bubbleWorker: Worker | null = null;
     let bubbleWorkerDatasetKey: string | null = null;
-    let bubbleWorkerDatasetReady: Promise<void> | null = null;
     let hasCompletedFirstBubbleMount = false;
     let latestGraphRunId = 0;
     let lastBubbleRenderKey: string | null = null;
@@ -339,7 +345,9 @@
         terminateWorker(bubbleWorker);
         bubbleWorker = null;
         bubbleWorkerDatasetKey = null;
-        bubbleWorkerDatasetReady = null;
+        clearDatasetReadyHandle({
+            family: "bubble",
+        });
         const sliderApi = getSliderApi();
         if (sliderApi) {
             if (sliderSetListener) {
@@ -379,14 +387,17 @@
                 conflictName = data.name;
                 _rawData = data;
                 bubbleWorkerDatasetKey = `bubble:${conflictId}:${config.version.graph_data}`;
-                bubbleWorkerDatasetReady = null;
                 if (bubbleWorker && bubbleWorkerDatasetKey) {
-                    bubbleWorkerDatasetReady = initializeBubbleWorkerDataset(
+                    void ensureBubbleDatasetReady(
                         bubbleWorkerDatasetKey,
-                        data,
+                        () => initializeBubbleWorkerDataset(bubbleWorkerDatasetKey as string, data),
                     );
                 }
-                traceCache.clear();
+                invalidateGraphDerived({
+                    family: "bubble",
+                    keyPrefix: `${conflictId}|`,
+                    reason: "bubble-conflict-change",
+                });
                 lastBubbleRenderKey = null;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
@@ -400,13 +411,17 @@
                 saveCurrentQueryParams();
 
                 // Warm conflict detail cache so switching to table pages is faster.
-                const detailUrl = getConflictDataUrl(
-                    conflictId,
-                    config.version.conflict_data,
-                );
-                queueUrlPrefetch(detailUrl, {
+                warmConflictTableArtifact(conflictId, {
                     priority: "idle",
-                    crossRoute: true,
+                    reason: "route-bubble-backpath-table",
+                    routeTarget: "/conflict",
+                    intentStrength: "idle",
+                });
+                warmBubbleDefaultArtifact(conflictId, {
+                    priority: "high",
+                    reason: "route-bubble-load-default-trace",
+                    routeTarget: "/bubble",
+                    intentStrength: "load",
                 });
             })
             .catch((error) => {
@@ -425,31 +440,6 @@
         _loaded = false;
         _loadError = null;
         fetchConflictGraphData(conflictId);
-    }
-
-    interface Trace {
-        x: number[];
-        y: number[];
-        customdata: number[];
-        id: number[];
-        text: string[];
-        marker: { size: number[] };
-    }
-    interface Range {
-        x: number[];
-        y: number[];
-        z: number[];
-    }
-    interface Timeframe {
-        start: number;
-        end: number;
-        is_turn: boolean;
-    }
-
-    interface TraceBuildResult {
-        traces: { [key: number]: { [key: number]: Trace } };
-        times: Timeframe;
-        ranges: Range;
     }
 
     type BubbleTraceParams = {
@@ -527,10 +517,10 @@
                 ? performance.now()
                 : Date.now();
 
-        const ready =
-            bubbleWorkerDatasetReady ??
-            initializeBubbleWorkerDataset(bubbleWorkerDatasetKey, data);
-        bubbleWorkerDatasetReady = ready;
+        const ready = ensureBubbleDatasetReady(
+            bubbleWorkerDatasetKey,
+            () => initializeBubbleWorkerDataset(bubbleWorkerDatasetKey as string, data),
+        );
 
         return ready
             .then(() =>
@@ -631,185 +621,6 @@
         return fullName;
     }
 
-    function generateTraces(
-        data: GraphData,
-        x_axis: TierMetric,
-        y_axis: TierMetric,
-        size: TierMetric,
-        min_city: number,
-        max_city: number,
-    ): {
-        traces: { [key: number]: { [key: number]: Trace } };
-        times: Timeframe;
-        ranges: Range;
-    } | null {
-        // trim metric names using trimHeader(name)
-
-        let ranges: Range = {
-            x: [0, Number.MIN_SAFE_INTEGER],
-            y: [0, Number.MIN_SAFE_INTEGER],
-            z: [0, Number.MIN_SAFE_INTEGER],
-        };
-        let rangesKeys: (keyof typeof ranges)[] = Object.keys(
-            ranges,
-        ) as (keyof typeof ranges)[];
-
-        let metrics = [x_axis, y_axis, size];
-        const metricAccessors = resolveMetricAccessors(data, metrics);
-        if (!metricAccessors) return null;
-        let metric_indexes = metricAccessors.metric_indexes;
-        let metric_is_turn = metricAccessors.metric_is_turn;
-        let metric_normalize = metricAccessors.metric_normalize;
-        let isAnyTurn = metricAccessors.isAnyTurn;
-        let lookup: { [key: number]: { [key: number]: Trace } } = {}; // year -> coalitions
-
-        for (let i = 0; i < data.coalitions.length; i++) {
-            let coalition = data.coalitions[i];
-            let minCityIndex = coalition.cities.findIndex(
-                (city) => city >= min_city,
-            );
-            let maxCityIndex = coalition.cities
-                .slice()
-                .reverse()
-                .findIndex((city) => city <= max_city);
-            if (maxCityIndex !== -1)
-                maxCityIndex = coalition.cities.length - 1 - maxCityIndex;
-            if (minCityIndex == -1) minCityIndex = 0;
-            if (maxCityIndex == -1) maxCityIndex = coalition.cities.length;
-
-            let turn_start = coalition.turn.range[0];
-            let day_start = coalition.day.range[0];
-            let start = isAnyTurn ? turn_start : day_start;
-            let end = isAnyTurn
-                ? coalition.turn.range[1]
-                : coalition.day.range[1];
-
-            for (let j = 0; j < coalition.alliance_ids.length; j++) {
-                let alliance_id = coalition.alliance_ids[j];
-                let name = formatAllianceName(
-                    coalition.alliance_names[j],
-                    alliance_id,
-                );
-
-                let buffer: number[] = [0, 0, 0];
-                let lastDay = -1;
-                for (let turnOrDay = start; turnOrDay <= end; turnOrDay++) {
-                    let traceByCol = lookup[turnOrDay];
-                    if (!traceByCol) {
-                        traceByCol = {};
-                        lookup[turnOrDay] = traceByCol;
-                    }
-                    let trace = traceByCol[i];
-                    if (!trace) {
-                        trace = {
-                            x: [],
-                            y: [],
-                            id: [],
-                            text: [],
-                            customdata: [],
-                            marker: { size: [] },
-                        };
-                        traceByCol[i] = trace;
-                    }
-                    trace.id.push(alliance_id);
-                    trace.text.push(name);
-
-                    let turn = isAnyTurn
-                        ? turnOrDay
-                        : Math.floor(turnOrDay * 12);
-                    let day = isAnyTurn
-                        ? Math.floor(turnOrDay / 12)
-                        : turnOrDay;
-                    for (let k = 0; k < metrics.length; k++) {
-                        let is_turn = metric_is_turn[k];
-                        if (!is_turn && lastDay == day) continue;
-                        let isCumulative = metrics[k].cumulative;
-
-                        let metric_index = metric_indexes[k];
-
-                        let value_by_day = is_turn
-                            ? coalition.turn.data[metric_index][j]
-                            : coalition.day.data[metric_index][j];
-                        if (!value_by_day) {
-                            continue;
-                        }
-                        let value_by_city =
-                            value_by_day[
-                                is_turn ? turn - turn_start : day - day_start
-                            ];
-                        if (!value_by_city || value_by_city.length == 0) {
-                            continue;
-                        }
-                        let total = 0.0;
-                        for (let l = minCityIndex; l <= maxCityIndex; l++) {
-                            total += value_by_city[l];
-                        }
-                        let normalize = metric_normalize[k];
-                        if (normalize != -1) {
-                            let nations = 0.0;
-                            let nation_counts_by_day = coalition.day.data[0][j];
-                            if (!nation_counts_by_day) continue;
-                            let nation_counts =
-                                nation_counts_by_day[day - day_start];
-                            if (!nation_counts || nation_counts.length == 0)
-                                continue;
-                            if (normalize == 0) {
-                                for (
-                                    let l = minCityIndex;
-                                    l <= maxCityIndex;
-                                    l++
-                                ) {
-                                    nations += nation_counts[l];
-                                }
-                            } else {
-                                for (
-                                    let l = minCityIndex;
-                                    l <= maxCityIndex;
-                                    l++
-                                ) {
-                                    let cities = coalition.cities[l];
-                                    nations +=
-                                        nation_counts[l] * cities * normalize;
-                                }
-                            }
-                            if (nations != 0) {
-                                total /= nations;
-                            }
-                        }
-                        if (isCumulative) {
-                            buffer[k] += total;
-                        } else {
-                            buffer[k] = total;
-                        }
-                    }
-                    trace.x.push(buffer[0]);
-                    trace.y.push(buffer[1]);
-                    trace.customdata.push(buffer[2]);
-
-                    for (let k = 0; k < 3; k++) {
-                        let ri = rangesKeys[k];
-                        if (buffer[k] < ranges[ri][0])
-                            ranges[ri][0] = buffer[k];
-                        if (buffer[k] > ranges[ri][1])
-                            ranges[ri][1] = buffer[k];
-                    }
-
-                    lastDay = day;
-                }
-                // print buffer values
-                // console.log("# " + name + " " + alliance_id);
-                // console.log("- " + metrics[0].name + ": " + buffer[0]);
-                // console.log("- " + metrics[1].name + ": " + buffer[1]);
-                // console.log("- " + metrics[2].name + ": " + buffer[2]);
-            }
-        }
-        // min value from lookup keys
-        let start = Math.min(...Object.keys(lookup).map(Number));
-        let end = Math.max(...Object.keys(lookup).map(Number));
-        let times: Timeframe = { start: start, end: end, is_turn: isAnyTurn };
-        return { traces: lookup, times, ranges };
-    }
-
     async function setupGraphData(data: GraphData) {
         if (!data) return;
         const runId = ++latestGraphRunId;
@@ -850,18 +661,22 @@
             });
             return;
         }
-        let tracesTime = traceCache.get(cacheKey);
+        let tracesTime = getBubbleTrace(cacheKey);
         if (!tracesTime) {
-            const computed = await computeTraces(
-                data,
-                metrics,
-                cityValues[0],
-                cityValues[1],
-            );
+            tracesTime = await warmBubbleDefaultTrace({
+                cacheKey,
+                contextKey: `bubble:${conflictId ?? "unknown"}`,
+                requestId: runId,
+                compute: () =>
+                    computeTraces(
+                        data,
+                        metrics,
+                        cityValues[0],
+                        cityValues[1],
+                    ),
+            });
             if (runId !== latestGraphRunId) return;
-            if (!computed) return;
-            tracesTime = computed;
-            traceCache.set(cacheKey, tracesTime);
+            if (!tracesTime) return;
         }
         if (!tracesTime) return;
         latestTraceBuildResult = tracesTime;
@@ -880,7 +695,7 @@
     }
 
     function createGraph(
-        lookup: { [key: number]: { [key: number]: Trace } },
+        lookup: { [key: number]: { [key: number]: BubbleTrace } },
         time: { start: number; end: number; is_turn: boolean },
         _ranges: { x: number[]; y: number[]; z: number[] },
         coalition_names: string[],
@@ -919,7 +734,7 @@
                 let data = lookupByTime[j];
                 if (!data) continue;
                 data.marker = {
-                    size: data.customdata.map((size) => {
+                    size: data.customdata.map((size: number) => {
                         return maxZ > 0 ? size / maxZ : 1;
                     }),
                 };

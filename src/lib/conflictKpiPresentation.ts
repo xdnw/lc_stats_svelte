@@ -1,24 +1,22 @@
 import type {
     ConflictKPIWidget,
     MetricCard,
-    PresetCardKey,
     RankingCard,
-    ScopeSnapshot,
-    WidgetScope,
 } from "./kpi";
+import type { ConflictKpiContext } from "./conflictKpiTypes";
 
 type CreateConflictKpiPresentationOptions = {
-    scopeLabel: (scope: WidgetScope, snapshot?: ScopeSnapshot) => string;
-    presetCardLabels: Record<PresetCardKey, string>;
-    trimHeader: (metric: string) => string;
-    getAavaMetricLabel: (metric: string, header: string) => string;
+    context: ConflictKpiContext;
 };
 
 export function createConflictKpiPresentation(
     options: CreateConflictKpiPresentationOptions,
 ) {
+    const presentationContext = options.context.presentation;
+    const selectionContext = options.context.selection;
+
     function metricLabel(metric: string): string {
-        return options.trimHeader(metric);
+        return presentationContext.trimHeader(metric);
     }
 
     function metricDescription(metric: string): string {
@@ -45,7 +43,7 @@ export function createConflictKpiPresentation(
     function widgetMetricLabel(widget: RankingCard | MetricCard): string {
         if (widget.source === "aava") {
             const header = widget.aavaSnapshot?.header ?? "wars";
-            return options.getAavaMetricLabel(widget.metric, header);
+            return presentationContext.getAavaMetricLabel(widget.metric, header);
         }
         return metricLabel(widget.metric);
     }
@@ -54,7 +52,7 @@ export function createConflictKpiPresentation(
         if (!widget.normalizeBy) return null;
         if (widget.source === "aava") {
             const header = widget.aavaSnapshot?.header ?? "wars";
-            return options.getAavaMetricLabel(widget.normalizeBy, header);
+            return presentationContext.getAavaMetricLabel(widget.normalizeBy, header);
         }
         return metricLabel(widget.normalizeBy);
     }
@@ -69,12 +67,12 @@ export function createConflictKpiPresentation(
             return `AAvA (${snapshotLabel} · ${header})`;
         }
         if (widget.kind === "preset") return "Preset";
-        return options.scopeLabel(widget.scope, widget.snapshot);
+        return selectionContext.scopeLabel(widget.scope, widget.snapshot);
     }
 
     function widgetManagerLabel(widget: ConflictKPIWidget): string {
         if (widget.kind === "preset") {
-            return options.presetCardLabels[widget.key];
+            return presentationContext.presetCardLabels[widget.key];
         }
         if (widget.kind === "ranking") {
             return `${widget.entity} · ${widgetMetricLabel(widget)} · ${widgetScopeLabel(widget)} · top ${widget.limit}`;

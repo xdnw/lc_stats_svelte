@@ -15,21 +15,33 @@
         formatNationName,
     } from "$lib/formatting";
     import { setupContainer } from "$lib/tableAdapter";
-    import { computeLayoutTableData } from "$lib/layoutTable";
+    import {
+        getOrComputeConflictTableData,
+        invalidateConflictLayouts,
+        warmConflictTableLayouts,
+        type ConflictTableLayoutInput,
+    } from "$lib/conflictLayoutCache";
     import {
         setQueryParams,
         decodeQueryParamValue,
     } from "$lib/queryState";
+    import {
+        parseConflictLayoutQuery,
+        serializeConflictLayoutQuery,
+    } from "$lib/conflictLayoutQueryState";
     import { getPageStorageKey, saveCurrentQueryParams } from "$lib/queryStorage";
     import { ExportTypes, downloadTableElem } from "$lib/dataExport";
-    import { queueUrlPrefetch } from "$lib/prefetchCoordinator";
     import { registerFormatters } from "$lib/formatters";
     import { modalWithCloseButton } from "$lib/modals";
     import {
         formatDatasetProvenance,
-        getConflictGraphDataUrl,
-        prewarmRuntimeGroup,
     } from "$lib/runtime";
+    import {
+        warmBubbleDefaultArtifact,
+        warmConflictGraphPayload,
+        warmRuntimeArtifact,
+        warmTieringDefaultArtifact,
+    } from "$lib/prefetchArtifacts";
     import { trimHeader } from "$lib/warWeb";
     import {
         createConflictKpiComputations,
@@ -42,6 +54,7 @@
     } from "$lib/conflictKpiPresetComputations";
     import { createConflictKpiPresentation } from "$lib/conflictKpiPresentation";
     import { createConflictKpiWidgetActions } from "$lib/conflictKpiWidgetActions";
+    import type { ConflictKpiContext } from "$lib/conflictKpiTypes";
     import { yieldToMain } from "$lib/misc";
     import { bootstrapIdRouteLifecycle } from "$lib/routeBootstrap";
     import type { TableCallbacks } from "$lib/tableCallbacks";
@@ -86,15 +99,14 @@
         SelectionModalItem,
     } from "$lib/selection/types";
     import { appConfig as config } from "$lib/appConfig";
-    import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
-    import { incrementPerfCounter, startPerfSpan } from "$lib/perf";
+    import { beginJourneySpan, endJourneySpan, incrementPerfCounter, startPerfSpan } from "$lib/perf";
     import { layoutTabFromIndex } from "$lib/conflictTabs";
 
     const Layout = {
         COALITION: 0,
         ALLIANCE: 1,
         NATION: 2,
-    };
+    } as const;
 
     type KPIWidget = ConflictKPIWidget;
 
@@ -212,19 +224,19 @@
 
     // Invariant: _layoutData is the single source of truth for active table layout inputs.
     // Downstream consumers must derive from this object instead of recomputing ad-hoc tables.
-    let _layoutData = {
+    let _layoutData: {
+        layout: 0 | 1 | 2;
+        columns: string[];
+        sort: string;
+        order: "asc" | "desc";
+    } = {
         layout: Layout.COALITION,
         columns: [...layouts.Summary.columns],
         sort: layouts.Summary.sort,
         order: "desc",
     };
 
-    type LayoutDerivationInput = {
-        layout: number;
-        columns: string[];
-        sort: string;
-        order: string;
-    };
+    type LayoutDerivationInput = ConflictTableLayoutInput;
 
     const CONFLICT_DEBUG_LOG = true;
 
@@ -237,67 +249,28 @@
         console.info(`[conflict-debug] ${message}`);
     }
 
-    let layoutDerivationCache = new Map<string, TableData>();
-    let layoutDerivationSource: Conflict | null = null;
-
-    function makeLayoutDerivationKey(input: LayoutDerivationInput): string {
-        return [
-            input.layout,
-            input.sort,
-            input.order,
-            input.columns.join("."),
-        ].join("|");
-    }
-
-    function clearLayoutDerivationCache(reason: string): void {
-        if (layoutDerivationCache.size === 0) return;
-        incrementPerfCounter("conflict.layout.cache.invalidate", 1, {
-            reason,
-            entries: layoutDerivationCache.size,
-        });
-        layoutDerivationCache.clear();
-    }
-
-    $: if (_rawData !== layoutDerivationSource) {
-        layoutDerivationSource = _rawData;
-        clearLayoutDerivationCache("raw-data-change");
-    }
+    let layoutDerivationSourceKey: string | null = null;
 
     function deriveLayoutTable(
         rawData: Conflict,
         input: LayoutDerivationInput,
     ): TableData {
-        const cacheKey = makeLayoutDerivationKey(input);
-        const cached = layoutDerivationCache.get(cacheKey);
-        if (cached) {
-            incrementPerfCounter("conflict.layout.cache.hit");
-            logConflictDebug("deriveLayoutTable cache hit", {
-                cacheKey,
-                rows: cached.data.length,
-                columns: cached.columns.length,
-            });
-            return cached;
-        }
-
-        incrementPerfCounter("conflict.layout.cache.miss");
+        const sourceKey =
+            layoutDerivationSourceKey ??
+            `conflict:${conflictId ?? "unknown"}:v${String(config.version.conflict_data)}`;
         const startedAt = performance.now();
-        const finishSpan = startPerfSpan("conflict.layout.compute", {
-            layout: input.layout,
-            sort: input.sort,
-            order: input.order,
-            columns: input.columns.length,
-        });
-        const computed = computeLayoutTableData(
+        const computed = getOrComputeConflictTableData(
+            sourceKey,
             rawData,
-            input.layout,
-            input.columns,
-            input.sort,
-            input.order,
+            {
+                layout: input.layout,
+                columns: [...input.columns],
+                sort: input.sort,
+                order: input.order,
+            },
         );
-        finishSpan();
-        layoutDerivationCache.set(cacheKey, computed);
-        logConflictDebug("deriveLayoutTable cache miss -> computed", {
-            cacheKey,
+        logConflictDebug("deriveLayoutTable resolved", {
+            sourceKey,
             rows: computed.data.length,
             columns: computed.columns.length,
             elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
@@ -389,26 +362,51 @@
         persistSharedKpiWidgets(conflictId, kpiWidgets);
     }
 
+    const conflictKpiContext: ConflictKpiContext = {
+        data: {
+            getRawData: () => _rawData,
+            getEntityTable: (entity) =>
+                entity === "alliance"
+                    ? (kpiAllianceTable as TableData | null)
+                    : (nationMetricTable as TableData | null),
+            getNamesByAllianceId: () => namesByAllianceId,
+            formatAllianceName,
+            formatNationName,
+        },
+        widgets: {
+            getWidgets: () => kpiWidgets,
+            setWidgets: (widgets) => {
+                kpiWidgets = widgets;
+            },
+            persistWidgets: (widgets) => {
+                persistSharedKpiWidgets(conflictId, widgets);
+            },
+            makeId: makeKpiId,
+        },
+        selection: {
+            hasSelectionForScope: (scope) =>
+                hasSelectionForScopeFromState(
+                    scope,
+                    selectedAllianceIdsForKpi,
+                    selectedNationIdsForKpi,
+                ),
+            buildSelectionSnapshot: () =>
+                buildSelectionSnapshotFromState(
+                    selectedAllianceIdsForKpi,
+                    selectedNationIdsForKpi,
+                ),
+            scopeLabel: (scope, snapshot) =>
+                scopeLabelFromState(scope, snapshot),
+        },
+        presentation: {
+            presetCardLabels: PRESET_CARD_LABELS,
+            trimHeader,
+            getAavaMetricLabel,
+        },
+    };
+
     const kpiWidgetActions = createConflictKpiWidgetActions({
-        getWidgets: () => kpiWidgets,
-        setWidgets: (widgets) => {
-            kpiWidgets = widgets;
-        },
-        persistWidgets: (widgets) => {
-            persistSharedKpiWidgets(conflictId, widgets);
-        },
-        makeId: makeKpiId,
-        hasSelectionForScope: (scope) =>
-            hasSelectionForScopeFromState(
-                scope,
-                selectedAllianceIdsForKpi,
-                selectedNationIdsForKpi,
-            ),
-        buildSelectionSnapshot: () =>
-            buildSelectionSnapshotFromState(
-                selectedAllianceIdsForKpi,
-                selectedNationIdsForKpi,
-            ),
+        context: conflictKpiContext,
     });
 
     function applyKpiConfig(config: any) {
@@ -591,14 +589,7 @@
     }
 
     const kpiComputations = createConflictKpiComputations({
-        getRawData: () => _rawData,
-        getEntityTable: (entity) =>
-            entity === "alliance"
-                ? (kpiAllianceTable as TableData | null)
-                : (nationMetricTable as TableData | null),
-        getNamesByAllianceId: () => namesByAllianceId,
-        formatAllianceName,
-        formatNationName,
+        context: conflictKpiContext,
     });
 
     $: {
@@ -616,10 +607,7 @@
         widgetScopeLabel,
         widgetManagerLabel,
     } = createConflictKpiPresentation({
-        scopeLabel: (scope, snapshot) => scopeLabelFromState(scope, snapshot),
-        presetCardLabels: PRESET_CARD_LABELS,
-        trimHeader,
-        getAavaMetricLabel,
+        context: conflictKpiContext,
     });
 
     function loadLayout(
@@ -676,20 +664,16 @@
     }
 
     function loadLayoutFromQuery(query: URLSearchParams) {
-        let layout = query.get("layout");
-        if (layout) {
-            if (layout === "coalition") _layoutData.layout = Layout.COALITION;
-            else if (layout === "alliance" || layout === "1")
-                _layoutData.layout = Layout.ALLIANCE;
-            else if (layout === "nation" || layout === "2")
-                _layoutData.layout = Layout.NATION;
-        }
-        let sort = query.get("sort");
-        if (sort) _layoutData.sort = sort;
-        let order = query.get("order");
-        if (order) _layoutData.order = order;
-        let columns = query.get("columns");
-        if (columns) _layoutData.columns = columns.split(".");
+        const nextLayoutState = parseConflictLayoutQuery(query, {
+            layout: Layout.COALITION,
+            sort: layouts.Summary.sort,
+            order: "desc",
+            columns: [...layouts.Summary.columns],
+        });
+        _layoutData.layout = nextLayoutState.layout;
+        _layoutData.sort = nextLayoutState.sort;
+        _layoutData.order = nextLayoutState.order;
+        _layoutData.columns = nextLayoutState.columns;
 
         const decodedWidgets = decodeQueryParamValue("kpiw", query.get("kpiw"));
         if (decodedWidgets) {
@@ -739,7 +723,7 @@
 
     function queryDefaults() {
         return {
-            layout: Layout.COALITION,
+            layout: "coalition",
             sort: layouts.Summary.sort,
             order: "desc",
             columns: layouts.Summary.columns.join("."),
@@ -756,12 +740,9 @@
 
     function syncUrlState(options: SyncUrlStateOptions = {}): void {
         const values: Record<string, string | number | boolean | null | undefined> = {
-            layout: _layoutData.layout,
-            sort: options.clearLayoutSortAndColumns ? null : _layoutData.sort,
-            order: _layoutData.order,
-            columns: options.clearLayoutSortAndColumns
-                ? null
-                : _layoutData.columns.join("."),
+            ...serializeConflictLayoutQuery(_layoutData, {
+                clearSortAndColumns: options.clearLayoutSortAndColumns,
+            }),
         };
 
         if (options.includeKpi) {
@@ -810,6 +791,14 @@
         });
         _loadError = null;
         _loaded = false;
+        const nextSourceKey = `conflict:${conflictId}:v${String(config.version.conflict_data)}`;
+        if (layoutDerivationSourceKey && layoutDerivationSourceKey !== nextSourceKey) {
+            invalidateConflictLayouts({
+                sourceKey: layoutDerivationSourceKey,
+                reason: "conflict-id-change",
+            });
+        }
+        layoutDerivationSourceKey = nextSourceKey;
         let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
         decompressBson(url)
             .then(async (data: Conflict) => {
@@ -827,6 +816,30 @@
                     data.coalitions[1].alliance_names,
                 );
                 await yieldToMain();
+                warmConflictTableLayouts(
+                    layoutDerivationSourceKey ?? nextSourceKey,
+                    data,
+                    [
+                    {
+                        layout: Layout.COALITION,
+                        columns: [...layouts.Summary.columns],
+                        sort: layouts.Summary.sort,
+                        order: "desc",
+                    },
+                    {
+                        layout: Layout.ALLIANCE,
+                        columns: [...layouts.Summary.columns],
+                        sort: layouts.Summary.sort,
+                        order: "desc",
+                    },
+                    {
+                        layout: Layout.NATION,
+                        columns: [...layouts.Summary.columns],
+                        sort: layouts.Summary.sort,
+                        order: "desc",
+                    },
+                ],
+                );
                 loadCurrentLayout();
                 if (data.posts && Object.keys(data.posts).length)
                     loadPosts(data.posts);
@@ -836,13 +849,23 @@
                 saveCurrentQueryParams();
 
                 // Warm graph payload cache so Tiering/Bubble route switches are faster.
-                const graphUrl = getConflictGraphDataUrl(
-                    conflictId,
-                    config.version.graph_data,
-                );
-                queueUrlPrefetch(graphUrl, {
+                warmConflictGraphPayload(conflictId, {
                     priority: "idle",
-                    crossRoute: true,
+                    reason: "route-conflict-idle-graph-payload",
+                    routeTarget: "/conflict",
+                    intentStrength: "idle",
+                });
+                warmBubbleDefaultArtifact(conflictId, {
+                    priority: "idle",
+                    reason: "route-conflict-idle-bubble-default",
+                    routeTarget: "/bubble",
+                    intentStrength: "idle",
+                });
+                warmTieringDefaultArtifact(conflictId, {
+                    priority: "idle",
+                    reason: "route-conflict-idle-tiering-default",
+                    routeTarget: "/tiering",
+                    intentStrength: "idle",
                 });
             })
             .catch((error) => {
@@ -925,8 +948,11 @@
             formatAllianceName,
             modalWithCloseButton,
         });
-        prewarmRuntimeGroup("table").catch((error) => {
-            console.warn("Failed to prewarm table runtime", error);
+        warmRuntimeArtifact("table", {
+            priority: "high",
+            reason: "route-conflict-load-runtime",
+            routeTarget: "/conflict",
+            intentStrength: "load",
         });
 
         setWindowGlobal(
@@ -1000,7 +1026,12 @@
     }
 
     function handleClick(layout: number): void {
-        _layoutData.layout = layout;
+        _layoutData.layout =
+            layout === Layout.ALLIANCE
+                ? Layout.ALLIANCE
+                : layout === Layout.NATION
+                  ? Layout.NATION
+                  : Layout.COALITION;
         syncUrlState({ clearLayoutSortAndColumns: true, persist: true });
         loadCurrentLayout();
     }
@@ -1008,7 +1039,8 @@
     function applyLayoutPresetKey(key: string): void {
         const layout = layouts[key];
         if (!layout) return;
-        const nextOrder = layout.order ?? "desc";
+        const nextOrder: "asc" | "desc" =
+            layout.order === "asc" ? "asc" : "desc";
         if (
             isSameLayoutState({
                 sort: layout.sort,
@@ -1072,7 +1104,12 @@
         const startedAt = performance.now();
 
         const nextSort = preset.sort || _layoutData.sort;
-        const nextOrder = preset.order || _layoutData.order;
+                const nextOrder: "asc" | "desc" =
+                        preset.order === "asc"
+                                ? "asc"
+                                : preset.order === "desc"
+                                    ? "desc"
+                                    : _layoutData.order;
         const nextColumns = Array.isArray(preset.columns)
             ? [...preset.columns]
             : [..._layoutData.columns];

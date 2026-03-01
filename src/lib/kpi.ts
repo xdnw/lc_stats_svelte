@@ -1,3 +1,8 @@
+import {
+    sanitizeAavaSnapshot,
+    sanitizeScopeSnapshot,
+} from "./kpiSnapshot";
+
 export type WidgetScope = "all" | "coalition1" | "coalition2" | "selection";
 export type WidgetEntity = "alliance" | "nation";
 export type WidgetSource = "conflict" | "aava";
@@ -231,48 +236,7 @@ export function isWidgetScope(scope: unknown): scope is WidgetScope {
     );
 }
 
-export function sanitizeScopeSnapshot(snapshot: unknown): ScopeSnapshot | undefined {
-    if (!snapshot || typeof snapshot !== "object") return undefined;
-
-    const value = snapshot as Partial<ScopeSnapshot>;
-    const allianceIds = Array.isArray(value.allianceIds)
-        ? value.allianceIds
-            .map((id: unknown) => Number(id))
-            .filter((id: number) => Number.isFinite(id))
-        : [];
-    const nationIds = Array.isArray(value.nationIds)
-        ? value.nationIds
-            .map((id: unknown) => Number(id))
-            .filter((id: number) => Number.isFinite(id))
-        : [];
-    const label =
-        typeof value.label === "string" ? value.label : "Selection snapshot";
-
-    return { allianceIds, nationIds, label };
-}
-
-export function sanitizeAavaSnapshot(
-    snapshot: unknown,
-): AavaScopeSnapshot | undefined {
-    if (!snapshot || typeof snapshot !== "object") return undefined;
-
-    const value = snapshot as Partial<AavaScopeSnapshot>;
-    const primaryCoalitionIndex = value.primaryCoalitionIndex === 1 ? 1 : 0;
-    const header = typeof value.header === "string" ? value.header : "wars";
-    const label = typeof value.label === "string" ? value.label : "AAvA snapshot";
-    const primaryIds = Array.isArray(value.primaryIds)
-        ? value.primaryIds
-            .map((id: unknown) => Number(id))
-            .filter((id: number) => Number.isFinite(id))
-        : [];
-    const vsIds = Array.isArray(value.vsIds)
-        ? value.vsIds
-            .map((id: unknown) => Number(id))
-            .filter((id: number) => Number.isFinite(id))
-        : [];
-
-    return { primaryCoalitionIndex, header, label, primaryIds, vsIds };
-}
+export { sanitizeAavaSnapshot, sanitizeScopeSnapshot };
 
 export function sanitizeKpiWidget(
     item: unknown,

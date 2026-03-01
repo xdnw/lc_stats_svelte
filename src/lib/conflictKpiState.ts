@@ -12,6 +12,7 @@ import {
     type ScopeSnapshot,
     type WidgetScope,
 } from "./kpi";
+import { buildSelectionSnapshot as buildSelectionSnapshotValue } from "./kpiSnapshot";
 
 type KpiIdFactory = (prefix: string) => string;
 
@@ -104,22 +105,7 @@ export function buildSelectionSnapshot(
     selectedAllianceIds: Set<number>,
     selectedNationIds: Set<number>,
 ): ScopeSnapshot {
-    const allianceIds = Array.from(selectedAllianceIds);
-    const nationIds = Array.from(selectedNationIds);
-    const labelParts: string[] = [];
-    if (allianceIds.length > 0)
-        labelParts.push(
-            `${allianceIds.length} alliance${allianceIds.length === 1 ? "" : "s"}`,
-        );
-    if (nationIds.length > 0)
-        labelParts.push(
-            `${nationIds.length} nation${nationIds.length === 1 ? "" : "s"}`,
-        );
-    return {
-        allianceIds,
-        nationIds,
-        label: labelParts.length > 0 ? labelParts.join(" · ") : "No selection",
-    };
+    return buildSelectionSnapshotValue(selectedAllianceIds, selectedNationIds);
 }
 
 export function scopeLabel(

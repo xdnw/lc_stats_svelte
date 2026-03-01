@@ -9,7 +9,7 @@
     import ShareResetBar from "../../../components/ShareResetBar.svelte";
     import { appConfig as config } from "$lib/appConfig";
     import { decompressBson } from "$lib/binary";
-    import { computeLayoutTableData } from "$lib/layoutTable";
+    import { getOrComputeConflictTableData } from "$lib/conflictLayoutCache";
     import { setupContainer } from "$lib/tableAdapter";
     import { commafy, formatAllianceName, formatDate, formatNationName } from "$lib/formatting";
     import { registerFormatters } from "$lib/formatters";
@@ -28,11 +28,13 @@
     import { getConflictDataUrl } from "$lib/runtime";
     import type { CompositeMergeDiagnostics } from "$lib/compositeMerge";
     import { loadConflictContext } from "$lib/conflictContext";
+    import {
+        parseConflictLayoutQuery,
+        serializeConflictLayoutQuery,
+    } from "$lib/conflictLayoutQueryState";
     import type { ConflictRouteContext } from "$lib/routeBootstrap";
     import {
-        CONFLICT_LAYOUT_TAB_INDEX,
         layoutTabFromIndex,
-        resolveLayoutTabFromUrl,
     } from "$lib/conflictTabs";
     import type { TableCallbacks } from "$lib/tableCallbacks";
     import type { Conflict } from "$lib/types";
@@ -135,29 +137,18 @@
     }
 
     function parseLayoutFromQuery(query: URLSearchParams): void {
-        const layoutTab = resolveLayoutTabFromUrl(query);
-        layoutState.layout = CONFLICT_LAYOUT_TAB_INDEX[layoutTab];
-
-        const sort = query.get("sort");
-        if (sort) layoutState.sort = sort;
-
-        const order = query.get("order");
-        if (order === "asc" || order === "desc") {
-            layoutState.order = order;
-        }
-
-        const columns = query.get("columns");
-        if (columns) {
-            layoutState.columns = columns
-                .split(".")
-                .map((value) => value.trim())
-                .filter(Boolean);
-        }
+        const nextLayoutState = parseConflictLayoutQuery(query, {
+            layout: Layout.COALITION,
+            sort: SUMMARY_LAYOUT.sort,
+            order: "desc",
+            columns: [...SUMMARY_LAYOUT.columns],
+        });
+        layoutState = nextLayoutState;
     }
 
     function queryDefaults() {
         return {
-            layout: Layout.COALITION,
+            layout: "coalition",
             sort: SUMMARY_LAYOUT.sort,
             order: "desc",
             columns: SUMMARY_LAYOUT.columns.join("."),
@@ -166,14 +157,12 @@
 
     function syncQueryAndStorage(replace = true): void {
         const ids = encodeCompositeSelectionIds(data.conflictIds);
+        const serializedLayout = serializeConflictLayoutQuery(layoutState);
         setQueryParams(
             {
                 ids,
                 aid: selectedAllianceId,
-                layout: layoutState.layout,
-                sort: layoutState.sort,
-                order: layoutState.order,
-                columns: layoutState.columns.join("."),
+                ...serializedLayout,
             },
             {
                 replace,
@@ -410,12 +399,15 @@
             }
         }
 
-        const tableData = computeLayoutTableData(
+        const tableData = getOrComputeConflictTableData(
+            `composite:${data.signature}:aid:${selectedAllianceId ?? "none"}:v${String(config.version.conflict_data)}`,
             mergedConflict,
-            layoutState.layout,
-            layoutState.columns,
-            layoutState.sort,
-            layoutState.order,
+            {
+                layout: layoutState.layout,
+                columns: [...layoutState.columns],
+                sort: layoutState.sort,
+                order: layoutState.order,
+            },
         );
 
         if (layoutState.layout === Layout.COALITION) {

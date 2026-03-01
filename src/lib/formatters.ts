@@ -1,4 +1,5 @@
 import { getWindowGlobal, setWindowGlobal } from "./globals";
+import { formatMoneyValue, formatNumberValue } from "./numberFormatting";
 
 export type FormatterDeps = {
     commafy: (num: number) => string;
@@ -14,18 +15,14 @@ export function registerFormatters(deps: FormatterDeps): void {
     setWindowGlobal(
         "formatNumber",
         (data: number, _type: unknown, _row: unknown, _meta: unknown): string => {
-            if (data == 0) return "0";
-            if (data < 1000 && data > -1000) return data.toString();
-            return deps.commafy(data);
+            return formatNumberValue(data);
         },
     );
 
     setWindowGlobal(
         "formatMoney",
         (data: number, _type: unknown, _row: unknown, _meta: unknown): string => {
-            if (data == 0) return "$0";
-            if (data < 1000 && data > -1000) return `$${data.toString()}`;
-            return `$${deps.commafy(data)}`;
+            return formatMoneyValue(data);
         },
     );
 

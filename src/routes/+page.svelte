@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { getQueryParam, queueUrlPrefetch } from "$lib";
+  import { getQueryParam, warmConflictsIndexPayload } from "$lib";
   import { appConfig as config } from "$lib/appConfig";
 
   type AdTemplate = {
@@ -203,8 +203,11 @@
     draw();
 
     // Warm conflicts index in idle time only when the coordinator allows it.
-    const url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${config.version.conflicts}`;
-    queueUrlPrefetch(url, { priority: "idle", crossRoute: true });
+    warmConflictsIndexPayload({
+      priority: "idle",
+      reason: "route-home-idle-conflicts-index",
+      intentStrength: "idle",
+    });
   });
 
   onDestroy(() => {

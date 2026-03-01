@@ -24,10 +24,6 @@ export type {
     ConflictRouteLifecycleOptions,
 } from './routeBootstrap';
 export {
-    createIdPrefetchLoader,
-    createStaticPrefetchLoader,
-} from './routeLoaders';
-export {
     EXPORT_ACTIONS,
     resolveExportActions,
 } from './exportActions';
@@ -95,13 +91,59 @@ export {
     queuePrefetch,
     queueUrlPrefetch,
     queueRuntimePrefetch,
+    queueArtifactPrefetch,
+    promotePrefetchTarget,
     cancelPrefetch,
     resetPrefetchCoordinator,
 } from './prefetchCoordinator';
+export type {
+    ArtifactPrefetchIntentStrength,
+    ArtifactPrefetchKind,
+    ArtifactPrefetchTaskDescriptor,
+    PrefetchPriority,
+} from './prefetchCoordinator';
+export {
+    warmConflictsIndexPayload,
+    warmConflictPayload,
+    warmConflictTableArtifact,
+    warmConflictGraphPayload,
+    warmBubbleDefaultArtifact,
+    warmTieringDefaultArtifact,
+    warmCompositeContextArtifact,
+    warmCompositeDefaultTableArtifact,
+    warmRuntimeArtifact,
+    promoteArtifactTarget,
+    getDefaultConflictLayouts,
+    getConflictTableDataFromSharedCache,
+} from './prefetchArtifacts';
+export type { ConflictTableLayoutInput } from './conflictLayoutCache';
+export {
+    getOrComputeConflictTableData,
+    warmConflictTableLayouts,
+    invalidateConflictLayouts,
+} from './conflictLayoutCache';
+export {
+    ensureBubbleDatasetReady,
+    ensureTieringDatasetReady,
+    clearDatasetReadyHandle,
+    getBubbleTrace,
+    getTieringDataset,
+    warmBubbleDefaultTrace,
+    warmTieringDefaultDataset,
+    invalidateGraphDerived,
+} from './graphDerivedCache';
+export type {
+    Trace,
+    Range,
+    Timeframe,
+    TraceBuildResult,
+    TieringDataSet,
+    TieringDataSetResponse,
+} from './graphDerivedCache';
 export {
     beginJourneySpan,
     endJourneySpan,
-} from './journeyPerf';
+} from './perf';
 export {
     startPerfSpan,
     incrementPerfCounter,

@@ -1,3 +1,5 @@
+import { nowMs } from "./time";
+
 type PerfTags = Record<string, string | number | boolean | null | undefined>;
 
 type PerfEvent = {
@@ -21,6 +23,7 @@ type PerfState = {
 
 const MAX_EVENTS = 300;
 const MAX_COUNTERS = 300;
+const activeJourneySpans = new Map<string, () => void>();
 
 const perfState: PerfState = {
     events: [],
@@ -30,10 +33,6 @@ const perfState: PerfState = {
 function trim<T>(arr: T[], max: number): void {
     if (arr.length <= max) return;
     arr.splice(0, arr.length - max);
-}
-
-function nowMs(): number {
-    return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 export function startPerfSpan(name: string, tags?: PerfTags): () => void {
@@ -74,6 +73,24 @@ export function getPerfSnapshot(): PerfState {
 export function clearPerfSnapshot(): void {
     perfState.events = [];
     perfState.counters = [];
+}
+
+export function beginJourneySpan(
+    name: string,
+    tags?: Record<string, unknown>,
+): void {
+    const existing = activeJourneySpans.get(name);
+    if (existing) {
+        existing();
+    }
+    activeJourneySpans.set(name, startPerfSpan(name, tags as any));
+}
+
+export function endJourneySpan(name: string): void {
+    const finish = activeJourneySpans.get(name);
+    if (!finish) return;
+    activeJourneySpans.delete(name);
+    finish();
 }
 
 if (typeof window !== "undefined") {

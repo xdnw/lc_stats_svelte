@@ -1,5 +1,9 @@
 import { buildAavaSelectionRows } from "./aavaSelection";
-import type { Conflict, TableData } from "./types";
+import { buildAavaSnapshotKey, buildScopeSnapshotKey } from "./cacheKeys";
+import { formatMetricDisplay } from "./numberFormatting";
+import { getScopedRows as getScopedRowsForTable } from "./scopeFiltering";
+import type { ConflictKpiContext } from "./conflictKpiTypes";
+import type { TableData } from "./types";
 import type {
     MetricCard,
     RankingCard,
@@ -25,59 +29,19 @@ export type RankingViewRow = {
 };
 
 type CreateConflictKpiComputationsOptions = {
-    getRawData: () => Conflict | null;
-    getEntityTable: (entity: WidgetEntity) => TableData | null;
-    getNamesByAllianceId: () => Record<number, string>;
-    formatAllianceName: (name: string, allianceId: number) => string;
-    formatNationName: (name: string, nationId: number) => string;
+    context: ConflictKpiContext;
 };
 
 type RankingBaseRow = Omit<RankingViewRow, "valueText">;
-
-function snapshotCacheKey(snapshot?: ScopeSnapshot): string {
-    if (!snapshot) return "-";
-    const allianceIds = snapshot.allianceIds?.join(".") ?? "";
-    const nationIds = snapshot.nationIds?.join(".") ?? "";
-    return `${allianceIds}|${nationIds}`;
-}
-
-function aavaSnapshotCacheKey(snapshot: AavaSnapshot): string {
-    return `${snapshot.header}|${snapshot.primaryCoalitionIndex === 1 ? 1 : 0}|${snapshot.primaryIds.join(".")}|${snapshot.vsIds.join(".")}`;
-}
 
 function getAavaMetricValue(row: any, metric: string): number {
     return Number(row?.[metric]) || 0;
 }
 
-function formatMetricValue(
-    table: TableData | null,
-    metricIndex: number,
-    value: number,
-    isAavaMetric = false,
-): string {
-    if (isAavaMetric && metricIndex === -1) {
-        if (Number.isFinite(value)) {
-            if (Math.abs(value) <= 100 && `${value}`.includes(".")) {
-                return value.toLocaleString(undefined, {
-                    maximumFractionDigits: 2,
-                });
-            }
-            return value.toLocaleString();
-        }
-        return "0";
-    }
-
-    const moneyColumns = table?.cell_format?.formatMoney ?? [];
-    const isMoney = moneyColumns.includes(metricIndex);
-    const formatted = Number(value || 0).toLocaleString(undefined, {
-        maximumFractionDigits: 2,
-    });
-    return isMoney ? `$${formatted}` : formatted;
-}
-
 export function createConflictKpiComputations(
     options: CreateConflictKpiComputationsOptions,
 ) {
+    const dataContext = options.context.data;
     const scopedRowsCache = new Map<string, any[]>();
     const rankingRowsCache = new Map<string, RankingViewRow[]>();
     const metricValueCache = new Map<string, number | null>();
@@ -95,7 +59,7 @@ export function createConflictKpiComputations(
     function rankingCacheKey(card: RankingCard): string {
         if (card.source === "aava") {
             const snapshotKey = card.aavaSnapshot
-                ? aavaSnapshotCacheKey(card.aavaSnapshot)
+                ? buildAavaSnapshotKey(card.aavaSnapshot)
                 : "-";
             return `rank|aava|${card.id}|${card.metric}|${card.limit}|${snapshotKey}`;
         }
@@ -108,14 +72,14 @@ export function createConflictKpiComputations(
             card.metric,
             card.scope,
             card.limit,
-            snapshotCacheKey(card.snapshot),
+            buildScopeSnapshotKey(card.snapshot),
         ].join("|");
     }
 
     function metricCacheKey(card: MetricCard): string {
         if (card.source === "aava") {
             const snapshotKey = card.aavaSnapshot
-                ? aavaSnapshotCacheKey(card.aavaSnapshot)
+                ? buildAavaSnapshotKey(card.aavaSnapshot)
                 : "-";
             return [
                 "metric",
@@ -137,7 +101,7 @@ export function createConflictKpiComputations(
             card.scope,
             card.aggregation,
             card.normalizeBy ?? "",
-            snapshotCacheKey(card.snapshot),
+            buildScopeSnapshotKey(card.snapshot),
         ].join("|");
     }
 
@@ -152,7 +116,12 @@ export function createConflictKpiComputations(
             .sort((a, b) => b.value - a.value)
             .map((row) => ({
                 ...row,
-                valueText: formatMetricValue(table, metricIndex, row.value, isAavaMetric),
+                valueText: formatMetricDisplay(
+                    table,
+                    metricIndex,
+                    row.value,
+                    isAavaMetric,
+                ),
             }))
             .slice(0, Math.max(1, limit));
     }
@@ -163,13 +132,13 @@ export function createConflictKpiComputations(
         metricIndex: number,
     ): RankingBaseRow[] {
         const rows = getScopedRows(card.entity, card.scope, table, card.snapshot);
-        const namesByAllianceId = options.getNamesByAllianceId();
+        const namesByAllianceId = dataContext.getNamesByAllianceId();
 
         return rows.map((row) => {
             if (card.entity === "alliance") {
                 const allianceId = Number(row[0]?.[1]);
                 return {
-                    label: options.formatAllianceName(row[0]?.[0], allianceId),
+                    label: dataContext.formatAllianceName(row[0]?.[0], allianceId),
                     allianceId,
                     value: Number(row[metricIndex]) || 0,
                 };
@@ -178,9 +147,9 @@ export function createConflictKpiComputations(
             const nationId = Number(row[0]?.[1]);
             const allianceId = Number(row[0]?.[2]);
             return {
-                label: options.formatNationName(row[0]?.[0], nationId),
+                label: dataContext.formatNationName(row[0]?.[0], nationId),
                 nationId,
-                allianceName: options.formatAllianceName(
+                allianceName: dataContext.formatAllianceName(
                     namesByAllianceId[allianceId],
                     allianceId,
                 ),
@@ -192,7 +161,7 @@ export function createConflictKpiComputations(
 
     function mapAavaRankingRows(card: RankingCard): RankingBaseRow[] {
         if (!card.aavaSnapshot || card.entity !== "alliance") return [];
-        if (!options.getRawData()) return [];
+        if (!dataContext.getRawData()) return [];
 
         return getAavaRows(card.aavaSnapshot).map((row) => ({
             label: row.alliance[0],
@@ -202,9 +171,9 @@ export function createConflictKpiComputations(
     }
 
     function getAavaRows(snapshot: AavaSnapshot): ReturnType<typeof buildAavaSelectionRows> {
-        const rawData = options.getRawData();
+        const rawData = dataContext.getRawData();
         if (!rawData) return [];
-        const cacheKey = aavaSnapshotCacheKey(snapshot);
+        const cacheKey = buildAavaSnapshotKey(snapshot);
         const cached = aavaRowsCache.get(cacheKey);
         if (cached) return cached;
         const rows = buildAavaSelectionRows(rawData, {
@@ -223,62 +192,17 @@ export function createConflictKpiComputations(
         table: TableData,
         snapshot?: ScopeSnapshot,
     ): any[] {
-        const cacheKey = `${entity}|${scope}|${snapshotCacheKey(snapshot)}`;
+        const cacheKey = `${entity}|${scope}|${buildScopeSnapshotKey(snapshot)}`;
         const cached = scopedRowsCache.get(cacheKey);
         if (cached) return cached;
 
-        let rows: any[];
-        if (scope === "all") return table.data;
-
-        if (scope === "selection") {
-            const allianceIds = new Set<number>(snapshot?.allianceIds ?? []);
-            const nationIds = new Set<number>(snapshot?.nationIds ?? []);
-            if (entity === "alliance") {
-                if (allianceIds.size === 0) {
-                    rows = [];
-                } else {
-                    rows = table.data.filter((row) => {
-                        const allianceId = Number(row[0]?.[1]);
-                        return allianceIds.has(allianceId);
-                    });
-                }
-            } else if (nationIds.size > 0) {
-                rows = table.data.filter((row) => {
-                    const nationId = Number(row[0]?.[1]);
-                    return nationIds.has(nationId);
-                });
-            } else if (allianceIds.size > 0) {
-                rows = table.data.filter((row) => {
-                    const nationAllianceId = Number(row[0]?.[2]);
-                    return allianceIds.has(nationAllianceId);
-                });
-            } else {
-                rows = [];
-            }
-            scopedRowsCache.set(cacheKey, rows);
-            return rows;
-        }
-
-        const rawData = options.getRawData();
-        if (!rawData) {
-            rows = table.data;
-            scopedRowsCache.set(cacheKey, rows);
-            return rows;
-        }
-
-        const coalitionAllianceIds =
-            scope === "coalition1"
-                ? new Set<number>(rawData.coalitions[0]?.alliance_ids ?? [])
-                : new Set<number>(rawData.coalitions[1]?.alliance_ids ?? []);
-
-        rows = table.data.filter((row) => {
-            if (entity === "alliance") {
-                const allianceId = Number(row[0]?.[1]);
-                return coalitionAllianceIds.has(allianceId);
-            }
-            const nationAllianceId = Number(row[0]?.[2]);
-            return coalitionAllianceIds.has(nationAllianceId);
-        });
+        const rows = getScopedRowsForTable(
+            entity,
+            scope,
+            table,
+            snapshot,
+            dataContext.getRawData(),
+        );
         scopedRowsCache.set(cacheKey, rows);
         return rows;
     }
@@ -296,7 +220,7 @@ export function createConflictKpiComputations(
             return rowsForCard;
         }
 
-        const table = options.getEntityTable(card.entity);
+        const table = dataContext.getEntityTable(card.entity);
         if (!table) return [];
         const metricIndex = table.columns.indexOf(card.metric);
         if (metricIndex === -1) return [];
@@ -316,7 +240,7 @@ export function createConflictKpiComputations(
         let value: number | null = null;
         if (card.source === "aava") {
             if (!card.aavaSnapshot || card.entity !== "alliance") return null;
-            if (!options.getRawData()) return null;
+            if (!dataContext.getRawData()) return null;
             const rows = getAavaRows(card.aavaSnapshot);
             const vals = rows.map((row) => getAavaMetricValue(row, card.metric));
             if (vals.length === 0) return null;
@@ -353,7 +277,7 @@ export function createConflictKpiComputations(
             return value;
         }
 
-        const table = options.getEntityTable(card.entity);
+        const table = dataContext.getEntityTable(card.entity);
         if (!table) return null;
         const metricIndex = table.columns.indexOf(card.metric);
         if (metricIndex === -1) return null;

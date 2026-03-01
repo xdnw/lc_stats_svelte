@@ -5,6 +5,10 @@ import type { Conflict } from "./types";
 import type { ConflictRouteContext } from "./routeBootstrap";
 import { deriveAavaCapability } from "./aava";
 import { startPerfSpan } from "./perf";
+import {
+    getOrLoadCompositeContext,
+    makeCompositeContextCacheKey,
+} from "./compositeContextCache";
 
 export type ResolvedConflictContext = {
     mode: "single" | "composite";
@@ -102,21 +106,33 @@ export async function loadConflictContext(
         return resolved;
     }
 
-    const finishCompositePayloadSpan = startPerfSpan(
-        "conflictContext.load.compositePayloads",
-        {
-            conflictCount: context.compositeIds.length,
+    const cacheKey = makeCompositeContextCacheKey(
+        context.conflictSignature,
+        context.selectedAllianceId,
+        conflictDataVersion,
+    );
+
+    const resolved = await getOrLoadCompositeContext(
+        cacheKey,
+        context.conflictSignature,
+        context.selectedAllianceId,
+        async () => {
+            const finishCompositePayloadSpan = startPerfSpan(
+                "conflictContext.load.compositePayloads",
+                {
+                    conflictCount: context.compositeIds.length,
+                },
+            );
+            const loaded = await Promise.all(
+                context.compositeIds.map(async (id) => {
+                    const data = await loadConflict(id, conflictDataVersion);
+                    return { id, data };
+                }),
+            );
+            finishCompositePayloadSpan();
+            return resolveCompositeConflictContext(context, loaded);
         },
     );
-    const loaded = await Promise.all(
-        context.compositeIds.map(async (id) => {
-            const data = await loadConflict(id, conflictDataVersion);
-            return { id, data };
-        }),
-    );
-    finishCompositePayloadSpan();
-
-    const resolved = resolveCompositeConflictContext(context, loaded);
     finishContextSpan();
     return resolved;
 }

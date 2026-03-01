@@ -35,7 +35,6 @@ self.onmessage = async (event: MessageEvent<DecompressRequest>) => {
         const decompressed = response.body.pipeThrough(ds);
         const arrayBuffer = await new Response(decompressed).arrayBuffer();
         const result = extUnpackr.unpack(new Uint8Array(arrayBuffer));
-        console.log(`Decompression successful for id ${id}`, result);
         const successResponse: DecompressSuccessResponse = { id, ok: true, result };
         self.postMessage(successResponse);
     } catch (error) {

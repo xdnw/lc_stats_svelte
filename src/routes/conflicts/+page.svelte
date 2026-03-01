@@ -34,15 +34,25 @@
   import {
     formatDatasetProvenance,
     getConflictsIndexUrl,
-    getConflictDataUrl,
-    getConflictGraphDataUrl,
   } from "$lib/runtime";
   import { formatAllianceName } from "$lib/formatting";
-  import { queueRuntimePrefetch, queueUrlPrefetch } from "$lib/prefetchCoordinator";
+  import {
+    promoteArtifactTarget,
+    warmBubbleDefaultArtifact,
+    warmConflictGraphPayload,
+    warmConflictPayload,
+    warmConflictTableArtifact,
+    warmRuntimeArtifact,
+    warmTieringDefaultArtifact,
+  } from "$lib/prefetchArtifacts";
   import { toNumberSelection } from "$lib/selectionModalHelpers";
   import { scheduleWhenIdle, yieldToMain } from "$lib/misc";
-  import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
-  import { incrementPerfCounter, startPerfSpan } from "$lib/perf";
+  import {
+    beginJourneySpan,
+    endJourneySpan,
+    incrementPerfCounter,
+    startPerfSpan,
+  } from "$lib/perf";
   import { ConflictIndex } from "$lib/types";
   import type { TableCallbacks } from "$lib/tableCallbacks";
   import type { JSONValue, RawData, TableData } from "$lib/types";
@@ -84,6 +94,8 @@
   let timelineObserver: IntersectionObserver | null = null;
   let timelineScriptPromise: Promise<void> | null = null;
   let conflictActionClickListener: ((event: MouseEvent) => void) | null = null;
+  let conflictHoverIntentListener: ((event: Event) => void) | null = null;
+  let conflictPointerIntentListener: ((event: PointerEvent) => void) | null = null;
   let guildParam: string | null = null;
   let selectedConflictIds: Set<number> = new Set();
   let selectionMessage: string | null = null;
@@ -211,27 +223,34 @@
         stopTableEvent(event);
 
         if (action === "open-card") {
-          openConflictCard(undefined, conflictId);
+          openByReplacingActiveModal(event, () => {
+            openConflictCard(undefined, conflictId);
+          });
           return;
         }
 
         if (action === "open-coalition") {
           const index = parseConflictId(target.dataset.conflictIndex);
           if (index == null || (index !== 0 && index !== 1)) return;
-          openCoalitionForConflict(
-            undefined,
-            conflictId,
-            index,
-            target.dataset.conflictFromCard === "true",
-          );
+          const fromCard = target.dataset.conflictFromCard === "true";
+          if (fromCard) {
+            openByReplacingActiveModal(event, () => {
+              openCoalitionForConflict(undefined, conflictId, index, true);
+            });
+          } else {
+            openCoalitionForConflict(undefined, conflictId, index, false);
+          }
           return;
         }
 
         if (action === "open-field") {
           const field = target.dataset.conflictField;
           if (field === "status" || field === "cb" || field === "posts") {
-            if (target.dataset.conflictFromCard === "true") {
-              openConflictFieldFromCard(undefined, conflictId, field);
+            const fromCard = target.dataset.conflictFromCard === "true";
+            if (fromCard) {
+              openByReplacingActiveModal(event, () => {
+                openConflictFieldFromCard(undefined, conflictId, field);
+              });
             } else {
               openConflictField(undefined, conflictId, field);
             }
@@ -241,6 +260,29 @@
 
       };
       document.addEventListener("click", conflictActionClickListener, true);
+
+      conflictHoverIntentListener = (event: Event) => {
+        const target = findConflictLinkTarget(event);
+        if (!target) return;
+        const parsedId = parseConflictId(target.dataset.conflictId);
+        if (parsedId == null) return;
+        warmConflictLinkIntent(
+          parsedId,
+          event.type === "focusin" ? "focus" : "hover",
+        );
+      };
+
+      conflictPointerIntentListener = (event: PointerEvent) => {
+        const target = findConflictLinkTarget(event);
+        if (!target) return;
+        const parsedId = parseConflictId(target.dataset.conflictId);
+        if (parsedId == null) return;
+        warmConflictLinkIntent(parsedId, "pointerdown");
+      };
+
+      document.addEventListener("mouseover", conflictHoverIntentListener, true);
+      document.addEventListener("focusin", conflictHoverIntentListener, true);
+      document.addEventListener("pointerdown", conflictPointerIntentListener, true);
 
       beginJourneySpan("journey.conflicts.dataFetch", {
         version: config.version.conflicts,
@@ -364,6 +406,15 @@
     if (conflictActionClickListener) {
       document.removeEventListener("click", conflictActionClickListener, true);
       conflictActionClickListener = null;
+    }
+    if (conflictHoverIntentListener) {
+      document.removeEventListener("mouseover", conflictHoverIntentListener, true);
+      document.removeEventListener("focusin", conflictHoverIntentListener, true);
+      conflictHoverIntentListener = null;
+    }
+    if (conflictPointerIntentListener) {
+      document.removeEventListener("pointerdown", conflictPointerIntentListener, true);
+      conflictPointerIntentListener = null;
     }
   });
 
@@ -601,6 +652,32 @@
     event.stopPropagation();
   }
 
+  function openByReplacingActiveModal(
+    event: Event | undefined,
+    openNext: () => void,
+  ): void {
+    const target = event?.target;
+    const targetModal = target instanceof Element
+      ? target.closest(".modal")
+      : null;
+    const modalElem = targetModal ?? document.querySelector(".modal.show") ?? document.querySelector(".modal");
+    const modalInstance = getBootstrapModalInstance(modalElem);
+    if (!modalElem || !modalInstance?.hide) {
+      openNext();
+      return;
+    }
+
+    let opened = false;
+    const openOnce = () => {
+      if (opened) return;
+      opened = true;
+      openNext();
+    };
+
+    modalElem.addEventListener("hidden.bs.modal", openOnce, { once: true });
+    modalInstance.hide();
+  }
+
   function parseConflictActionTarget(event: MouseEvent): HTMLElement | null {
     const path = typeof event.composedPath === "function"
       ? event.composedPath()
@@ -629,6 +706,64 @@
     if (!value) return null;
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function warmConflictLinkIntent(
+    conflictId: number,
+    intent: "hover" | "focus" | "pointerdown" | "enter",
+  ): void {
+    const id = String(conflictId);
+    const routeTarget = "/conflict";
+
+    warmConflictPayload(id, {
+      priority: intent === "pointerdown" || intent === "enter" ? "high" : "idle",
+      reason: `conflicts-link-${intent}-payload`,
+      routeTarget,
+      intentStrength: intent,
+    });
+
+    warmConflictTableArtifact(id, {
+      priority: intent === "pointerdown" || intent === "enter" ? "high" : "idle",
+      reason: `conflicts-link-${intent}-table`,
+      routeTarget,
+      intentStrength: intent,
+    });
+
+    warmRuntimeArtifact("table", {
+      priority: "idle",
+      reason: `conflicts-link-${intent}-runtime-table`,
+      routeTarget,
+      intentStrength: intent,
+    });
+
+    if (intent === "pointerdown" || intent === "enter") {
+      promoteArtifactTarget("/conflict");
+      warmConflictGraphPayload(id, {
+        priority: "high",
+        reason: `conflicts-link-${intent}-graph-payload`,
+        routeTarget: "/bubble",
+        intentStrength: intent,
+      });
+      warmBubbleDefaultArtifact(id, {
+        priority: "high",
+        reason: `conflicts-link-${intent}-bubble-default`,
+        routeTarget: "/bubble",
+        intentStrength: intent,
+      });
+      warmTieringDefaultArtifact(id, {
+        priority: "high",
+        reason: `conflicts-link-${intent}-tiering-default`,
+        routeTarget: "/tiering",
+        intentStrength: intent,
+      });
+    }
+  }
+
+  function findConflictLinkTarget(event: Event): HTMLElement | null {
+    const target = event.target;
+    if (!(target instanceof Element)) return null;
+    const element = target.closest(".ux-conflict-name-btn[data-conflict-id]");
+    return element instanceof HTMLElement ? element : null;
   }
 
   function isPlainLeftClick(event?: MouseEvent): boolean {
@@ -819,20 +954,7 @@
 
     modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
 
-    const detailUrl = getConflictDataUrl(
-      String(conflictId),
-      config.version.conflict_data,
-    );
-    queueUrlPrefetch(detailUrl, { priority: "high", crossRoute: true });
-    const graphUrl = getConflictGraphDataUrl(
-      String(conflictId),
-      config.version.graph_data,
-    );
-    queueUrlPrefetch(graphUrl, { priority: "high", crossRoute: true });
-    queueRuntimePrefetch("table", {
-      priority: "idle",
-      crossRoute: true,
-    });
+    warmConflictLinkIntent(conflictId, "enter");
   }
 
   function openConflictPageFromCard(
@@ -857,7 +979,11 @@
     incrementPerfCounter("journey.conflicts_to_conflict.navMode", 1, {
       mode: "spa",
     });
-    const modalElem = document.getElementById("exampleModal");
+    const eventTarget = event?.target;
+    const modalElem =
+      eventTarget instanceof Element
+        ? eventTarget.closest(".modal")
+        : document.querySelector(".modal.show") ?? document.querySelector(".modal");
     const modalInstance = getBootstrapModalInstance(modalElem);
     modalInstance?.hide?.();
     window.setTimeout(() => {
