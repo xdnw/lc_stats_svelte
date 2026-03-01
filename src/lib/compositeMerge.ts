@@ -84,17 +84,6 @@ function cloneMetricArray(values: unknown, expectedLength: number, context: stri
     return values.map((value) => Number(value) || 0);
 }
 
-function addMetricArrays(target: number[], source: number[]): void {
-    if (target.length !== source.length) {
-        throw new CompositeMergeError(
-            "Malformed payload: cannot merge metric arrays with different lengths.",
-        );
-    }
-    for (let i = 0; i < target.length; i += 1) {
-        target[i] += source[i];
-    }
-}
-
 function remapMetricArray(values: number[], indexMap: number[]): number[] {
     const remapped = new Array(indexMap.length).fill(0);
     for (let i = 0; i < indexMap.length; i += 1) {
@@ -104,6 +93,21 @@ function remapMetricArray(values: number[], indexMap: number[]): number[] {
         }
     }
     return remapped;
+}
+
+function addRemappedMetricArray(target: number[], source: number[], indexMap: number[]): void {
+    if (target.length !== indexMap.length) {
+        throw new CompositeMergeError(
+            "Malformed payload: cannot merge remapped metric arrays with different lengths.",
+        );
+    }
+
+    for (let i = 0; i < indexMap.length; i += 1) {
+        const sourceIndex = indexMap[i];
+        if (sourceIndex >= 0 && sourceIndex < source.length) {
+            target[i] += source[sourceIndex] ?? 0;
+        }
+    }
 }
 
 function compareConflictIdsDescending(left: string, right: string): number {
@@ -207,15 +211,23 @@ function reconcileHeaders(conflicts: CompositeConflictInput[]): HeaderUnion {
             ]);
         }
 
-        const localHeaderSet = new Set(mapped.names);
-        const missingHeaders = unionHeaders.filter((header) => !localHeaderSet.has(header));
+        const missingHeaders: string[] = [];
+        const indexMap = new Array<number>(unionHeaders.length);
+        for (let i = 0; i < unionHeaders.length; i += 1) {
+            const header = unionHeaders[i];
+            const mappedIndex = mapped.indexByName.get(header);
+            if (mappedIndex == null) {
+                missingHeaders.push(header);
+                indexMap[i] = -1;
+            } else {
+                indexMap[i] = mappedIndex;
+            }
+        }
         if (missingHeaders.length > 0) {
             warnings.push(
                 `Conflict ${conflict.id} is missing headers [${missingHeaders.join(", ")}]; missing metrics were padded with 0.`,
             );
         }
-
-        const indexMap = unionHeaders.map((header) => mapped.indexByName.get(header) ?? -1);
         indicesByConflictId.set(conflict.id, indexMap);
     }
 
@@ -285,15 +297,23 @@ function reconcileWarWebHeaders(conflicts: CompositeConflictInput[]): WarWebHead
             continue;
         }
 
-        const localHeaderSet = new Set(mapped.names);
-        const missingHeaders = unionHeaders.filter((header) => !localHeaderSet.has(header));
+        const missingHeaders: string[] = [];
+        const indexMap = new Array<number>(unionHeaders.length);
+        for (let i = 0; i < unionHeaders.length; i += 1) {
+            const header = unionHeaders[i];
+            const mappedIndex = mapped.indexByName.get(header);
+            if (mappedIndex == null) {
+                missingHeaders.push(header);
+                indexMap[i] = -1;
+            } else {
+                indexMap[i] = mappedIndex;
+            }
+        }
         if (missingHeaders.length > 0) {
             warnings.push(
                 `Conflict ${conflict.id} is missing war_web headers [${missingHeaders.join(", ")}]; missing matrices were padded with 0.`,
             );
         }
-
-        const indexMap = unionHeaders.map((header) => mapped.indexByName.get(header) ?? -1);
         indicesByConflictId.set(conflict.id, indexMap);
     }
 
@@ -632,8 +652,16 @@ function mergeCoalitionIntoAccumulator(
         coalitionLabel: accumulator.name,
     });
 
-    addMetricArrays(accumulator.coalitionDamageTaken, remapMetricArray(extracted.coalitionTaken, headerIndexMap));
-    addMetricArrays(accumulator.coalitionDamageDealt, remapMetricArray(extracted.coalitionDealt, headerIndexMap));
+    addRemappedMetricArray(
+        accumulator.coalitionDamageTaken,
+        extracted.coalitionTaken,
+        headerIndexMap,
+    );
+    addRemappedMetricArray(
+        accumulator.coalitionDamageDealt,
+        extracted.coalitionDealt,
+        headerIndexMap,
+    );
 
     for (const alliance of extracted.alliances) {
         const existing = accumulator.allianceById.get(alliance.id);
@@ -651,8 +679,8 @@ function mergeCoalitionIntoAccumulator(
                 `Alliance ${alliance.id} has inconsistent names: "${existing.name}" vs "${alliance.name}".`,
             );
         }
-        addMetricArrays(existing.damageTaken, remapMetricArray(alliance.taken, headerIndexMap));
-        addMetricArrays(existing.damageDealt, remapMetricArray(alliance.dealt, headerIndexMap));
+        addRemappedMetricArray(existing.damageTaken, alliance.taken, headerIndexMap);
+        addRemappedMetricArray(existing.damageDealt, alliance.dealt, headerIndexMap);
     }
 
     for (const nation of extracted.nations) {
@@ -677,8 +705,8 @@ function mergeCoalitionIntoAccumulator(
                 `Nation ${nation.id} appears under multiple alliances (${existing.allianceId}, ${nation.allianceId}).`,
             );
         }
-        addMetricArrays(existing.damageTaken, remapMetricArray(nation.taken, headerIndexMap));
-        addMetricArrays(existing.damageDealt, remapMetricArray(nation.dealt, headerIndexMap));
+        addRemappedMetricArray(existing.damageTaken, nation.taken, headerIndexMap);
+        addRemappedMetricArray(existing.damageDealt, nation.dealt, headerIndexMap);
     }
 }
 

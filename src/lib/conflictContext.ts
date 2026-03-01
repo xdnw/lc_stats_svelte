@@ -3,6 +3,8 @@ import { mergeCompositeConflict, type CompositeMergeDiagnostics } from "./compos
 import { getConflictDataUrl } from "./runtime";
 import type { Conflict } from "./types";
 import type { ConflictRouteContext } from "./routeBootstrap";
+import { deriveAavaCapability } from "./aava";
+import { startPerfSpan } from "./perf";
 
 export type ResolvedConflictContext = {
     mode: "single" | "composite";
@@ -17,43 +19,53 @@ export type ResolvedConflictContext = {
     aavaIncompatibilities: string[];
 };
 
-export async function loadConflictContext(
-    context: ConflictRouteContext,
+type LoadConflictContextOptions = {
+    loadConflict?: (id: string, conflictDataVersion: string | number) => Promise<Conflict>;
+};
+
+async function loadConflictById(
+    id: string,
     conflictDataVersion: string | number,
-): Promise<ResolvedConflictContext> {
-    if (context.mode === "single") {
-        const payload = (await decompressBson(
-            getConflictDataUrl(context.conflictId, conflictDataVersion),
-        )) as Conflict;
+): Promise<Conflict> {
+    return (await decompressBson(
+        getConflictDataUrl(id, conflictDataVersion),
+    )) as Conflict;
+}
 
-        return {
-            mode: "single",
-            conflict: payload,
-            conflictId: context.conflictId,
-            signature: context.conflictSignature,
-            sourceConflictIds: [context.conflictId],
-            selectedAllianceId: null,
-            diagnostics: null,
-            warnings: [],
-            aavaCapable:
-                Array.isArray(payload.war_web?.headers) &&
-                payload.war_web.headers.length > 0 &&
-                Array.isArray(payload.war_web?.data) &&
-                payload.war_web.data.length > 0,
-            aavaIncompatibilities: [],
-        };
-    }
+function resolveSingleConflictContext(
+    context: Extract<ConflictRouteContext, { mode: "single" }>,
+    conflict: Conflict,
+): ResolvedConflictContext {
+    const capability = deriveAavaCapability(conflict, null);
 
-    const loaded = await Promise.all(
-        context.compositeIds.map(async (id) => {
-            const data = (await decompressBson(
-                getConflictDataUrl(id, conflictDataVersion),
-            )) as Conflict;
-            return { id, data };
-        }),
-    );
+    return {
+        mode: "single",
+        conflict,
+        conflictId: context.conflictId,
+        signature: context.conflictSignature,
+        sourceConflictIds: [context.conflictId],
+        selectedAllianceId: null,
+        diagnostics: null,
+        warnings: [],
+        aavaCapable: capability.capable,
+        aavaIncompatibilities: [],
+    };
+}
 
+function resolveCompositeConflictContext(
+    context: Extract<ConflictRouteContext, { mode: "composite" }>,
+    loaded: Array<{ id: string; data: Conflict }>,
+): ResolvedConflictContext {
+    const finishMergeSpan = startPerfSpan("mergeCompositeConflict", {
+        conflictCount: loaded.length,
+        selectedAllianceId: context.selectedAllianceId,
+    });
     const merged = mergeCompositeConflict(loaded, context.selectedAllianceId);
+    finishMergeSpan();
+    const capability = deriveAavaCapability(
+        merged.conflict,
+        merged.diagnostics,
+    );
 
     return {
         mode: "composite",
@@ -64,7 +76,47 @@ export async function loadConflictContext(
         selectedAllianceId: context.selectedAllianceId,
         diagnostics: merged.diagnostics,
         warnings: [...merged.diagnostics.warnings],
-        aavaCapable: merged.diagnostics.aavaCapable,
-        aavaIncompatibilities: [...merged.diagnostics.aavaIncompatibilities],
+        aavaCapable: capability.capable,
+        aavaIncompatibilities: [...capability.reasons],
     };
+}
+
+export async function loadConflictContext(
+    context: ConflictRouteContext,
+    conflictDataVersion: string | number,
+    options?: LoadConflictContextOptions,
+): Promise<ResolvedConflictContext> {
+    const finishContextSpan = startPerfSpan("conflictContext.load", {
+        mode: context.mode,
+    });
+    const loadConflict = options?.loadConflict ?? loadConflictById;
+
+    if (context.mode === "single") {
+        const finishSingleSpan = startPerfSpan("conflictContext.load.single", {
+            conflictId: context.conflictId,
+        });
+        const conflict = await loadConflict(context.conflictId, conflictDataVersion);
+        finishSingleSpan();
+        const resolved = resolveSingleConflictContext(context, conflict);
+        finishContextSpan();
+        return resolved;
+    }
+
+    const finishCompositePayloadSpan = startPerfSpan(
+        "conflictContext.load.compositePayloads",
+        {
+            conflictCount: context.compositeIds.length,
+        },
+    );
+    const loaded = await Promise.all(
+        context.compositeIds.map(async (id) => {
+            const data = await loadConflict(id, conflictDataVersion);
+            return { id, data };
+        }),
+    );
+    finishCompositePayloadSpan();
+
+    const resolved = resolveCompositeConflictContext(context, loaded);
+    finishContextSpan();
+    return resolved;
 }

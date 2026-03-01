@@ -15,6 +15,7 @@
     import { modalWithCloseButton } from "$lib/modals";
     import {
         applySavedQueryParamsIfMissing,
+        getCompositeContextStorageScope,
         getCurrentQueryParams,
         getScopedPageStorageKey,
         saveCurrentQueryParams,
@@ -22,11 +23,9 @@
     } from "$lib/queryState";
     import { encodeCompositeSelectionIds } from "$lib/conflictIds";
     import { getConflictDataUrl } from "$lib/runtime";
-    import {
-        isCompositeMergeError,
-        mergeCompositeConflict,
-        type CompositeMergeDiagnostics,
-    } from "$lib/compositeMerge";
+    import type { CompositeMergeDiagnostics } from "$lib/compositeMerge";
+    import { loadConflictContext } from "$lib/conflictContext";
+    import type { ConflictRouteContext } from "$lib/routeBootstrap";
     import {
         CONFLICT_LAYOUT_TAB_INDEX,
         layoutTabFromIndex,
@@ -116,7 +115,7 @@
     function scopedStorageKey(aid: number | null): string {
         return getScopedPageStorageKey(
             window.location.pathname,
-            `${data.signature}:aid=${aid ?? "none"}`,
+            getCompositeContextStorageScope(data.conflictIds, aid),
         );
     }
 
@@ -464,33 +463,47 @@
             return;
         }
 
-        try {
-            const merged = mergeCompositeConflict(conflicts, selectedAllianceId);
-            mergedConflict = merged.conflict;
-            mergeDiagnostics = merged.diagnostics;
-            mergeWarnings = merged.diagnostics.warnings;
-            if (merged.diagnostics.aavaIncompatibilities.length > 0) {
-                mergeWarnings = [
-                    ...mergeWarnings,
-                    ...merged.diagnostics.aavaIncompatibilities,
-                ];
-            }
-            clearLoadError();
-        } catch (error) {
-            if (isCompositeMergeError(error)) {
-                const details = Array.isArray((error as any).details)
+        const payloadById = new Map(conflicts.map((entry) => [entry.id, entry.data]));
+        const context: ConflictRouteContext = {
+            mode: "composite",
+            conflictId: null,
+            conflictSignature: data.signature,
+            compositeIds: [...data.conflictIds],
+            selectedAllianceId,
+        };
+
+        const requestId = ++mergeRequestId;
+        void loadConflictContext(context, config.version.conflict_data, {
+            loadConflict: async (id) => {
+                const payload = payloadById.get(id);
+                if (!payload) {
+                    throw new Error(`Conflict ${id} is missing from loaded payloads.`);
+                }
+                return payload;
+            },
+        })
+            .then((resolved) => {
+                if (requestId !== mergeRequestId) return;
+                mergedConflict = resolved.conflict;
+                mergeDiagnostics = resolved.diagnostics;
+                mergeWarnings = [...resolved.warnings, ...resolved.aavaIncompatibilities];
+                clearLoadError();
+            })
+            .catch((error: unknown) => {
+                if (requestId !== mergeRequestId) return;
+                const message = error instanceof Error
+                    ? error.message
+                    : "Failed to build composite conflict.";
+                const details = Array.isArray((error as any)?.details)
                     ? ((error as any).details as string[])
                     : [];
-                setLoadError(error.message, details);
-                return;
-            }
-            setLoadError("Failed to build composite conflict.");
-        }
+                setLoadError(message, details);
+            });
     }
 
     function handleAllianceChange(): void {
         const value = Number(selectedAllianceIdValue);
-        selectedAllianceId = Number.isFinite(value) ? value : null;
+        selectedAllianceId = Number.isFinite(value) && value > 0 ? value : null;
         if (selectedAllianceId == null) return;
         rebuildResolvedMerge(true);
     }
@@ -507,6 +520,7 @@
     }
 
     let resolvedPayloads: Array<{ id: string; data: Conflict }> = [];
+    let mergeRequestId = 0;
 
     const isResetDirty = () => {
         return (

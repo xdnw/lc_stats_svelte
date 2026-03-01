@@ -1,4 +1,5 @@
 import LZString from "lz-string";
+import { getCompositeConflictSignature } from "./conflictIds";
 
 export type QueryParamValue = string | number | boolean | null | undefined;
 
@@ -160,6 +161,19 @@ export function getScopedPageStorageKey(
     const normalizedScope = normalizeStorageScope(entityScope);
     if (!normalizedScope) return baseKey;
     return `${baseKey}::${normalizedScope}`;
+}
+
+export function getCompositeContextStorageScope(
+    conflictIds: string[],
+    selectedAllianceId: number | string | null | undefined,
+): string {
+    const signature = getCompositeConflictSignature(conflictIds);
+    const aid =
+        typeof selectedAllianceId === "number"
+            ? selectedAllianceId
+            : Number.parseInt(String(selectedAllianceId ?? ""), 10);
+    const normalizedAid = Number.isFinite(aid) && aid > 0 ? aid : "none";
+    return `composite=${signature}:aid=${normalizedAid}`;
 }
 
 export function saveCurrentQueryParams(

@@ -127,3 +127,39 @@ Use a large `conflict?id=<sample>` with nation layout selected and many KPI widg
 1. `conflict.layout.cache.hit` should dominate over `conflict.layout.cache.miss` during repeated preset toggles with the same raw payload.
 2. `conflict.layout.preset.apply` and `conflict.layout.columnPreset.apply` spans should no longer coincide with multi-second main-thread stalls.
 3. `table.incremental.reuse` should remain higher than `table.incremental.rebuild` for preset/sort/order churn where schema is unchanged.
+
+## Conflict Pipeline Refactor Baseline (2026-03-01)
+
+Scope locked for:
+
+- `/aava?id=<single>`
+- `/aava?ids=<id,id>&aid=<aid>`
+- `/conflicts/view?ids=<id,id>&aid=<aid>`
+
+Fixture used for capture:
+
+- Single: `id=156`
+- Composite: `ids=158,147,146,136,128,127,93,21,16,7&aid=11657`
+- Samples: 3 runs per scenario (median reported)
+
+### Verification snapshot
+
+| Check | Pre-refactor | Post A–D refactor |
+|---|---|---|
+| `npm run check` | ✅ pass (0 errors, 0 warnings) | ✅ pass (0 errors, 0 warnings) |
+| `npm run build` | ❌ fail: prerender error at `/aava` (`url.searchParams` access) | ❌ fail: prerender error at `/bubble` (existing); `/aava` prerender error removed |
+
+### Scenario baseline table
+
+| Scenario | Conflict load duration | `mergeCompositeConflict` duration | First table render duration | Warning count/messages |
+|---|---:|---:|---:|---|
+| `/aava?id=156` | 32.2 ms | n/a | 13.2 ms | `0` warnings |
+| `/aava?ids=158,147,146,136,128,127,93,21,16,7&aid=11657` | 277.4 ms | 43.2 ms | 19.5 ms | `1` warning: `Composite merge warnings: 1474` |
+| `/conflicts/view?ids=158,147,146,136,128,127,93,21,16,7&aid=11657` | 43.7 ms | 43.5 ms | 26.4 ms | `1` warning: `Merge warnings detected. 1474 warnings` |
+
+Notes:
+
+- Manual timings should be captured in production preview (`npm run build` + `npm run preview`) with a fixed fixture for each scenario.
+- For warning parity checks, compare message text and count against the same composite fixture before/after.
+- Current captures were taken on `npm run dev`; absolute values are environment-sensitive, but parity and relative comparisons are stable for this fixture.
+- For `/conflicts/view`, conflict payload fetch/decompress occurs in page-local preload (`loadConflicts`) before merge-context orchestration, so the reported conflict-load timing reflects context orchestration stage rather than full network+decode wall time.

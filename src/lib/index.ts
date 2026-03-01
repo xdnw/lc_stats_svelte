@@ -6,6 +6,7 @@ export {
     encodeQueryParamValue,
     decodeQueryParamValue,
     getPageStorageKey,
+    getCompositeContextStorageScope,
     saveCurrentQueryParams,
     readSavedQueryParams,
     applySavedQueryParamsIfMissing,

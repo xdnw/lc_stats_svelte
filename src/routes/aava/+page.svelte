@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { browser } from "$app/environment";
     import { page } from "$app/stores";
     import { onMount, tick } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
@@ -26,7 +27,6 @@
         getDefaultWarWebHeader,
         getConflictGraphDataUrl,
         getCurrentQueryParams,
-        loadConflictContext,
         normalizeAllianceIds,
         resetQueryParams,
         resolveWarWebMetricMeta,
@@ -56,12 +56,16 @@
     } from "$lib/kpi";
     import {
         encodeCompositeSelectionIds,
-        getCompositeConflictSignature,
         parseCompositeSelectionIds,
     } from "$lib/conflictIds";
-    import { getScopedPageStorageKey } from "$lib/queryState";
+    import {
+        getCompositeContextStorageScope,
+        getScopedPageStorageKey,
+    } from "$lib/queryState";
     import { appConfig as config } from "$lib/appConfig";
     import type { ConflictTabCapabilities } from "$lib/conflictTabs";
+    import { deriveAavaCapability } from "$lib/aava";
+    import { loadConflictContext } from "$lib/conflictContext";
 
     type ColumnKey =
         | "name"
@@ -149,9 +153,10 @@
     ) as ConflictTabCapabilities;
 
     $: {
-        const id = ($page.url.searchParams.get("id") ?? "").trim();
-        const parsed = parseCompositeSelectionIds($page.url.searchParams.get("ids"));
-        const rawAid = ($page.url.searchParams.get("aid") ?? "").trim();
+        const searchParams = browser ? $page.url.searchParams : null;
+        const id = (searchParams?.get("id") ?? "").trim();
+        const parsed = parseCompositeSelectionIds(searchParams?.get("ids") ?? null);
+        const rawAid = (searchParams?.get("aid") ?? "").trim();
         const aid = /^\d+$/.test(rawAid) ? Number.parseInt(rawAid, 10) : null;
 
         if (id.length > 0) {
@@ -231,8 +236,10 @@
         const parsed = parseCompositeSelectionIds(idsRaw);
         if (parsed.ids.length < 2) return undefined;
 
-        const signature = getCompositeConflictSignature(parsed.ids);
-        return getScopedPageStorageKey(window.location.pathname, `composite=${signature}:aid=${aidRaw}`);
+        return getScopedPageStorageKey(
+            window.location.pathname,
+            getCompositeContextStorageScope(parsed.ids, aidRaw),
+        );
     }
 
     function readScopedKpiConfig() {
@@ -899,33 +906,95 @@
         contextSignature = context.conflictSignature;
     }
 
-    function hydrateStateFromQuery(data: Conflict) {
-        const query = getCurrentQueryParams();
-        const hasExplicitSelectionParams = hasIntentionalSelectionParams(query);
+    type AavaHydrationInput = {
+        conflict: Conflict;
+        selectedAllianceId: number | null;
+        query: URLSearchParams;
+        defaultHeader: string;
+        defaultSelections: [number[], number[]];
+        defaultColumns: ColumnKey[];
+    };
 
-        primaryCoalitionIndex = parseCoalitionIndex(query.get("pc"));
-        currentHeader = query.get("header") ?? getDefaultWarWebHeader(data);
-        if (!data.war_web.headers.includes(currentHeader))
-            currentHeader = getDefaultWarWebHeader(data);
-        selectedByCoalition = resolveSelectionFromQuery(data, query);
+    type AavaHydrationState = {
+        primaryCoalitionIndex: 0 | 1;
+        currentHeader: string;
+        selectedByCoalition: [number[], number[]];
+        selectedColumns: ColumnKey[];
+    };
+
+    function deriveAavaHydrationState(
+        input: AavaHydrationInput,
+    ): AavaHydrationState {
+        const {
+            conflict,
+            query,
+            defaultHeader,
+            defaultSelections,
+            defaultColumns,
+            selectedAllianceId: _selectedAllianceId,
+        } = input;
+
+        void _selectedAllianceId;
+
+        const hasExplicitSelectionParams = hasIntentionalSelectionParams(query);
+        const primaryCoalitionIndex = parseCoalitionIndex(
+            query.get("pc"),
+        ) as 0 | 1;
+
+        let currentHeader = query.get("header") ?? defaultHeader;
+        if (!conflict.war_web.headers.includes(currentHeader)) {
+            currentHeader = defaultHeader;
+        }
+
+        let selectedByCoalition = resolveSelectionFromQuery(conflict, query);
+        const primarySelection = selectedByCoalition[primaryCoalitionIndex] ?? [];
+        const vsSelection =
+            selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
+
         if (
             !hasExplicitSelectionParams &&
-            ((selectedByCoalition[primaryCoalitionIndex] ?? []).length === 0 ||
-                (selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [])
-                    .length === 0)
+            (primarySelection.length === 0 || vsSelection.length === 0)
         ) {
-            selectedByCoalition = defaultSelectionsByCoalition(data);
+            selectedByCoalition = [
+                [...defaultSelections[0]],
+                [...defaultSelections[1]],
+            ];
         }
 
         const qColumns = parseColumns(query.get("columns"), currentHeader);
         const qLegacy = parseColumns(query.get("cols"), currentHeader);
         const resolvedCols = qColumns.length > 0 ? qColumns : qLegacy;
+        const selectedColumns =
+            resolvedCols.length > 0 ? resolvedCols : [...defaultColumns];
 
-        selectedColumns =
-            resolvedCols.length > 0
-                ? resolvedCols
-                : [...DEFAULT_VISIBLE_COLUMN_KEYS];
-        if (!selectedColumns.includes("name")) selectedColumns.unshift("name");
+        if (!selectedColumns.includes("name")) {
+            selectedColumns.unshift("name");
+        }
+
+        return {
+            primaryCoalitionIndex,
+            currentHeader,
+            selectedByCoalition,
+            selectedColumns,
+        };
+    }
+
+    function hydrateStateFromQuery(data: Conflict) {
+        const query = getCurrentQueryParams();
+        const defaults = defaultSelectionsByCoalition(data);
+        const nextState = deriveAavaHydrationState({
+            conflict: data,
+            selectedAllianceId,
+            query,
+            defaultHeader: getDefaultWarWebHeader(data),
+            defaultSelections: defaults,
+            defaultColumns: DEFAULT_VISIBLE_COLUMN_KEYS,
+        });
+
+        primaryCoalitionIndex = nextState.primaryCoalitionIndex;
+        currentHeader = nextState.currentHeader;
+        selectedByCoalition = nextState.selectedByCoalition;
+        selectedColumns = nextState.selectedColumns;
     }
 
     function loadFromContext(context: ConflictRouteContext) {
@@ -935,9 +1004,13 @@
 
         loadConflictContext(context, config.version.conflict_data)
             .then(async (resolved) => {
-                if (resolved.mode === "composite" && !resolved.aavaCapable) {
-                    const reasons = resolved.aavaIncompatibilities.length
-                        ? resolved.aavaIncompatibilities.join(" ")
+                const aavaCapability = deriveAavaCapability(
+                    resolved.conflict,
+                    resolved.diagnostics,
+                );
+                if (resolved.mode === "composite" && !aavaCapability.capable) {
+                    const reasons = aavaCapability.reasons.length
+                        ? aavaCapability.reasons.join(" ")
                         : "Composite conflict does not have a valid merged war-web matrix.";
                     throw new Error(reasons);
                 }
