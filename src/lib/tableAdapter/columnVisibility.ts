@@ -16,11 +16,19 @@ function syncVisibleColumnsToQuery(
     tableApi: any,
     dataColumns: string[],
     setQueryParam: (param: string, value: string | null) => void,
+    selectableDataColumnIndexes?: number[],
 ): void {
+    const selectableSet = selectableDataColumnIndexes
+        ? new Set<number>(selectableDataColumnIndexes)
+        : null;
     const visibleColumns = tableApi
         .columns()
         .indexes()
-        .filter((idx: number) => idx > 0 && tableApi.column(idx).visible())
+        .filter((idx: number) => {
+            if (idx <= 0 || !tableApi.column(idx).visible()) return false;
+            if (!selectableSet) return true;
+            return selectableSet.has(idx - 1);
+        })
         .map((idx: number) => dataColumns[idx - 1])
         .toArray();
     setQueryParam("columns", visibleColumns.join("."));
@@ -61,15 +69,39 @@ export function setupColumnVisibilityController(
     let renderQueued = false;
     let hasRenderedList = false;
 
+    function getSelectableDataColumnIndexes(): number[] {
+        const rows = tableApi.rows().data().toArray();
+        const seenTitles = new Set<string>();
+        const selectable: number[] = [];
+
+        for (let i = 1; i < dataColumns.length; i++) {
+            const title = `${dataColumns[i] ?? ""}`.trim();
+            if (!title) continue;
+
+            const titleKey = title.toLowerCase();
+            if (seenTitles.has(titleKey)) continue;
+
+            const hasBackedData = rows.some(
+                (row: unknown) => Array.isArray(row) && row.length > i,
+            );
+            if (!hasBackedData) continue;
+
+            seenTitles.add(titleKey);
+            selectable.push(i);
+        }
+
+        return selectable;
+    }
+
     function renderColumnManagerList(): void {
         const startedAt = performance.now();
         const query = searchInputEl.value.trim().toLowerCase();
         listElemEl.innerHTML = "";
+        const selectableDataColumnIndexes = getSelectableDataColumnIndexes();
 
         let visibleCount = 0;
         let matchedCount = 0;
-        for (let i = 0; i < dataColumns.length; i++) {
-            if (i === 0) continue;
+        for (const i of selectableDataColumnIndexes) {
             const title = dataColumns[i] ?? "";
             const isVisible = tableApi.column(i + 1).visible();
             if (isVisible) visibleCount++;
@@ -88,7 +120,12 @@ export function setupColumnVisibilityController(
             checkbox.checked = isVisible;
             checkbox.addEventListener("change", () => {
                 tableApi.column(i + 1).visible(checkbox.checked);
-                syncVisibleColumnsToQuery(tableApi, dataColumns, setQueryParam);
+                syncVisibleColumnsToQuery(
+                    tableApi,
+                    dataColumns,
+                    setQueryParam,
+                    selectableDataColumnIndexes,
+                );
                 tableApi.columns.adjust().draw(false);
                 scheduleColumnManagerRender();
             });
@@ -108,7 +145,7 @@ export function setupColumnVisibilityController(
             listElemEl.appendChild(empty);
         }
 
-        countElemEl.textContent = `Visible: ${visibleCount}/${Math.max(0, dataColumns.length - 1)}`;
+        countElemEl.textContent = `Visible: ${visibleCount}/${selectableDataColumnIndexes.length}`;
         hasRenderedList = true;
 
         if (logEnabled) {
@@ -138,18 +175,30 @@ export function setupColumnVisibilityController(
 
     searchInputEl.addEventListener("input", renderColumnManagerList);
     showAllBtnEl.addEventListener("click", () => {
-        for (let i = 1; i < dataColumns.length; i++) {
+        const selectableDataColumnIndexes = getSelectableDataColumnIndexes();
+        for (const i of selectableDataColumnIndexes) {
             tableApi.column(i + 1).visible(true, false);
         }
-        syncVisibleColumnsToQuery(tableApi, dataColumns, setQueryParam);
+        syncVisibleColumnsToQuery(
+            tableApi,
+            dataColumns,
+            setQueryParam,
+            selectableDataColumnIndexes,
+        );
         tableApi.columns.adjust().draw(false);
         scheduleColumnManagerRender();
     });
     hideAllBtnEl.addEventListener("click", () => {
-        for (let i = 1; i < dataColumns.length; i++) {
+        const selectableDataColumnIndexes = getSelectableDataColumnIndexes();
+        for (const i of selectableDataColumnIndexes) {
             tableApi.column(i + 1).visible(false, false);
         }
-        syncVisibleColumnsToQuery(tableApi, dataColumns, setQueryParam);
+        syncVisibleColumnsToQuery(
+            tableApi,
+            dataColumns,
+            setQueryParam,
+            selectableDataColumnIndexes,
+        );
         tableApi.columns.adjust().draw(false);
         scheduleColumnManagerRender();
     });
