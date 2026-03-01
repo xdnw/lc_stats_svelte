@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { page } from "$app/stores";
     import { onMount, tick } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
@@ -16,17 +17,16 @@
         buildAavaSelectionRows,
         buildCoalitionAllianceItems,
         buildStringSelectionItems,
-        decompressBson,
+        bootstrapConflictRouteLifecycle,
         downloadTableElem,
         ExportTypes,
         firstSelectedString,
         formatAllianceName,
         formatDatasetProvenance,
-        bootstrapIdRouteLifecycle,
         getDefaultWarWebHeader,
-        getConflictDataUrl,
         getConflictGraphDataUrl,
         getCurrentQueryParams,
+        loadConflictContext,
         normalizeAllianceIds,
         resetQueryParams,
         resolveWarWebMetricMeta,
@@ -35,6 +35,7 @@
         setupContainer,
         queueUrlPrefetch,
         toNumberSelection,
+        type ConflictRouteContext,
         type Conflict,
         type TableCallbacks,
         type TableData,
@@ -45,13 +46,22 @@
     import {
         makeKpiId,
         moveWidgetByDelta,
+        readCompositeSharedKpiConfig,
         readSharedKpiConfig,
+        saveCompositeSharedKpiConfig,
         saveSharedKpiConfig,
         sanitizeKpiWidget,
         type AavaScopeSnapshot,
         type ConflictKPIWidget,
     } from "$lib/kpi";
+    import {
+        encodeCompositeSelectionIds,
+        getCompositeConflictSignature,
+        parseCompositeSelectionIds,
+    } from "$lib/conflictIds";
+    import { getScopedPageStorageKey } from "$lib/queryState";
     import { appConfig as config } from "$lib/appConfig";
+    import type { ConflictTabCapabilities } from "$lib/conflictTabs";
 
     type ColumnKey =
         | "name"
@@ -86,7 +96,18 @@
 
     let conflictName = "";
     let conflictId: string | null = null;
+    let compositeIds: string[] | null = null;
+    let selectedAllianceId: number | null = null;
+    let contextMode: "single" | "composite" = "single";
+    let contextSignature = "";
+    let resolvedContext: ConflictRouteContext | null = null;
+    let compositeLoadWarnings: string[] = [];
     let datasetProvenance = "";
+
+    let tabRouteKind: "single" | "composite" = "single";
+    let tabConflictId: string | null = null;
+    let tabCompositeIds: string[] | null = null;
+    let tabSelectedAllianceId: number | null = null;
 
     let _rawData: Conflict | null = null;
     let _loaded = false;
@@ -115,6 +136,41 @@
     let sharedKpiWidgets: ConflictKPIWidget[] = [];
     let primaryCoalition: Conflict["coalitions"][number] | undefined;
     let vsCoalition: Conflict["coalitions"][number] | undefined;
+
+    $: aavaTabCapabilities = (
+        tabRouteKind === "composite"
+            ? {
+                  aava: true,
+                  tiering: false,
+                  bubble: false,
+                  chord: false,
+              }
+            : {}
+    ) as ConflictTabCapabilities;
+
+    $: {
+        const id = ($page.url.searchParams.get("id") ?? "").trim();
+        const parsed = parseCompositeSelectionIds($page.url.searchParams.get("ids"));
+        const rawAid = ($page.url.searchParams.get("aid") ?? "").trim();
+        const aid = /^\d+$/.test(rawAid) ? Number.parseInt(rawAid, 10) : null;
+
+        if (id.length > 0) {
+            tabRouteKind = "single";
+            tabConflictId = id;
+            tabCompositeIds = null;
+            tabSelectedAllianceId = null;
+        } else if (parsed.ids.length >= 2 && aid != null && aid > 0) {
+            tabRouteKind = "composite";
+            tabConflictId = null;
+            tabCompositeIds = parsed.ids;
+            tabSelectedAllianceId = aid;
+        } else {
+            tabRouteKind = contextMode;
+            tabConflictId = conflictId;
+            tabCompositeIds = compositeIds;
+            tabSelectedAllianceId = selectedAllianceId;
+        }
+    }
 
     function formatAllianceLinkCell(data: unknown): string {
         const value = data as [string, number] | undefined;
@@ -145,12 +201,74 @@
         rowsCache.clear();
     }
 
+    function contextPreserveParams(): string[] {
+        return contextMode === "composite" ? ["ids", "aid"] : ["id"];
+    }
+
+    function currentContextQuery(): { ids?: string; aid?: number; id?: string } {
+        if (contextMode === "composite" && compositeIds && selectedAllianceId) {
+            return {
+                ids: encodeCompositeSelectionIds(compositeIds),
+                aid: selectedAllianceId,
+            };
+        }
+        return {
+            id: conflictId ?? undefined,
+        };
+    }
+
+    function getAavaQueryStorageKey(query?: URLSearchParams): string | undefined {
+        const source = query ?? getCurrentQueryParams();
+        const id = (source.get("id") ?? "").trim();
+        if (id.length > 0) {
+            return getScopedPageStorageKey(window.location.pathname, `id=${id}`);
+        }
+
+        const idsRaw = source.get("ids");
+        const aidRaw = (source.get("aid") ?? "").trim();
+        if (!idsRaw || !/^\d+$/.test(aidRaw)) return undefined;
+
+        const parsed = parseCompositeSelectionIds(idsRaw);
+        if (parsed.ids.length < 2) return undefined;
+
+        const signature = getCompositeConflictSignature(parsed.ids);
+        return getScopedPageStorageKey(window.location.pathname, `composite=${signature}:aid=${aidRaw}`);
+    }
+
+    function readScopedKpiConfig() {
+        if (contextMode === "composite") {
+            return readCompositeSharedKpiConfig(contextSignature);
+        }
+        return readSharedKpiConfig(conflictId);
+    }
+
+    function saveScopedKpiConfig(config: { widgets: ConflictKPIWidget[] }) {
+        if (contextMode === "composite") {
+            saveCompositeSharedKpiConfig(contextSignature, {
+                version: 1,
+                widgets: config.widgets,
+            });
+            return;
+        }
+        saveSharedKpiConfig(conflictId, { version: 1, widgets: config.widgets });
+    }
+
     $: selectedPrimaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
     $: selectedVsIds =
         selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
     $: primaryCoalition = _rawData?.coalitions[primaryCoalitionIndex];
     $: vsCoalition = _rawData?.coalitions[primaryCoalitionIndex === 0 ? 1 : 0];
     $: aavaMetricLabels = getAavaMetricLabels(currentHeader);
+    $: encodedCompositeIds = compositeIds
+        ? encodeCompositeSelectionIds(compositeIds)
+        : null;
+    $: conflictBackHref =
+        contextMode === "composite" && encodedCompositeIds && selectedAllianceId
+            ? `${base}/conflicts/view?ids=${encodeURIComponent(encodedCompositeIds)}&aid=${selectedAllianceId}`
+            : conflictId
+              ? `${base}/conflict?id=${conflictId}`
+              : undefined;
+    $: pageTitlePrefix = contextMode === "composite" ? "Composite" : "Conflict";
     $: isResetDirty = (() => {
         if (!_rawData) return false;
         const defaultHeader = getDefaultWarWebHeader(_rawData);
@@ -350,6 +468,11 @@
     }
 
     function syncQueryParams() {
+        const contextQuery = currentContextQuery();
+        setQueryParam("id", contextQuery.id ?? null);
+        setQueryParam("ids", contextQuery.ids ?? null);
+        setQueryParam("aid", contextQuery.aid ?? null);
+
         const primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
         const vsIds =
             selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
@@ -372,7 +495,7 @@
             primaryIds.length ? primaryIds.join(".") : "none",
         );
         setQueryParam("vids", vsIds.length ? vsIds.join(".") : "none");
-        saveCurrentQueryParams();
+        saveCurrentQueryParams(getAavaQueryStorageKey());
     }
 
     function makeSelectionSnapshot(): AavaScopeSnapshot {
@@ -388,10 +511,10 @@
     }
 
     function addAavaRankingWidget() {
-        if (!conflictId) return;
+        if (!contextSignature) return;
         if (selectedPrimaryIds.length === 0 || selectedVsIds.length === 0)
             return;
-        const config = readSharedKpiConfig(conflictId);
+        const config = readScopedKpiConfig();
         config.widgets = [
             ...(config.widgets ?? []),
             {
@@ -405,15 +528,15 @@
                 aavaSnapshot: makeSelectionSnapshot(),
             },
         ];
-        saveSharedKpiConfig(conflictId, config);
+        saveScopedKpiConfig(config);
         refreshSharedKpiWidgets();
     }
 
     function addAavaMetricWidget() {
-        if (!conflictId) return;
+        if (!contextSignature) return;
         if (selectedPrimaryIds.length === 0 || selectedVsIds.length === 0)
             return;
-        const config = readSharedKpiConfig(conflictId);
+        const config = readScopedKpiConfig();
         config.widgets = [
             ...(config.widgets ?? []),
             {
@@ -428,16 +551,16 @@
                 aavaSnapshot: makeSelectionSnapshot(),
             },
         ];
-        saveSharedKpiConfig(conflictId, config);
+        saveScopedKpiConfig(config);
         refreshSharedKpiWidgets();
     }
 
     function refreshSharedKpiWidgets() {
-        if (!conflictId) {
+        if (!contextSignature) {
             sharedKpiWidgets = [];
             return;
         }
-        const config = readSharedKpiConfig(conflictId);
+        const config = readScopedKpiConfig();
         const sanitized = Array.isArray(config.widgets)
             ? config.widgets
                   .map((item: unknown) => sanitizeKpiWidget(item, makeKpiId))
@@ -454,27 +577,27 @@
             sanitized.length !== config.widgets.length
         ) {
             config.widgets = sanitized;
-            saveSharedKpiConfig(conflictId, config);
+            saveScopedKpiConfig(config);
         }
 
         sharedKpiWidgets = sanitized;
     }
 
     function removeSharedWidget(id: string) {
-        if (!conflictId) return;
-        const config = readSharedKpiConfig(conflictId);
+        if (!contextSignature) return;
+        const config = readScopedKpiConfig();
         config.widgets = (config.widgets ?? []).filter(
             (widget) => widget.id !== id,
         );
-        saveSharedKpiConfig(conflictId, config);
+        saveScopedKpiConfig(config);
         refreshSharedKpiWidgets();
     }
 
     function moveSharedWidget(id: string, delta: number) {
-        if (!conflictId) return;
-        const config = readSharedKpiConfig(conflictId);
+        if (!contextSignature) return;
+        const config = readScopedKpiConfig();
         config.widgets = moveWidgetByDelta(config.widgets ?? [], id, delta);
-        saveSharedKpiConfig(conflictId, config);
+        saveScopedKpiConfig(config);
         refreshSharedKpiWidgets();
     }
 
@@ -558,13 +681,14 @@
         vsIds: number[],
     ) {
         if (!_rawData) return [] as any[];
-        const cacheKey = `${header}|${primaryIds.join(".")}|${vsIds.join(".")}`;
+        const cacheKey = `${header}|${primaryCoalitionIndex}|${primaryIds.join(".")}|${vsIds.join(".")}`;
         const cached = rowsCache.get(cacheKey);
         if (cached) return cached;
         const rows = buildAavaSelectionRows(_rawData, {
             header,
             primaryIds,
             vsIds,
+            primaryCoalitionIndex: primaryCoalitionIndex as 0 | 1,
         });
         rowsCache.set(cacheKey, rows);
         return rows;
@@ -752,15 +876,27 @@
                 "sort",
                 "order",
             ],
-            ["id"],
+            contextPreserveParams(),
         );
-        saveCurrentQueryParams();
+        saveCurrentQueryParams(getAavaQueryStorageKey());
         scheduleRenderTable();
     }
 
     function retryLoad() {
-        if (!conflictId) return;
-        loadConflict(conflictId);
+        if (!resolvedContext) return;
+        loadFromContext(resolvedContext);
+    }
+
+    function applyResolvedRouteContext(context: ConflictRouteContext) {
+        resolvedContext = context;
+        contextMode = context.mode;
+        conflictId = context.conflictId;
+        compositeIds =
+            context.mode === "composite"
+                ? [...context.compositeIds]
+                : null;
+        selectedAllianceId = context.selectedAllianceId;
+        contextSignature = context.conflictSignature;
     }
 
     function hydrateStateFromQuery(data: Conflict) {
@@ -792,66 +928,79 @@
         if (!selectedColumns.includes("name")) selectedColumns.unshift("name");
     }
 
-    function loadConflict(id: string) {
+    function loadFromContext(context: ConflictRouteContext) {
         _loadError = null;
         _loaded = false;
         clearRowsCache();
-        const url = getConflictDataUrl(id, config.version.conflict_data);
-        decompressBson(url)
-            .then(async (data: Conflict) => {
-                _rawData = data;
-                conflictName = data.name;
+
+        loadConflictContext(context, config.version.conflict_data)
+            .then(async (resolved) => {
+                if (resolved.mode === "composite" && !resolved.aavaCapable) {
+                    const reasons = resolved.aavaIncompatibilities.length
+                        ? resolved.aavaIncompatibilities.join(" ")
+                        : "Composite conflict does not have a valid merged war-web matrix.";
+                    throw new Error(reasons);
+                }
+
+                contextSignature = resolved.signature;
+                compositeLoadWarnings = [...resolved.warnings];
+
+                _rawData = resolved.conflict;
+                conflictName = resolved.conflict.name;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.conflict_data,
-                    (data as any).update_ms,
+                    (resolved.conflict as any).update_ms,
                 );
-                hydrateStateFromQuery(data);
+                hydrateStateFromQuery(resolved.conflict);
                 await tick();
                 await yieldToMain();
                 renderTable();
                 _loaded = true;
-                saveCurrentQueryParams();
+                refreshSharedKpiWidgets();
+                saveCurrentQueryParams(getAavaQueryStorageKey());
 
-                // Warm graph payload cache so switching to Tiering/Bubble is faster.
-                const graphUrl = getConflictGraphDataUrl(
-                    id,
-                    config.version.graph_data,
-                );
-                queueUrlPrefetch(graphUrl, {
-                    priority: "idle",
-                    crossRoute: true,
-                });
+                if (resolved.mode === "single" && resolved.conflictId) {
+                    const graphUrl = getConflictGraphDataUrl(
+                        resolved.conflictId,
+                        config.version.graph_data,
+                    );
+                    queueUrlPrefetch(graphUrl, {
+                        priority: "idle",
+                        crossRoute: true,
+                    });
+                }
             })
             .catch((error) => {
                 console.error("Failed to load AAvA data", error);
-                _loadError =
-                    "Could not load conflict web data. Please try again later.";
+                _loadError = error instanceof Error
+                    ? error.message
+                    : "Could not load conflict web data. Please try again later.";
                 _loaded = true;
             });
     }
 
     onMount(() => {
-        bootstrapIdRouteLifecycle({
+        bootstrapConflictRouteLifecycle({
             restoreParams: ["header", "pc", "columns", "cols"],
-            preserveParams: ["id"],
+            preserveParams: ["id", "ids", "aid"],
+            storageKey: (query) => getAavaQueryStorageKey(query),
             onBeforeResolve: () => {
                 addFormatters();
             },
-            onMissingId: () => {
-                _loadError = "Missing conflict id in URL";
+            onMissingContext: () => {
+                _loadError = "Missing conflict context in URL (expected id or ids+aid).";
                 _loaded = true;
             },
-            onResolvedId: (id) => {
-                conflictId = id;
-                refreshSharedKpiWidgets();
-                loadConflict(id);
+            onResolvedContext: (context) => {
+                applyResolvedRouteContext(context);
+                loadFromContext(context);
             },
         });
     });
 </script>
 
 <svelte:head>
-    <title>AAvA {conflictName}</title>
+    <title>AAvA {pageTitlePrefix}: {conflictName}</title>
 </svelte:head>
 
 <div class="container-fluid p-2 ux-page-body">
@@ -862,15 +1011,13 @@
                     { label: "Home", href: `${base}/` },
                     { label: "Conflicts", href: `${base}/conflicts` },
                     {
-                        label: conflictName || "Conflict",
-                        href: conflictId
-                            ? `${base}/conflict?id=` + conflictId
-                            : undefined,
+                        label: conflictName || pageTitlePrefix,
+                        href: conflictBackHref,
                     },
                     { label: "AAvA" },
                 ]}
             />
-            <span class="ux-page-title-main">Conflict: {conflictName}</span>
+            <span class="ux-page-title-main">{pageTitlePrefix}: {conflictName}</span>
         </div>
         {#if _rawData?.wiki}
             <a
@@ -882,7 +1029,20 @@
             </a>
         {/if}
     </h1>
-    <ConflictRouteTabs {conflictId} active="aava" />
+    <ConflictRouteTabs
+        conflictId={tabConflictId}
+        active="aava"
+        routeKind={tabRouteKind}
+        compositeIds={tabCompositeIds}
+        selectedAllianceId={tabSelectedAllianceId}
+        capabilities={aavaTabCapabilities}
+    />
+
+    {#if contextMode === "composite" && compositeLoadWarnings.length > 0}
+        <div class="alert alert-warning py-2 mb-2">
+            Composite merge warnings: {compositeLoadWarnings.length}
+        </div>
+    {/if}
 
     <div
         class="ux-surface ux-tab-panel p-2 fw-bold mb-2 aava-controls ux-floating-controls"

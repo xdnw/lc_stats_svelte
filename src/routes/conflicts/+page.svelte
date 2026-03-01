@@ -1023,7 +1023,21 @@
       return;
     }
 
-    const ids = Array.from(selectedConflictIds).map((id) => String(id));
+    const ids = Array.from(selectedConflictIds)
+      .map((id) => String(id))
+      .sort((left, right) => {
+        const leftAsNumber = Number(left);
+        const rightAsNumber = Number(right);
+        const leftIsNumeric = Number.isFinite(leftAsNumber);
+        const rightIsNumeric = Number.isFinite(rightAsNumber);
+
+        if (leftIsNumeric && rightIsNumeric) {
+          return rightAsNumber - leftAsNumber;
+        }
+        if (leftIsNumeric && !rightIsNumeric) return -1;
+        if (!leftIsNumeric && rightIsNumeric) return 1;
+        return right.localeCompare(left);
+      });
     const encoded = encodeCompositeSelectionIds(ids);
     void goto(`${base}/conflicts/view?ids=${encodeURIComponent(encoded)}`, {
       keepFocus: true,

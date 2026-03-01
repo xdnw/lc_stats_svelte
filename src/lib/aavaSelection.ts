@@ -5,6 +5,7 @@ export type AavaSelectionSnapshot = {
     header: string;
     primaryIds: number[];
     vsIds: number[];
+    primaryCoalitionIndex?: 0 | 1;
 };
 
 export type AavaSelectionRow = {
@@ -19,9 +20,9 @@ export type AavaSelectionRow = {
 };
 
 type AavaIndexCache = {
-    allAllianceIds: number[];
-    indexByAllianceId: Map<number, number>;
-    allianceNameById: Record<number, string>;
+    coalitionAllianceIds: [number[], number[]];
+    indexByCoalitionAndAllianceId: [Map<number, number>, Map<number, number>];
+    allianceByMatrixIndex: Array<{ id: number; name: string }>;
 };
 
 const aavaIndexCache = new WeakMap<Conflict, AavaIndexCache>();
@@ -32,26 +33,51 @@ function getAavaIndexCache(data: Conflict): AavaIndexCache {
 
     const c1Ids = data.coalitions[0].alliance_ids;
     const c2Ids = data.coalitions[1].alliance_ids;
-    const allAllianceIds = [...c1Ids, ...c2Ids];
-    const indexByAllianceId = new Map<number, number>();
-    for (let i = 0; i < allAllianceIds.length; i++) {
-        indexByAllianceId.set(allAllianceIds[i], i);
-    }
+    const coalitionAllianceIds: [number[], number[]] = [
+        c1Ids.map((id) => Number(id)),
+        c2Ids.map((id) => Number(id)),
+    ];
 
-    const allianceNameById: Record<number, string> = {};
+    const indexByCoalitionAndAllianceId: [Map<number, number>, Map<number, number>] = [
+        new Map(),
+        new Map(),
+    ];
+    coalitionAllianceIds[0].forEach((id, i) => {
+        if (!indexByCoalitionAndAllianceId[0].has(id)) {
+            indexByCoalitionAndAllianceId[0].set(id, i);
+            return;
+        }
+        console.warn(
+            `AAvA index duplicate alliance id ${id} detected in coalition 0; using first occurrence.`,
+        );
+    });
+    coalitionAllianceIds[1].forEach((id, i) => {
+        if (!indexByCoalitionAndAllianceId[1].has(id)) {
+            indexByCoalitionAndAllianceId[1].set(
+                id,
+                coalitionAllianceIds[0].length + i,
+            );
+            return;
+        }
+        console.warn(
+            `AAvA index duplicate alliance id ${id} detected in coalition 1; using first occurrence.`,
+        );
+    });
+
+    const allianceByMatrixIndex: Array<{ id: number; name: string }> = [];
     data.coalitions.forEach((coalition) => {
         coalition.alliance_ids.forEach((id, i) => {
-            allianceNameById[id] = formatAllianceName(
-                coalition.alliance_names[i],
+            allianceByMatrixIndex.push({
                 id,
-            );
+                name: formatAllianceName(coalition.alliance_names[i], id),
+            });
         });
     });
 
     const next: AavaIndexCache = {
-        allAllianceIds,
-        indexByAllianceId,
-        allianceNameById,
+        coalitionAllianceIds,
+        indexByCoalitionAndAllianceId,
+        allianceByMatrixIndex,
     };
     aavaIndexCache.set(data, next);
     return next;
@@ -61,8 +87,13 @@ export function buildAavaSelectionRows(
     data: Conflict,
     snapshot: AavaSelectionSnapshot,
 ): AavaSelectionRow[] {
-    const { allAllianceIds, indexByAllianceId, allianceNameById } =
+    const {
+        indexByCoalitionAndAllianceId,
+        allianceByMatrixIndex,
+    } =
         getAavaIndexCache(data);
+    const primaryCoalitionIndex = snapshot.primaryCoalitionIndex === 1 ? 1 : 0;
+    const vsCoalitionIndex = primaryCoalitionIndex === 0 ? 1 : 0;
 
     const headerIndex = data.war_web.headers.indexOf(snapshot.header);
     if (headerIndex < 0) return [];
@@ -70,10 +101,17 @@ export function buildAavaSelectionRows(
     const matrix = data.war_web.data[headerIndex] as number[][];
 
     const pIndices = snapshot.primaryIds
-        .map((id) => indexByAllianceId.get(id) ?? -1)
+        .map(
+            (id) =>
+                indexByCoalitionAndAllianceId[primaryCoalitionIndex].get(id) ??
+                -1,
+        )
         .filter((i) => i >= 0);
     const vIndices = snapshot.vsIds
-        .map((id) => indexByAllianceId.get(id) ?? -1)
+        .map(
+            (id) =>
+                indexByCoalitionAndAllianceId[vsCoalitionIndex].get(id) ?? -1,
+        )
         .filter((i) => i >= 0);
 
     const rows: AavaSelectionRow[] = [];
@@ -92,9 +130,10 @@ export function buildAavaSelectionRows(
         sumPrimaryToRow += p2r;
         sumRowToPrimary += r2p;
 
-        const allianceId = allAllianceIds[rIndex];
+        const alliance = allianceByMatrixIndex[rIndex];
+        const allianceId = alliance?.id ?? 0;
         rows.push({
-            alliance: [allianceNameById[allianceId] ?? `AA:${allianceId}`, allianceId],
+            alliance: [alliance?.name ?? `AA:${allianceId}`, allianceId],
             primary_to_row: p2r,
             row_to_primary: r2p,
             net: p2r - r2p,

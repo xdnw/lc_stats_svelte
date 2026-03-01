@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { page } from "$app/stores";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
@@ -61,6 +62,7 @@
     import { appConfig as config } from "$lib/appConfig";
     import { beginJourneySpan, endJourneySpan } from "$lib/journeyPerf";
     import { incrementPerfCounter, startPerfSpan } from "$lib/perf";
+    import { layoutTabFromIndex } from "$lib/conflictTabs";
 
     const Layout = {
         COALITION: 0,
@@ -79,6 +81,13 @@
     let _loadError: string | null = null;
     let datasetProvenance = "";
     let _rawData: Conflict | null = null;
+
+    $: {
+        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
+        if (!conflictId && urlConflictId.length > 0) {
+            conflictId = urlConflictId;
+        }
+    }
 
     let breakdownCols = [
         "GROUND_TANKS_MUNITIONS_USED_UNNECESSARY",
@@ -790,13 +799,23 @@
     }
 
     function aavaSnapshotCacheKey(
-        snapshot: { header: string; primaryIds: number[]; vsIds: number[] },
+        snapshot: {
+            header: string;
+            primaryIds: number[];
+            vsIds: number[];
+            primaryCoalitionIndex?: 0 | 1;
+        },
     ): string {
-        return `${snapshot.header}|${snapshot.primaryIds.join(".")}|${snapshot.vsIds.join(".")}`;
+        return `${snapshot.header}|${snapshot.primaryCoalitionIndex === 1 ? 1 : 0}|${snapshot.primaryIds.join(".")}|${snapshot.vsIds.join(".")}`;
     }
 
     function getAavaRows(
-        snapshot: { header: string; primaryIds: number[]; vsIds: number[] },
+        snapshot: {
+            header: string;
+            primaryIds: number[];
+            vsIds: number[];
+            primaryCoalitionIndex?: 0 | 1;
+        },
     ): ReturnType<typeof buildAavaSelectionRows> {
         if (!_rawData) return [];
         const cacheKey = aavaSnapshotCacheKey(snapshot);
@@ -806,6 +825,7 @@
             header: snapshot.header,
             primaryIds: snapshot.primaryIds,
             vsIds: snapshot.vsIds,
+            primaryCoalitionIndex: snapshot.primaryCoalitionIndex,
         });
         aavaRowsCache.set(cacheKey, rows);
         return rows;
@@ -1803,8 +1823,9 @@
     <ConflictRouteTabs
         {conflictId}
         mode="layout-picker"
+        routeKind="single"
         currentLayout={_layoutData.layout}
-        active="coalition"
+        active={layoutTabFromIndex(_layoutData.layout)}
         onLayoutSelect={handleClick}
     />
 

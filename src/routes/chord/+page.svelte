@@ -1,5 +1,6 @@
 <script lang="ts">
     // @ts-nocheck
+    import { page } from "$app/stores";
     import { base } from "$app/paths";
     import {
         buildCoalitionAllianceItems,
@@ -50,6 +51,13 @@
 
     let conflictName = "";
     let conflictId: string | null = null;
+
+    $: {
+        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
+        if (!conflictId && urlConflictId.length > 0) {
+            conflictId = urlConflictId;
+        }
+    }
 
     let _rawData: Conflict | null = null;
     let _allowedAllianceIds: Set<number> = new Set();
@@ -697,7 +705,7 @@
             >
         {/if}
     </h1>
-    <ConflictRouteTabs {conflictId} active="chord" />
+    <ConflictRouteTabs {conflictId} active="chord" routeKind="single" />
     <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 116px;">
         {#if !_loaded}
             <Progress />

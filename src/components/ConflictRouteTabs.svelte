@@ -7,42 +7,96 @@
     } from "$lib/prefetchCoordinator";
     import { beginJourneySpan } from "$lib/journeyPerf";
     import { appConfig as config } from "$lib/appConfig";
-
-    type ConflictTab =
-        | "coalition"
-        | "alliance"
-        | "aava"
-        | "nation"
-        | "tiering"
-        | "bubble"
-        | "chord";
+    import {
+        buildConflictTabDescriptors,
+        type ConflictLayoutTab,
+        type ConflictRouteKind,
+        type ConflictTab,
+        type ConflictTabCapabilities,
+        type ConflictTabDescriptor,
+    } from "$lib/conflictTabs";
 
     export let conflictId: string | null = null;
+    export let compositeIds: string[] | null = null;
+    export let selectedAllianceId: number | null = null;
     export let active: ConflictTab = "coalition";
     export let mode: "links" | "layout-picker" = "links";
+    export let routeKind: ConflictRouteKind | null = null;
     export let currentLayout: number = 0;
     export let onLayoutSelect: ((layout: number) => void) | null = null;
+    export let capabilities: ConflictTabCapabilities = {};
     export let disabledTabs: ConflictTab[] = [];
 
     /** Tabs that use graph_data; everything else uses conflict_data. */
     const GRAPH_TABS: Set<ConflictTab> = new Set(["tiering", "bubble"]);
 
-    function isTabDisabled(tab: ConflictTab): boolean {
-        return disabledTabs.includes(tab);
+    const LAYOUT_TABS: ConflictLayoutTab[] = ["coalition", "alliance", "nation"];
+    const NON_LAYOUT_TABS: Array<Exclude<ConflictTab, ConflictLayoutTab>> = [
+        "aava",
+        "tiering",
+        "bubble",
+        "chord",
+    ];
+
+    const TAB_LABELS: Record<ConflictTab, string> = {
+        coalition: "◑ Coalition",
+        alliance: "𖣯 Alliance",
+        nation: "♟ Nation",
+        aava: "⚔️ AA vs AA",
+        tiering: "📊 Tier/Time",
+        bubble: "📈 Bubble/Time",
+        chord: "🌐 Web",
+    };
+
+    function hasCompositeContext(): boolean {
+        return (
+            Array.isArray(compositeIds) &&
+            compositeIds.length >= 2 &&
+            Number.isFinite(selectedAllianceId) &&
+            (selectedAllianceId ?? 0) > 0
+        );
     }
 
-    function buildTabHref(tab: ConflictTab): string {
-        if (tab === "coalition" || tab === "alliance" || tab === "nation") {
-            return `${base}/conflict?id=${conflictId}&layout=${tab}`;
+    function resolveRouteKind(): ConflictRouteKind {
+        if (routeKind) return routeKind;
+        return hasCompositeContext() ? "composite" : "single";
+    }
+
+    $: effectiveRouteKind = resolveRouteKind();
+
+    $: tabDescriptors = buildConflictTabDescriptors({
+        activeTab: active,
+        routeKind: effectiveRouteKind,
+        capabilities,
+        hrefContext: {
+            routeKind: effectiveRouteKind,
+            conflictId,
+            compositeIds,
+            selectedAllianceId,
+            basePath: base,
+        },
+        disabledTabs,
+    });
+
+    function getTabDescriptor(tab: ConflictTab): ConflictTabDescriptor {
+        return tabDescriptors.find((entry) => entry.tab === tab) ?? {
+            tab,
+            href: null,
+            disabled: true,
+            active: false,
+        };
+    }
+
+    function prefetchTab(descriptor: ConflictTabDescriptor) {
+        const tab = descriptor.tab;
+        if (
+            effectiveRouteKind !== "single" ||
+            !conflictId ||
+            tab === active ||
+            descriptor.disabled
+        ) {
+            return;
         }
-        if (tab === "aava") return `${base}/aava?id=${conflictId}`;
-        if (tab === "tiering") return `${base}/tiering?id=${conflictId}`;
-        if (tab === "bubble") return `${base}/bubble?id=${conflictId}`;
-        return `${base}/chord?id=${conflictId}`;
-    }
-
-    function prefetchTab(tab: ConflictTab) {
-        if (!conflictId || tab === active || isTabDisabled(tab)) return;
         const url = GRAPH_TABS.has(tab)
             ? getConflictGraphDataUrl(conflictId, config.version.graph_data)
             : getConflictDataUrl(conflictId, config.version.conflict_data);
@@ -90,81 +144,40 @@
             ♟&nbsp;Nation
         </button>
     {:else}
-        <a
-            href={buildTabHref("coalition")}
-            class="col ps-0 pe-0 btn {active === 'coalition'
-                ? 'is-active'
-                : ''}"
-            on:mouseenter={() => prefetchTab("coalition")}
-            data-sveltekit-preload-code="hover"
-        >
-            ◑&nbsp;Coalition
-        </a>
-        <a
-            href={buildTabHref("alliance")}
-            class="col btn ps-0 pe-0 {active === 'alliance' ? 'is-active' : ''}"
-            on:mouseenter={() => prefetchTab("alliance")}
-            data-sveltekit-preload-code="hover"
-        >
-            𖣯&nbsp;Alliance
-        </a>
-        <a
-            href={buildTabHref("nation")}
-            class="col ps-0 pe-0 btn {active === 'nation' ? 'is-active' : ''}"
-            on:mouseenter={() => prefetchTab("nation")}
-            data-sveltekit-preload-code="hover"
-        >
-            ♟&nbsp;Nation
-        </a>
+        {#each LAYOUT_TABS as tab}
+            {@const descriptor = getTabDescriptor(tab)}
+            {#if descriptor.disabled}
+                <button class="col ps-0 pe-0 btn {active === tab ? 'is-active' : ''}" disabled>
+                    {TAB_LABELS[tab]}
+                </button>
+            {:else}
+                <a
+                    href={descriptor.href ?? undefined}
+                    class="col ps-0 pe-0 btn {active === tab ? 'is-active' : ''}"
+                    on:mouseenter={() => prefetchTab(descriptor)}
+                    data-sveltekit-preload-code="hover"
+                >
+                    {TAB_LABELS[tab]}
+                </a>
+            {/if}
+        {/each}
     {/if}
 
-    {#if isTabDisabled("aava")}
-        <button class="col ps-0 pe-0 btn" disabled>⚔️&nbsp;AA vs AA</button>
-    {:else}
-        <a
-            class="col ps-0 pe-0 btn {active === 'aava' ? 'is-active' : ''}"
-            href={buildTabHref("aava")}
-            on:mouseenter={() => prefetchTab("aava")}
-            data-sveltekit-preload-code="hover"
-        >
-            ⚔️&nbsp;AA vs AA
-        </a>
-    {/if}
-
-    {#if isTabDisabled("tiering")}
-        <button class="col ps-0 pe-0 btn" disabled>📊&nbsp;Tier/Time</button>
-    {:else}
-        <a
-            class="col ps-0 pe-0 btn {active === 'tiering' ? 'is-active' : ''}"
-            href={buildTabHref("tiering")}
-            on:mouseenter={() => prefetchTab("tiering")}
-            data-sveltekit-preload-code="hover"
-        >
-            📊&nbsp;Tier/Time
-        </a>
-    {/if}
-    {#if isTabDisabled("bubble")}
-        <button class="col ps-0 pe-0 btn" disabled>📈&nbsp;Bubble/Time</button>
-    {:else}
-        <a
-            class="col ps-0 pe-0 btn {active === 'bubble' ? 'is-active' : ''}"
-            href={buildTabHref("bubble")}
-            on:mouseenter={() => prefetchTab("bubble")}
-            data-sveltekit-preload-code="hover"
-        >
-            📈&nbsp;Bubble/Time
-        </a>
-    {/if}
-    {#if isTabDisabled("chord")}
-        <button class="col ps-0 pe-0 btn" disabled>🌐&nbsp;Web</button>
-    {:else}
-        <a
-            class="col ps-0 pe-0 btn {active === 'chord' ? 'is-active' : ''}"
-            href={buildTabHref("chord")}
-            on:mouseenter={() => prefetchTab("chord")}
-            data-sveltekit-preload-code="hover"
-        >
-            🌐&nbsp;Web
-        </a>
-    {/if}
+    {#each NON_LAYOUT_TABS as tab}
+        {@const descriptor = getTabDescriptor(tab)}
+        {#if descriptor.disabled}
+            <button class="col ps-0 pe-0 btn {active === tab ? 'is-active' : ''}" disabled>
+                {TAB_LABELS[tab]}
+            </button>
+        {:else}
+            <a
+                class="col ps-0 pe-0 btn {active === tab ? 'is-active' : ''}"
+                href={descriptor.href ?? undefined}
+                on:mouseenter={() => prefetchTab(descriptor)}
+                data-sveltekit-preload-code="hover"
+            >
+                {TAB_LABELS[tab]}
+            </a>
+        {/if}
+    {/each}
 </div>

@@ -2,6 +2,7 @@
     /**
      * This page is for viewing tiering charts for a conflict
      */
+    import { page } from "$app/stores";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ExportDataMenu from "../../components/ExportDataMenu.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
@@ -68,6 +69,13 @@
     let conflictName = "";
     let conflictId: string | null = null;
     let datasetProvenance = "";
+
+    $: {
+        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
+        if (!conflictId && urlConflictId.length > 0) {
+            conflictId = urlConflictId;
+        }
+    }
 
     let normalize: boolean = false;
     let previous_normalize: boolean = false;
@@ -1398,7 +1406,7 @@
             >
         </div>
     </h1>
-    <ConflictRouteTabs {conflictId} active="tiering" />
+    <ConflictRouteTabs {conflictId} active="tiering" routeKind="single" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"

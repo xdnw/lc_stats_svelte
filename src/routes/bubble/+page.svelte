@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { page } from "$app/stores";
     import { onMount, onDestroy, tick } from "svelte";
     import Select from "svelte-select";
     import ExportDataMenu from "../../components/ExportDataMenu.svelte";
@@ -61,6 +62,13 @@
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
+
+    $: {
+        const urlConflictId = ($page.url.searchParams.get("id") ?? "").trim();
+        if (!conflictId && urlConflictId.length > 0) {
+            conflictId = urlConflictId;
+        }
+    }
 
     let normalize_x: boolean = false;
     let normalize_y: boolean = false;
@@ -1461,7 +1469,7 @@
             >
         {/if}
     </h1>
-    <ConflictRouteTabs {conflictId} active="bubble" />
+    <ConflictRouteTabs {conflictId} active="bubble" routeKind="single" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
         style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"

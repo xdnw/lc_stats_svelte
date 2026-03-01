@@ -14,10 +14,13 @@ export {
 export {
     bootstrapIdRoute,
     bootstrapIdRouteLifecycle,
+    bootstrapConflictRouteLifecycle,
 } from './routeBootstrap';
 export type {
     IdRouteBootstrapOptions,
     IdRouteLifecycleOptions,
+    ConflictRouteContext,
+    ConflictRouteLifecycleOptions,
 } from './routeBootstrap';
 export {
     createIdPrefetchLoader,
@@ -123,6 +126,26 @@ export {
     resolveWarWebMetricMeta,
 } from './warWeb';
 export type { WarWebMetricMeta } from './warWeb';
+export { loadConflictContext } from './conflictContext';
+export type { ResolvedConflictContext } from './conflictContext';
+export {
+    CONFLICT_LAYOUT_TAB_INDEX,
+    isLayoutTab,
+    layoutTabFromIndex,
+    resolveLayoutTabFromUrl,
+    resolveActiveTabFromUrl,
+    buildTabHref,
+    resolveDisabledTabs,
+    buildConflictTabDescriptors,
+} from './conflictTabs';
+export type {
+    ConflictLayoutTab,
+    ConflictTab,
+    ConflictRouteKind,
+    ConflictTabCapabilities,
+    ConflictTabHrefContext,
+    ConflictTabDescriptor,
+} from './conflictTabs';
 export type {
     ExportType,
     ExportFormat,

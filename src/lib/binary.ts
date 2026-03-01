@@ -83,6 +83,7 @@ async function decompressMainThread(url: string): Promise<any> {
     const decompressed = response.body.pipeThrough(ds);
     const arrayBuffer = await new Response(decompressed).arrayBuffer();
     const result = extUnpackr.unpack(new Uint8Array(arrayBuffer));
+    console.log(`Decompression successful for url ${url}`, result);
     finishSpan();
     incrementPerfCounter('decompress.main.success');
     return result;
