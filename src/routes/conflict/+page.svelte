@@ -101,6 +101,15 @@
     import { appConfig as config } from "$lib/appConfig";
     import { beginJourneySpan, endJourneySpan, incrementPerfCounter, startPerfSpan } from "$lib/perf";
     import { layoutTabFromIndex } from "$lib/conflictTabs";
+    import {
+        CONFLICT_TABLE_LAYOUT_PRESETS,
+        CONFLICT_TABLE_LAYOUT_PRESET_KEYS,
+        DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET,
+        DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY,
+        createDefaultConflictTableLayoutState,
+        detectConflictTableLayoutPresetKey,
+        isConflictTableLayoutStateEqual,
+    } from "$lib/conflictTablePresets";
 
     const Layout = {
         COALITION: 0,
@@ -120,121 +129,11 @@
     let datasetProvenance = "";
     let _rawData: Conflict | null = null;
 
-    let breakdownCols = [
-        "GROUND_TANKS_MUNITIONS_USED_UNNECESSARY",
-        "DOUBLE_FORTIFY",
-        "GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY",
-        "GROUND_NO_TANKS_MUNITIONS_USED_UNNECESSARY_INACTIVE",
-        "GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR_INACTIVE",
-        "GROUND_TANKS_NO_LOOT_NO_ENEMY_AIR",
-        "AIRSTRIKE_SOLDIERS_NONE",
-        "AIRSTRIKE_SOLDIERS_SHOULD_USE_GROUND",
-        "AIRSTRIKE_TANKS_NONE",
-        "AIRSTRIKE_SHIP_NONE",
-        "AIRSTRIKE_INACTIVE_NO_GROUND",
-        "AIRSTRIKE_INACTIVE_NO_SHIP",
-        "AIRSTRIKE_FAILED_NOT_DOGFIGHT",
-        "AIRSTRIKE_AIRCRAFT_NONE",
-        "AIRSTRIKE_AIRCRAFT_NONE_INACTIVE",
-        "AIRSTRIKE_AIRCRAFT_LOW",
-        "AIRSTRIKE_INFRA",
-        "AIRSTRIKE_MONEY",
-        "NAVAL_MAX_VS_NONE",
-    ].map((col) => `off:${col.toLowerCase().replaceAll("_", " ")} attacks`);
-
-    let layouts: {
-        [key: string]: { sort: string; columns: string[]; order?: string };
-    } = {
-        Summary: {
-            sort: "off:wars",
-            columns: [
-                "name",
-                "net:damage",
-                "off:wars",
-                "def:wars",
-                "dealt:damage",
-                "loss:damage",
-            ],
-        },
-        Dealt: {
-            sort: "dealt:damage",
-            columns: [
-                "name",
-                "dealt:infra",
-                "dealt:~$soldier",
-                "dealt:~$tank",
-                "dealt:~$aircraft",
-                "dealt:~$ship",
-                "dealt:~$unit",
-                "dealt:~$consume",
-                "dealt:~$loot",
-                "dealt:damage",
-            ],
-        },
-        Received: {
-            sort: "loss:damage",
-            columns: [
-                "name",
-                "loss:infra",
-                "loss:~$soldier",
-                "loss:~$tank",
-                "loss:~$aircraft",
-                "loss:~$ship",
-                "loss:~$unit",
-                "loss:~$consume",
-                "loss:~$loot",
-                "loss:damage",
-            ],
-        },
-        Units: {
-            sort: "dealt:~$unit",
-            columns: [
-                "name",
-                "dealt:soldier",
-                "dealt:tank",
-                "dealt:aircraft",
-                "dealt:ship",
-                "dealt:~$unit",
-                "loss:soldier",
-                "loss:tank",
-                "loss:aircraft",
-                "loss:ship",
-                "loss:~$unit",
-                "net:~$unit",
-            ],
-        },
-        Consumption: {
-            sort: "name",
-            columns: [
-                "name",
-                "loss:~$building",
-                "loss:gasoline",
-                "loss:munitions",
-                "loss:steel",
-                "loss:aluminum",
-                "loss:consume gas",
-                "loss:consume mun",
-            ],
-        },
-        Attacks: {
-            sort: "off:attacks",
-            columns: ["name", "off:attacks", ...breakdownCols],
-        },
-    };
+    const layouts = CONFLICT_TABLE_LAYOUT_PRESETS;
 
     // Invariant: _layoutData is the single source of truth for active table layout inputs.
     // Downstream consumers must derive from this object instead of recomputing ad-hoc tables.
-    let _layoutData: {
-        layout: 0 | 1 | 2;
-        columns: string[];
-        sort: string;
-        order: "asc" | "desc";
-    } = {
-        layout: Layout.COALITION,
-        columns: [...layouts.Summary.columns],
-        sort: layouts.Summary.sort,
-        order: "desc",
-    };
+    let _layoutData = createDefaultConflictTableLayoutState();
 
     type LayoutDerivationInput = ConflictTableLayoutInput;
 
@@ -286,8 +185,7 @@
             order: _layoutData.order,
         };
     }
-    let layoutPresetKeys: string[] = [];
-    $: layoutPresetKeys = Object.keys(layouts);
+    const layoutPresetKeys = CONFLICT_TABLE_LAYOUT_PRESET_KEYS;
 
     let _currentRowData: TableData;
     const getVis = (): any => getVisGlobal();
@@ -308,7 +206,7 @@
     let showLayoutPresetModal = false;
     let showKpiBuilderModal = false;
     let showPresetOverflowMenu = false;
-    let selectedLayoutPresetKey: string | null = "Summary";
+    let selectedLayoutPresetKey: string | null = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
 
     let layoutPresetViewportEl: HTMLDivElement | null = null;
     let layoutPresetButtonsEl: HTMLDivElement | null = null;
@@ -330,23 +228,16 @@
     let metricNormalizeByToAdd = "";
     let metricsOptions: string[] = [];
 
-    function arraysEqual<T>(left: T[], right: T[]): boolean {
-        return (
-            left.length === right.length &&
-            left.every((value, idx) => value === right[idx])
-        );
-    }
-
     function isSameLayoutState(input: {
         sort: string;
         order: string;
         columns: string[];
     }): boolean {
-        return (
-            _layoutData.sort === input.sort &&
-            _layoutData.order === input.order &&
-            arraysEqual(_layoutData.columns, input.columns)
-        );
+        return isConflictTableLayoutStateEqual(_layoutData, {
+            sort: input.sort,
+            order: input.order === "asc" ? "asc" : "desc",
+            columns: input.columns,
+        });
     }
 
     $: {
@@ -666,9 +557,9 @@
     function loadLayoutFromQuery(query: URLSearchParams) {
         const nextLayoutState = parseConflictLayoutQuery(query, {
             layout: Layout.COALITION,
-            sort: layouts.Summary.sort,
+            sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
             order: "desc",
-            columns: [...layouts.Summary.columns],
+            columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
         });
         _layoutData.layout = nextLayoutState.layout;
         _layoutData.sort = nextLayoutState.sort;
@@ -724,9 +615,9 @@
     function queryDefaults() {
         return {
             layout: "coalition",
-            sort: layouts.Summary.sort,
+            sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
             order: "desc",
-            columns: layouts.Summary.columns.join("."),
+            columns: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns.join("."),
             kpiw: serializeKpiWidgetsForUrlWithId(DEFAULT_KPI_WIDGETS, makeKpiId),
         };
     }
@@ -764,7 +655,7 @@
     }
 
     $: isResetDirty = (() => {
-        const defaultCols = layouts.Summary.columns;
+        const defaultCols = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns;
         const sameColumns =
             _layoutData.columns.length === defaultCols.length &&
             _layoutData.columns.every(
@@ -772,7 +663,7 @@
             );
         const sameLayout =
             _layoutData.layout === Layout.COALITION &&
-            _layoutData.sort === layouts.Summary.sort &&
+            _layoutData.sort === DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort &&
             _layoutData.order === "desc" &&
             sameColumns;
 
@@ -822,20 +713,20 @@
                     [
                     {
                         layout: Layout.COALITION,
-                        columns: [...layouts.Summary.columns],
-                        sort: layouts.Summary.sort,
+                        columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
+                        sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
                         order: "desc",
                     },
                     {
                         layout: Layout.ALLIANCE,
-                        columns: [...layouts.Summary.columns],
-                        sort: layouts.Summary.sort,
+                        columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
+                        sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
                         order: "desc",
                     },
                     {
                         layout: Layout.NATION,
-                        columns: [...layouts.Summary.columns],
-                        sort: layouts.Summary.sort,
+                        columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
+                        sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
                         order: "desc",
                     },
                 ],
@@ -1165,19 +1056,7 @@
     }
 
     function detectLayoutPresetKey(): string | null {
-        return (
-            layoutPresetKeys.find((key) => {
-                const layout = layouts[key];
-                const expectedOrder = layout.order ?? "desc";
-                return (
-                    isSameLayoutState({
-                        sort: layout.sort,
-                        order: expectedOrder,
-                        columns: layout.columns,
-                    })
-                );
-            }) ?? null
-        );
+        return detectConflictTableLayoutPresetKey(_layoutData);
     }
 
     function updateLayoutPresetMode(): void {
@@ -1216,10 +1095,10 @@
 
     function resetFilters() {
         _layoutData.layout = Layout.COALITION;
-        _layoutData.columns = [...layouts.Summary.columns];
-        _layoutData.sort = layouts.Summary.sort;
+        _layoutData.columns = [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns];
+        _layoutData.sort = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort;
         _layoutData.order = "desc";
-        selectedLayoutPresetKey = "Summary";
+        selectedLayoutPresetKey = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
 
         kpiWidgetActions.setWidgets([...DEFAULT_KPI_WIDGETS]);
 

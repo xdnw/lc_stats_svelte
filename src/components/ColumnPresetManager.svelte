@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { browser } from "$app/environment";
     import { createEventDispatcher, onMount } from "svelte";
     import {
         readColumnPresets,
@@ -16,17 +17,27 @@
         | SharedKpiConfig
         | Record<string, unknown>
         | null = null;
+    export let storageKey: string | null = null;
 
     const dispatch = createEventDispatcher();
 
     let presets: Record<string, ColumnPreset> = {};
     let name = "";
+    let lastLoadedStorageKey: string | null = null;
 
     function loadPresets() {
-        presets = readColumnPresets();
+        presets = readColumnPresets(storageKey ?? undefined);
     }
 
-    onMount(loadPresets);
+    onMount(() => {
+        loadPresets();
+        lastLoadedStorageKey = storageKey;
+    });
+
+    $: if (browser && lastLoadedStorageKey !== storageKey) {
+        loadPresets();
+        lastLoadedStorageKey = storageKey;
+    }
 
     function requestSave() {
         const nm = (name || "").trim();
@@ -43,7 +54,7 @@
             order: currentOrder,
             kpis: currentKpis,
             kpiConfig: currentKpiConfig,
-        });
+        }, storageKey ?? undefined);
         name = "";
         loadPresets();
         dispatch("saved", { name: nm });
@@ -59,7 +70,7 @@
         if (!confirm(`Delete layout "${presetName}"?`)) {
             return;
         }
-        deleteColumnPreset(presetName);
+        deleteColumnPreset(presetName, storageKey ?? undefined);
         loadPresets();
         dispatch("deleted", { name: presetName });
     }

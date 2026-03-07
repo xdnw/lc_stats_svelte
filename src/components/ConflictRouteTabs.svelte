@@ -30,6 +30,7 @@
     export let onLayoutSelect: ((layout: number) => void) | null = null;
     export let capabilities: ConflictTabCapabilities = {};
     export let disabledTabs: ConflictTab[] = [];
+    export let preservedQuery: Record<string, string | null | undefined> | null = null;
 
     const LAYOUT_TABS: ConflictLayoutTab[] = ["coalition", "alliance", "nation"];
     const NON_LAYOUT_TABS: Array<Exclude<ConflictTab, ConflictLayoutTab>> = [
@@ -86,6 +87,7 @@
             compositeIds,
             selectedAllianceId,
             basePath: base,
+            preservedQuery,
         },
         disabledTabs,
     });

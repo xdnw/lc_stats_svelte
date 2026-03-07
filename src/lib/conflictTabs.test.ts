@@ -51,6 +51,41 @@ describe("conflictTabs", () => {
         ).toBe("/base/aava?ids=11%2C22&aid=9");
     });
 
+    it("preserves layout query params across composite tab hrefs", () => {
+        expect(
+            buildTabHref("alliance", {
+                routeKind: "composite",
+                compositeIds: ["11", "22"],
+                selectedAllianceId: 9,
+                basePath: "/base",
+                preservedQuery: {
+                    sort: "net:damage",
+                    order: "asc",
+                    columns: "name.net:damage.off:wars",
+                },
+            }),
+        ).toBe(
+            "/base/conflicts/view?sort=net%3Adamage&order=asc&columns=name.net%3Adamage.off%3Awars&ids=11%2C22&aid=9&layout=alliance",
+        );
+
+        expect(
+            buildTabHref("aava", {
+                routeKind: "composite",
+                compositeIds: ["11", "22"],
+                selectedAllianceId: 9,
+                basePath: "/base",
+                preservedQuery: {
+                    layout: "nation",
+                    sort: "net:damage",
+                    order: "desc",
+                    columns: "name.net:damage.off:wars",
+                },
+            }),
+        ).toBe(
+            "/base/aava?conflictLayout=nation&conflictSort=net%3Adamage&conflictOrder=desc&conflictColumns=name.net%3Adamage.off%3Awars&ids=11%2C22&aid=9",
+        );
+    });
+
     it("centralizes disabled defaults and capability overrides", () => {
         expect(resolveDisabledTabs({}, "composite")).toEqual(["tiering", "bubble", "chord"]);
         expect(resolveDisabledTabs({ aava: false, bubble: true }, "composite")).toEqual([

@@ -4,6 +4,7 @@
     import { page } from "$app/stores";
     import { onMount, tick } from "svelte";
     import Breadcrumbs from "../../../components/Breadcrumbs.svelte";
+    import ColumnPresetManager from "../../../components/ColumnPresetManager.svelte";
     import ConflictRouteTabs from "../../../components/ConflictRouteTabs.svelte";
     import Progress from "../../../components/Progress.svelte";
     import ShareResetBar from "../../../components/ShareResetBar.svelte";
@@ -37,7 +38,17 @@
         layoutTabFromIndex,
     } from "$lib/conflictTabs";
     import type { TableCallbacks } from "$lib/tableCallbacks";
+    import type { ColumnPreset } from "$lib/columnPresets";
     import type { Conflict } from "$lib/types";
+    import {
+        CONFLICT_TABLE_LAYOUT_PRESETS,
+        CONFLICT_TABLE_LAYOUT_PRESET_KEYS,
+        DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET,
+        DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY,
+        createDefaultConflictTableLayoutState,
+        detectConflictTableLayoutPresetKey,
+        isConflictTableLayoutStateEqual,
+    } from "$lib/conflictTablePresets";
 
     const Layout = {
         COALITION: 0,
@@ -45,17 +56,8 @@
         NATION: 2,
     } as const;
 
-    const SUMMARY_LAYOUT = {
-        sort: "off:wars",
-        columns: [
-            "name",
-            "net:damage",
-            "off:wars",
-            "def:wars",
-            "dealt:damage",
-            "loss:damage",
-        ],
-    };
+    const layoutPresets = CONFLICT_TABLE_LAYOUT_PRESETS;
+    const layoutPresetKeys = CONFLICT_TABLE_LAYOUT_PRESET_KEYS;
 
     export let data: {
         conflictIds: string[];
@@ -80,17 +82,8 @@
     let mergedConflict: Conflict | null = null;
     let mergeDiagnostics: CompositeMergeDiagnostics | null = null;
 
-    let layoutState: {
-        layout: 0 | 1 | 2;
-        sort: string;
-        order: "asc" | "desc";
-        columns: string[];
-    } = {
-        layout: Layout.COALITION,
-        sort: SUMMARY_LAYOUT.sort,
-        order: "desc",
-        columns: [...SUMMARY_LAYOUT.columns],
-    };
+    let layoutState = createDefaultConflictTableLayoutState();
+    let selectedLayoutPresetKey: string | null = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
 
     let namesByAllianceId: Record<number, string> = {};
     let lastParsedUrlSearch = "";
@@ -101,6 +94,15 @@
         bubble: false,
         chord: false,
     };
+
+    $: preservedLayoutQuery = serializeConflictLayoutQuery(layoutState);
+
+    $: {
+        const detectedKey = detectConflictTableLayoutPresetKey(layoutState);
+        if (selectedLayoutPresetKey !== detectedKey) {
+            selectedLayoutPresetKey = detectedKey;
+        }
+    }
 
     $: {
         if (browser) {
@@ -139,9 +141,9 @@
     function parseLayoutFromQuery(query: URLSearchParams): void {
         const nextLayoutState = parseConflictLayoutQuery(query, {
             layout: Layout.COALITION,
-            sort: SUMMARY_LAYOUT.sort,
+            sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
             order: "desc",
-            columns: [...SUMMARY_LAYOUT.columns],
+            columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
         });
         layoutState = nextLayoutState;
     }
@@ -149,10 +151,15 @@
     function queryDefaults() {
         return {
             layout: "coalition",
-            sort: SUMMARY_LAYOUT.sort,
+            sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
             order: "desc",
-            columns: SUMMARY_LAYOUT.columns.join("."),
+            columns: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns.join("."),
         };
+    }
+
+    function currentCompositeStorageKey(): string | null {
+        if (!browser) return null;
+        return scopedStorageKey(selectedAllianceId);
     }
 
     function syncQueryAndStorage(replace = true): void {
@@ -170,6 +177,81 @@
             },
         );
         saveCurrentQueryParams(scopedStorageKey(selectedAllianceId));
+    }
+
+    function isSameLayoutState(input: {
+        sort: string;
+        order: string;
+        columns: string[];
+    }): boolean {
+        return isConflictTableLayoutStateEqual(layoutState, {
+            sort: input.sort,
+            order: input.order === "asc" ? "asc" : "desc",
+            columns: input.columns,
+        });
+    }
+
+    function handleLayoutSelect(layout: number): void {
+        layoutState.layout =
+            layout === Layout.ALLIANCE
+                ? Layout.ALLIANCE
+                : layout === Layout.NATION
+                  ? Layout.NATION
+                  : Layout.COALITION;
+        syncQueryAndStorage(true);
+    }
+
+    function applyLayoutPresetKey(key: string): void {
+        const preset = layoutPresets[key];
+        if (!preset) return;
+        const nextOrder: "asc" | "desc" = preset.order === "asc" ? "asc" : "desc";
+        if (
+            isSameLayoutState({
+                sort: preset.sort,
+                order: nextOrder,
+                columns: preset.columns,
+            })
+        ) {
+            return;
+        }
+
+        layoutState.columns = [...preset.columns];
+        layoutState.sort = preset.sort;
+        layoutState.order = nextOrder;
+        selectedLayoutPresetKey = key;
+        syncQueryAndStorage(true);
+    }
+
+    function handleColumnPresetLoad(preset: ColumnPreset): void {
+        const nextSort = preset.sort || layoutState.sort;
+        const nextOrder: "asc" | "desc" =
+            preset.order === "asc"
+                ? "asc"
+                : preset.order === "desc"
+                  ? "desc"
+                  : layoutState.order;
+        const nextColumns = Array.isArray(preset.columns)
+            ? [...preset.columns]
+            : [...layoutState.columns];
+
+        const noLayoutChange = isSameLayoutState({
+            sort: nextSort,
+            order: nextOrder,
+            columns: nextColumns,
+        });
+
+        layoutState.columns = nextColumns;
+        layoutState.sort = nextSort;
+        layoutState.order = nextOrder;
+        selectedLayoutPresetKey = detectConflictTableLayoutPresetKey(layoutState);
+
+        if (!noLayoutChange) {
+            syncQueryAndStorage(true);
+        }
+    }
+
+    function prepareShareLink(): void {
+        syncQueryAndStorage(true);
     }
 
     function collectAllianceCandidates(
@@ -506,10 +588,8 @@
     }
 
     function resetCompositeView(): void {
-        layoutState.layout = Layout.COALITION;
-        layoutState.columns = [...SUMMARY_LAYOUT.columns];
-        layoutState.sort = SUMMARY_LAYOUT.sort;
-        layoutState.order = "desc";
+        layoutState = createDefaultConflictTableLayoutState();
+        selectedLayoutPresetKey = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
 
         selectedAllianceId = defaultAllianceId ?? allianceOptions[0]?.id ?? selectedAllianceId;
         selectedAllianceIdValue = selectedAllianceId == null ? "" : String(selectedAllianceId);
@@ -522,9 +602,9 @@
     const isResetDirty = () => {
         return (
             layoutState.layout !== Layout.COALITION ||
-            layoutState.sort !== SUMMARY_LAYOUT.sort ||
+            layoutState.sort !== DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort ||
             layoutState.order !== "desc" ||
-            layoutState.columns.join(".") !== SUMMARY_LAYOUT.columns.join(".") ||
+            layoutState.columns.join(".") !== DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns.join(".") ||
             selectedAllianceId !== defaultAllianceId
         );
     };
@@ -639,8 +719,6 @@
             <span class="ux-muted ms-2">
                 Conflicts loaded: {resolvedConflictIds.length}/{data.conflictIds.length}
             </span>
-
-            <ShareResetBar onReset={resetCompositeView} resetDirty={isResetDirty()} />
         </div>
 
         {#if data.invalidTokens.length > 0}
@@ -676,12 +754,53 @@
             <ConflictRouteTabs
                 conflictId={null}
                 active={layoutTabFromIndex(layoutState.layout)}
-                mode="links"
+                mode="layout-picker"
                 routeKind="composite"
                 compositeIds={data.conflictIds}
                 {selectedAllianceId}
                 capabilities={compositeTabCapabilities}
+                preservedQuery={preservedLayoutQuery}
+                currentLayout={layoutState.layout}
+                onLayoutSelect={handleLayoutSelect}
             />
+
+            <ul
+                class="layout-picker-bar ux-floating-controls nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
+            >
+                <li class="d-flex align-items-center gap-2 me-1 flex-wrap">
+                    <span>Layout Picker:</span>
+                    <div class="d-flex flex-wrap gap-1">
+                        {#each layoutPresetKeys as key}
+                            <button
+                                class="btn btn-sm fw-bold"
+                                class:ux-btn={selectedLayoutPresetKey === key}
+                                class:btn-outline-secondary={selectedLayoutPresetKey !== key}
+                                on:click={() => applyLayoutPresetKey(key)}>{key}</button
+                            >
+                        {/each}
+                    </div>
+                </li>
+
+                <li>
+                    <ColumnPresetManager
+                        currentColumns={layoutState.columns}
+                        currentSort={layoutState.sort}
+                        currentOrder={layoutState.order}
+                        currentKpis={[]}
+                        currentKpiConfig={null}
+                        storageKey={currentCompositeStorageKey()}
+                        on:load={(event) => handleColumnPresetLoad(event.detail.preset)}
+                    />
+                </li>
+
+                <li class="ms-auto d-flex flex-wrap gap-1 justify-content-end">
+                    <ShareResetBar
+                        onReset={resetCompositeView}
+                        onSharePrepare={prepareShareLink}
+                        resetDirty={isResetDirty()}
+                    />
+                </li>
+            </ul>
 
             {#if mergeWarnings.length > 0}
                 <div class="alert alert-warning py-2 mt-2">

@@ -13,12 +13,20 @@ export type ConflictRouteKind = "single" | "composite";
 
 export type ConflictTabCapabilities = Partial<Record<ConflictTab, boolean>>;
 
+const CONFLICT_RETURN_QUERY_KEY_MAP = {
+    layout: "conflictLayout",
+    sort: "conflictSort",
+    order: "conflictOrder",
+    columns: "conflictColumns",
+} as const;
+
 export type ConflictTabHrefContext = {
     routeKind: ConflictRouteKind;
     conflictId?: string | null;
     compositeIds?: string[] | null;
     selectedAllianceId?: number | null;
     basePath?: string;
+    preservedQuery?: Record<string, string | null | undefined> | null;
 };
 
 export type ConflictTabDescriptor = {
@@ -139,28 +147,78 @@ function hasCompositeContext(context: ConflictTabHrefContext): boolean {
     );
 }
 
+function withPreservedQuery(
+    path: string,
+    context: ConflictTabHrefContext,
+    routeParams: Record<string, string | number | null | undefined>,
+    options?: { namespaceConflictLayoutState?: boolean },
+): string {
+    const search = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(context.preservedQuery ?? {})) {
+        if (value == null || value === "") continue;
+        const namespacedKey = options?.namespaceConflictLayoutState
+            ? (CONFLICT_RETURN_QUERY_KEY_MAP[
+                  key as keyof typeof CONFLICT_RETURN_QUERY_KEY_MAP
+              ] ?? key)
+            : key;
+        search.set(namespacedKey, value);
+    }
+
+    for (const [key, value] of Object.entries(routeParams)) {
+        if (value == null || value === "") {
+            search.delete(key);
+            continue;
+        }
+        search.set(key, String(value));
+    }
+
+    const query = search.toString();
+    return query ? `${path}?${query}` : path;
+}
+
 export function buildTabHref(tab: ConflictTab, context: ConflictTabHrefContext): string | null {
     const prefix = normalizeBase(context.basePath);
 
     if (context.routeKind === "composite") {
         if (!hasCompositeContext(context)) return null;
-        const ids = encodeURIComponent(
-            encodeCompositeSelectionIds(context.compositeIds ?? []),
-        );
+        const ids = encodeCompositeSelectionIds(context.compositeIds ?? []);
         const aid = context.selectedAllianceId;
         if (tab === "coalition" || tab === "alliance" || tab === "nation") {
-            return `${prefix}/conflicts/view?ids=${ids}&aid=${aid}&layout=${tab}`;
+            return withPreservedQuery(`${prefix}/conflicts/view`, context, {
+                ids,
+                aid,
+                layout: tab,
+            });
         }
-        return `${prefix}/${tab}?ids=${ids}&aid=${aid}`;
+        return withPreservedQuery(
+            `${prefix}/${tab}`,
+            context,
+            {
+                ids,
+                aid,
+            },
+            { namespaceConflictLayoutState: true },
+        );
     }
 
     if (!hasSingleContext(context)) return null;
     const conflictId = context.conflictId?.trim();
     if (!conflictId) return null;
     if (tab === "coalition" || tab === "alliance" || tab === "nation") {
-        return `${prefix}/conflict?id=${conflictId}&layout=${tab}`;
+        return withPreservedQuery(`${prefix}/conflict`, context, {
+            id: conflictId,
+            layout: tab,
+        });
     }
-    return `${prefix}/${tab}?id=${conflictId}`;
+    return withPreservedQuery(
+        `${prefix}/${tab}`,
+        context,
+        {
+            id: conflictId,
+        },
+        { namespaceConflictLayoutState: true },
+    );
 }
 
 export function resolveDisabledTabs(
