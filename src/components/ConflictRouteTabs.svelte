@@ -19,6 +19,7 @@
         type ConflictTabCapabilities,
         type ConflictTabDescriptor,
     } from "$lib/conflictTabs";
+    import type { ConflictReturnQuery } from "$lib/conflictReturnQuery";
 
     export let conflictId: string | null = null;
     export let compositeIds: string[] | null = null;
@@ -30,7 +31,7 @@
     export let onLayoutSelect: ((layout: number) => void) | null = null;
     export let capabilities: ConflictTabCapabilities = {};
     export let disabledTabs: ConflictTab[] = [];
-    export let preservedQuery: Record<string, string | null | undefined> | null = null;
+    export let preservedQuery: ConflictReturnQuery | null = null;
 
     const LAYOUT_TABS: ConflictLayoutTab[] = ["coalition", "alliance", "nation"];
     const NON_LAYOUT_TABS: Array<Exclude<ConflictTab, ConflictLayoutTab>> = [

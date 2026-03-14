@@ -1,4 +1,5 @@
 import { encodeCompositeSelectionIds } from "./conflictIds";
+import { applyConflictReturnQuery, type ConflictReturnQuery } from "./conflictReturnQuery";
 
 export type ConflictLayoutTab = "coalition" | "alliance" | "nation";
 
@@ -13,20 +14,13 @@ export type ConflictRouteKind = "single" | "composite";
 
 export type ConflictTabCapabilities = Partial<Record<ConflictTab, boolean>>;
 
-const CONFLICT_RETURN_QUERY_KEY_MAP = {
-    layout: "conflictLayout",
-    sort: "conflictSort",
-    order: "conflictOrder",
-    columns: "conflictColumns",
-} as const;
-
 export type ConflictTabHrefContext = {
     routeKind: ConflictRouteKind;
     conflictId?: string | null;
     compositeIds?: string[] | null;
     selectedAllianceId?: number | null;
     basePath?: string;
-    preservedQuery?: Record<string, string | null | undefined> | null;
+    preservedQuery?: ConflictReturnQuery | null;
 };
 
 export type ConflictTabDescriptor = {
@@ -155,14 +149,13 @@ function withPreservedQuery(
 ): string {
     const search = new URLSearchParams();
 
-    for (const [key, value] of Object.entries(context.preservedQuery ?? {})) {
-        if (value == null || value === "") continue;
-        const namespacedKey = options?.namespaceConflictLayoutState
-            ? (CONFLICT_RETURN_QUERY_KEY_MAP[
-                  key as keyof typeof CONFLICT_RETURN_QUERY_KEY_MAP
-              ] ?? key)
-            : key;
-        search.set(namespacedKey, value);
+    if (options?.namespaceConflictLayoutState) {
+        applyConflictReturnQuery(search, context.preservedQuery);
+    } else {
+        for (const [key, value] of Object.entries(context.preservedQuery ?? {})) {
+            if (value == null || value === "") continue;
+            search.set(key, value);
+        }
     }
 
     for (const [key, value] of Object.entries(routeParams)) {

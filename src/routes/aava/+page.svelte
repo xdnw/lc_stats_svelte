@@ -71,6 +71,11 @@
     import type { ConflictTabCapabilities } from "$lib/conflictTabs";
     import { deriveAavaCapability } from "$lib/aava";
     import { loadConflictContext } from "$lib/conflictContext";
+    import {
+        applyConflictReturnQuery,
+        readConflictReturnQuery,
+        type ConflictReturnQuery,
+    } from "$lib/conflictReturnQuery";
 
     type ColumnKey =
         | "name"
@@ -117,7 +122,7 @@
     let tabConflictId: string | null = null;
     let tabCompositeIds: string[] | null = null;
     let tabSelectedAllianceId: number | null = null;
-    let tabPreservedLayoutQuery: Record<string, string | null | undefined> | null = null;
+    let tabPreservedLayoutQuery: ConflictReturnQuery | null = null;
 
     let _rawData: Conflict | null = null;
     let _loaded = false;
@@ -165,29 +170,7 @@
         const rawAid = (searchParams?.get("aid") ?? "").trim();
         const aid = /^\d+$/.test(rawAid) ? Number.parseInt(rawAid, 10) : null;
 
-        const nextPreservedLayoutQuery = {
-            layout:
-                searchParams?.get("conflictLayout") ??
-                searchParams?.get("layout") ??
-                null,
-            sort:
-                searchParams?.get("conflictSort") ??
-                searchParams?.get("sort") ??
-                null,
-            order:
-                searchParams?.get("conflictOrder") ??
-                searchParams?.get("order") ??
-                null,
-            columns:
-                searchParams?.get("conflictColumns") ??
-                searchParams?.get("columns") ??
-                null,
-        };
-        tabPreservedLayoutQuery = Object.values(nextPreservedLayoutQuery).some(
-            (value) => value != null && value !== "",
-        )
-            ? nextPreservedLayoutQuery
-            : null;
+        tabPreservedLayoutQuery = readConflictReturnQuery(searchParams);
 
         if (id.length > 0) {
             tabRouteKind = "single";
@@ -303,10 +286,7 @@
         contextMode === "composite" && encodedCompositeIds && selectedAllianceId
             ? (() => {
                   const query = new URLSearchParams();
-                  for (const [key, value] of Object.entries(tabPreservedLayoutQuery ?? {})) {
-                      if (value == null || value === "") continue;
-                      query.set(key, value);
-                  }
+                  applyConflictReturnQuery(query, tabPreservedLayoutQuery);
                   query.set("ids", encodedCompositeIds);
                   query.set("aid", String(selectedAllianceId));
                   const serialized = query.toString();
