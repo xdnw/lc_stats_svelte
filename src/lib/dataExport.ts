@@ -88,6 +88,99 @@ export interface DownloadableTableData {
     visible: number[];
 }
 
+function coerceExportCell(value: unknown): ExportCell {
+    if (
+        value == null ||
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+    ) {
+        return value;
+    }
+    return String(value);
+}
+
+function normalizeCompositeColumnLabel(
+    label: unknown,
+    fallback: string,
+): string {
+    const normalized =
+        typeof label === 'string'
+            ? label.trim().toLowerCase().replace(/\s+/g, '_')
+            : '';
+    if (!normalized || normalized === 'name') {
+        return fallback;
+    }
+    return normalized;
+}
+
+function detectCompositeCellWidth(rows: unknown[][]): 2 | 3 | null {
+    for (const row of rows) {
+        const firstCell = row?.[0];
+        if (Array.isArray(firstCell) && (firstCell.length === 2 || firstCell.length === 3)) {
+            return firstCell.length;
+        }
+    }
+    return null;
+}
+
+function expandCompositeCell(value: unknown, width: 2 | 3): ExportCell[] {
+    if (!Array.isArray(value)) {
+        return [coerceExportCell(value), ...(width === 3 ? ['', ''] : [''])];
+    }
+
+    const expanded: ExportCell[] = [];
+    for (let index = 0; index < width; index += 1) {
+        expanded.push(coerceExportCell(value[index]));
+    }
+    return expanded;
+}
+
+export function normalizeCompositeColumnsForLegacyExport(
+    data: unknown[][],
+): ExportCell[][] {
+    if (data.length === 0) {
+        return [];
+    }
+
+    const [headerRow, ...rows] = data;
+    if (!Array.isArray(headerRow) || headerRow.length === 0) {
+        return data.map((row) => row.map((cell) => coerceExportCell(cell)));
+    }
+
+    const compositeWidth = detectCompositeCellWidth(rows);
+    if (!compositeWidth) {
+        return data.map((row) => row.map((cell) => coerceExportCell(cell)));
+    }
+
+    const firstHeader = headerRow[0];
+    const compositeHeaders =
+        compositeWidth === 2
+            ? [
+                  normalizeCompositeColumnLabel(firstHeader, 'alliance'),
+                  'alliance_id',
+              ]
+            : [
+                  normalizeCompositeColumnLabel(firstHeader, 'nation'),
+                  `${normalizeCompositeColumnLabel(firstHeader, 'nation')}_id`,
+                  'alliance_id',
+              ];
+
+    const normalizedHeader: ExportCell[] = [
+        ...compositeHeaders,
+        ...headerRow.slice(1).map((cell) =>
+            typeof cell === 'string' ? cell : String(cell ?? ''),
+        ),
+    ];
+
+    const normalizedRows = rows.map((row) => [
+        ...expandCompositeCell(row?.[0], compositeWidth),
+        ...row.slice(1).map((cell) => coerceExportCell(cell)),
+    ]);
+
+    return [normalizedHeader, ...normalizedRows];
+}
+
 function escapeDelimitedValue(value: ExportCell, delimiter: string): string {
     if (value == null) return '';
     const str = String(value);
@@ -219,7 +312,8 @@ export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean,
 }
 
 export function downloadCells(data: any[][], useClipboard: boolean, type: ExportType, fileBaseName?: string) {
-    const fileContent = rowsToDelimitedText(data, type, !useClipboard);
+    const normalizedData = normalizeCompositeColumnsForLegacyExport(data);
+    const fileContent = rowsToDelimitedText(normalizedData, type, !useClipboard);
     writeTextExport(
         fileContent,
         `${fileBaseName ?? 'data'}.${type.ext}`,

@@ -21,21 +21,12 @@ export type CompositePageData = {
 
 export const load: PageLoad = ({ url }) => {
     if (!browser) {
-    if (!browser) {
         return {
             conflictIds: [],
             invalidTokens: [],
             limited: false,
             selectedAllianceId: null,
             signature: "",
-        } satisfies CompositePageData;
-    }
-        return {
-            conflictIds: [],
-            invalidTokens: [],
-            limited: false,
-            signature: "",
-            selectedAllianceId: null,
         } satisfies CompositePageData;
     }
 
