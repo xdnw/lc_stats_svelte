@@ -18,6 +18,17 @@ export type ConflictLayoutQueryState = {
     columns: string[];
 };
 
+const REQUIRED_CONFLICT_LAYOUT_COLUMN = "name";
+
+function normalizeConflictLayoutColumns(columns: string[]): string[] {
+    if (columns.includes(REQUIRED_CONFLICT_LAYOUT_COLUMN)) {
+        return columns;
+    }
+
+    // Conflict tables always render the leading identity column from `name`.
+    return [REQUIRED_CONFLICT_LAYOUT_COLUMN, ...columns];
+}
+
 export function parseConflictLayoutQuery(
     query: URLSearchParams,
     defaults: ConflictLayoutQueryDefaults,
@@ -41,9 +52,11 @@ export function parseConflictLayoutQuery(
         layout: CONFLICT_LAYOUT_TAB_INDEX[layoutTab],
         sort,
         order,
-        columns: parsedColumns.length > 0
-            ? parsedColumns
-            : [...defaults.columns],
+        columns: normalizeConflictLayoutColumns(
+            parsedColumns.length > 0
+                ? parsedColumns
+                : [...defaults.columns],
+        ),
     };
 }
 
