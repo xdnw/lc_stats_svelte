@@ -1,3 +1,4 @@
+import { appConfig } from './appConfig';
 import { formatDuration } from './formatting';
 
 type ScriptManifestEntry = {
@@ -49,16 +50,20 @@ const runtimeGroupToStyles: Partial<Record<RuntimePrefetchGroup, string[]>> = {
     table: ["dtcss1", "dtcss2"],
 };
 
+function buildConflictDatasetUrl(path: string): string {
+    return `${appConfig.data_origin}${path}`;
+}
+
 export function getConflictsIndexUrl(version: number | string): string {
-    return `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/index.gzip?${version}`;
+    return buildConflictDatasetUrl(`/conflicts/index.gzip?${version}`);
 }
 
 export function getConflictDataUrl(conflictId: string, version: number | string): string {
-    return `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${version}`;
+    return buildConflictDatasetUrl(`/conflicts/${conflictId}.gzip?${version}`);
 }
 
 export function getConflictGraphDataUrl(conflictId: string, version: number | string): string {
-    return `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/graphs/${conflictId}.gzip?${version}`;
+    return buildConflictDatasetUrl(`/conflicts/graphs/${conflictId}.gzip?${version}`);
 }
 
 export function prewarmRuntimeGroup(group: RuntimePrefetchGroup): Promise<void> {

@@ -35,6 +35,7 @@
     import { modalWithCloseButton } from "$lib/modals";
     import {
         formatDatasetProvenance,
+        getConflictDataUrl,
     } from "$lib/runtime";
     import {
         warmBubbleDefaultArtifact,
@@ -690,7 +691,7 @@
             });
         }
         layoutDerivationSourceKey = nextSourceKey;
-        let url = `https://locutus.s3.ap-southeast-2.amazonaws.com/conflicts/${conflictId}.gzip?${config.version.conflict_data}`;
+        let url = getConflictDataUrl(conflictId, config.version.conflict_data);
         decompressBson(url)
             .then(async (data: Conflict) => {
                 _rawData = data;
