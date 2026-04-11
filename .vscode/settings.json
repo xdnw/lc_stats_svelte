@@ -25,5 +25,5 @@
     "problems.exclude": {
         "**/node_modules/**": true
     },
-    "github.copilot.chat.responsesApiReasoningEffort": "high",
+    "github.copilot.chat.responsesApiReasoningEffort": "xhigh",
 }
