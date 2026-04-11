@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { createEventDispatcher, tick } from "svelte";
+    import { createEventDispatcher, onMount, tick } from "svelte";
     import type { ExportMenuAction, ExportMenuDataset } from "../../components/exportMenuTypes";
     import {
         hideAllGridColumns,
@@ -28,6 +28,7 @@
         getGridVirtualWindow,
         isGridRangeWithinWindow,
         resolveGridRowHeightEstimate,
+        resolveGridVirtualMinimumRows,
         resolveGridRowWindow,
     } from "./virtualization";
     import type {
@@ -46,6 +47,7 @@
     const GRID_LOADING_SKELETON_ROWS = 10;
     const GRID_LOADING_SKELETON_COLUMNS = 6;
     const GRID_LOADING_MIN_HEIGHT = 280;
+    const COMPACT_GRID_MAX_WIDTH = 640;
 
     export let provider: GridDataProvider | null = null;
     export let initialState: Partial<GridQueryState> | null = null;
@@ -100,6 +102,8 @@
     let viewportLoading = false;
     let viewportSyncFrame = 0;
     let allFilteredRowsSelected = false;
+    let compactViewport = false;
+    let coarsePointer = false;
 
     let exportDatasets: ExportMenuDataset[] = [];
 
@@ -145,6 +149,13 @@
         { length: GRID_LOADING_SKELETON_COLUMNS },
         (_, index) => index,
     );
+    $: virtualMinimumRows = resolveGridVirtualMinimumRows({
+        containerHeight: scrollContainer?.clientHeight ?? allRowsHeight,
+        rowHeight: rowHeightEstimate,
+        baseMinimumRows: minVirtualRows,
+        compactViewport,
+        coarsePointer,
+    });
     $: if (controllerState?.pageSize === "all" && pageResult) {
         const start = renderedViewport?.start ?? 0;
         const renderedCount = pageResult.rows.length;
@@ -181,6 +192,35 @@
         void tick().then(() => scheduleRowHeightMeasurement());
     }
 
+    onMount(() => {
+        syncResponsiveViewportSignals();
+        const handleResize = (): void => {
+            syncResponsiveViewportSignals();
+        };
+
+        window.addEventListener("resize", handleResize, { passive: true });
+        return () => {
+            window.removeEventListener("resize", handleResize);
+        };
+    });
+
+    function syncResponsiveViewportSignals(): void {
+        if (typeof window === "undefined") return;
+
+        const nextCompactViewport = window.innerWidth <= COMPACT_GRID_MAX_WIDTH;
+        const nextCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+        const changed =
+            nextCompactViewport !== compactViewport ||
+            nextCoarsePointer !== coarsePointer;
+
+        compactViewport = nextCompactViewport;
+        coarsePointer = nextCoarsePointer;
+
+        if (changed && controllerState?.pageSize === "all" && pageResult) {
+            requestViewportSync();
+        }
+    }
+
     function createInitialViewport(
         totalRows: number,
     ): NonNullable<GridQueryState["viewport"]> {
@@ -189,7 +229,7 @@
             totalRows,
             containerHeight: scrollContainer?.clientHeight ?? allRowsHeight,
             rowHeight: rowHeightEstimate,
-            minimumRows: minVirtualRows,
+            minimumRows: virtualMinimumRows,
         });
         return {
             start: initialWindow.start,
@@ -608,7 +648,7 @@
         );
         const marginRows = Math.min(
             availableMargin,
-            Math.max(visibleCount, Math.floor(minVirtualRows / 2)),
+            Math.max(visibleCount, Math.floor(virtualMinimumRows / 2)),
         );
         if (
             activeWindow.end > activeWindow.start &&
@@ -626,7 +666,7 @@
             containerHeight: scrollContainer.clientHeight || allRowsHeight,
             rowHeight: rowHeightEstimate,
             totalRows: filteredRowCount,
-            minimumRows: minVirtualRows,
+            minimumRows: virtualMinimumRows,
         });
         if (
             activeWindow.start === nextWindow.start &&
@@ -1022,17 +1062,17 @@
         background:
             linear-gradient(
                 180deg,
-                rgba(241, 245, 249, 0.94) 0%,
-                rgba(226, 232, 240, 0.82) 100%
+                var(--ux-grid-loading-surface-start) 0%,
+                var(--ux-grid-loading-surface-end) 100%
             ),
             repeating-linear-gradient(
                 180deg,
-                rgba(148, 163, 184, 0.06) 0,
-                rgba(148, 163, 184, 0.06) 1px,
+                var(--ux-grid-loading-line-soft) 0,
+                var(--ux-grid-loading-line-soft) 1px,
                 transparent 1px,
                 transparent calc(var(--ux-grid-row-height, 24px) - 7px),
-                rgba(148, 163, 184, 0.14) calc(var(--ux-grid-row-height, 24px) - 7px),
-                rgba(148, 163, 184, 0.14) calc(var(--ux-grid-row-height, 24px) - 2px),
+                var(--ux-grid-loading-line-strong) calc(var(--ux-grid-row-height, 24px) - 7px),
+                var(--ux-grid-loading-line-strong) calc(var(--ux-grid-row-height, 24px) - 2px),
                 transparent calc(var(--ux-grid-row-height, 24px) - 2px),
                 transparent var(--ux-grid-row-height, 24px)
             );
@@ -1050,7 +1090,7 @@
 
     .ux-grid-shell :global(.ux-grid-table th),
     .ux-grid-shell :global(.ux-grid-table td) {
-        border-right: 1px solid rgba(15, 23, 42, 0.08);
+        border-right: 1px solid var(--ux-grid-divider);
     }
 
     .ux-grid-shell :global(.ux-grid-table tr > :last-child) {
@@ -1062,6 +1102,42 @@
     }
 
     .ux-grid-shell {
+        --ux-grid-divider: color-mix(in srgb, var(--ux-border) 82%, transparent);
+        --ux-grid-muted: var(--ux-text-muted);
+        --ux-grid-sticky-surface: color-mix(
+            in srgb,
+            var(--ux-surface-alt) 96%,
+            transparent
+        );
+        --ux-grid-detail-surface: color-mix(
+            in srgb,
+            var(--ux-surface-elevated) 84%,
+            transparent
+        );
+        --ux-grid-detail-accent: color-mix(in srgb, var(--ux-border) 94%, transparent);
+        --ux-grid-loading-surface-start: color-mix(
+            in srgb,
+            var(--ux-surface-alt) 96%,
+            transparent
+        );
+        --ux-grid-loading-surface-end: color-mix(
+            in srgb,
+            var(--ux-surface-elevated) 92%,
+            transparent
+        );
+        --ux-grid-loading-line-soft: color-mix(in srgb, var(--ux-border) 34%, transparent);
+        --ux-grid-loading-line-strong: color-mix(in srgb, var(--ux-border) 62%, transparent);
+        --ux-grid-skeleton-low: color-mix(in srgb, var(--ux-border) 30%, transparent);
+        --ux-grid-skeleton-high: color-mix(in srgb, var(--ux-text-muted) 28%, transparent);
+        --ux-grid-row-hover: color-mix(in srgb, var(--ux-brand) 6%, var(--ux-surface));
+        --ux-grid-row-selected: color-mix(in srgb, var(--ux-warning) 18%, var(--ux-surface));
+        --ux-grid-row-c1: color-mix(in srgb, var(--ux-danger) 11%, var(--ux-surface));
+        --ux-grid-row-c2: color-mix(in srgb, var(--ux-brand) 11%, var(--ux-surface));
+        --ux-grid-row-active: color-mix(in srgb, var(--ux-danger) 16%, var(--ux-surface));
+        --ux-grid-row-recent: color-mix(in srgb, var(--ux-warning) 16%, var(--ux-surface));
+        --ux-grid-row-ended: color-mix(in srgb, var(--ux-surface-alt) 88%, var(--ux-surface));
+        --ux-grid-drop-target: color-mix(in srgb, var(--ux-brand) 18%, var(--ux-surface-alt));
+        --ux-grid-drop-outline: color-mix(in srgb, var(--ux-brand) 42%, transparent);
         position: relative;
         min-width: 0;
         padding: 0.7rem;
@@ -1083,7 +1159,7 @@
 
     .ux-grid-loading-status {
         font-size: 0.72rem;
-        color: rgba(15, 23, 42, 0.68);
+        color: var(--ux-grid-muted);
     }
 
     .ux-grid-loading-table {
@@ -1109,9 +1185,9 @@
         border-radius: 0.45rem;
         background: linear-gradient(
             90deg,
-            rgba(148, 163, 184, 0.12) 0%,
-            rgba(148, 163, 184, 0.26) 50%,
-            rgba(148, 163, 184, 0.12) 100%
+            var(--ux-grid-skeleton-low) 0%,
+            var(--ux-grid-skeleton-high) 50%,
+            var(--ux-grid-skeleton-low) 100%
         );
         background-size: 200% 100%;
         animation: ux-grid-skeleton-shimmer 1.25s ease-in-out infinite;

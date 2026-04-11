@@ -5,6 +5,7 @@ import {
     getGridVisibleRange,
     getGridVirtualWindow,
     isGridRangeWithinWindow,
+    resolveGridVirtualMinimumRows,
     resolveGridRowHeightEstimate,
     resolveGridRowWindow,
 } from "./virtualization";
@@ -44,6 +45,34 @@ describe("grid virtualization", () => {
         expect(nearbyWindow.end).toBe(firstWindow.end);
         expect(laterWindow.start).toBeGreaterThan(firstWindow.start);
         expect(laterWindow.end).toBeGreaterThan(firstWindow.end);
+    });
+
+    it("expands the virtual row budget for compact or coarse all-mode viewports", () => {
+        expect(
+            resolveGridVirtualMinimumRows({
+                containerHeight: 560,
+                rowHeight: 22,
+                baseMinimumRows: 48,
+            }),
+        ).toBe(52);
+
+        expect(
+            resolveGridVirtualMinimumRows({
+                containerHeight: 560,
+                rowHeight: 22,
+                baseMinimumRows: 48,
+                compactViewport: true,
+            }),
+        ).toBe(104);
+
+        expect(
+            resolveGridVirtualMinimumRows({
+                containerHeight: 560,
+                rowHeight: 22,
+                baseMinimumRows: 48,
+                coarsePointer: true,
+            }),
+        ).toBe(104);
     });
 
     it("builds a buffered window around the visible range", () => {

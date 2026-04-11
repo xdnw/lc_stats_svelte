@@ -2,6 +2,9 @@ import type { GridPageSize, GridViewport } from "./types";
 
 export const GRID_VIRTUAL_MIN_ROWS = 48;
 
+const GRID_VIRTUAL_VISIBLE_ROW_MULTIPLIER = 2;
+const GRID_VIRTUAL_COMPACT_VISIBLE_ROW_MULTIPLIER = 4;
+
 export type GridRowWindow = {
     start: number;
     end: number;
@@ -28,6 +31,27 @@ function getAllRowsFallbackEnd(totalRows: number, fallbackRowCount?: number): nu
         totalRows,
         Math.max(1, Math.floor(fallbackRowCount ?? GRID_VIRTUAL_MIN_ROWS)),
     );
+}
+
+export function resolveGridVirtualMinimumRows(options: {
+    containerHeight: number;
+    rowHeight: number;
+    baseMinimumRows?: number;
+    compactViewport?: boolean;
+    coarsePointer?: boolean;
+}): number {
+    const baseMinimumRows = Math.max(
+        1,
+        Math.floor(options.baseMinimumRows ?? GRID_VIRTUAL_MIN_ROWS),
+    );
+    const rowHeight = Math.max(1, Math.floor(options.rowHeight));
+    const containerHeight = Math.max(1, Math.floor(options.containerHeight));
+    const visibleRows = Math.max(1, Math.ceil(containerHeight / rowHeight));
+    const visibleRowMultiplier = options.compactViewport || options.coarsePointer
+        ? GRID_VIRTUAL_COMPACT_VISIBLE_ROW_MULTIPLIER
+        : GRID_VIRTUAL_VISIBLE_ROW_MULTIPLIER;
+
+    return Math.max(baseMinimumRows, visibleRows * visibleRowMultiplier);
 }
 
 export function resolveGridRowHeightEstimate(options: {

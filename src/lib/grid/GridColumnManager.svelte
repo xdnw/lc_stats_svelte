@@ -269,7 +269,7 @@
         gap: 0;
         max-height: min(65vh, 42rem);
         padding-right: 0.1rem;
-        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        border-top: 1px solid var(--ux-grid-divider);
     }
 
     .ux-grid-colmgr-row {
@@ -278,14 +278,14 @@
         gap: 0.5rem;
         padding: 0.08rem 0;
         border: 0;
-        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        border-bottom: 1px solid var(--ux-grid-divider);
         border-radius: 0;
         background: transparent;
         cursor: grab;
     }
 
     .ux-grid-colmgr-row-over {
-        background: rgba(13, 110, 253, 0.06);
+        background: var(--ux-grid-drop-target);
     }
 
     .ux-grid-colmgr-spacer {

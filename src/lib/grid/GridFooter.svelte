@@ -102,7 +102,7 @@
 
     :global(.ux-grid-shell tfoot th) {
         font-weight: 400;
-        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        border-top: 1px solid var(--ux-grid-divider);
         border-left: 0;
         border-bottom: 0;
     }
@@ -111,8 +111,8 @@
         position: sticky;
         bottom: 0;
         z-index: 7;
-        background: rgba(248, 250, 252, 0.97);
-        box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.08);
+        background: var(--ux-grid-sticky-surface);
+        box-shadow: inset 0 1px 0 var(--ux-grid-divider);
     }
 
     @media (max-width: 640px) {

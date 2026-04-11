@@ -154,8 +154,8 @@
     }
 
     .ux-grid-column-drop-target {
-        background: rgba(13, 110, 253, 0.08);
-        box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.28);
+        background: var(--ux-grid-drop-target);
+        box-shadow: inset 0 0 0 1px var(--ux-grid-drop-outline);
     }
 
     :global(.ux-grid-shell thead th) {
@@ -168,8 +168,8 @@
         position: sticky;
         top: 0;
         z-index: 8;
-        background: rgba(248, 250, 252, 0.97);
-        box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.08);
+        background: var(--ux-grid-sticky-surface);
+        box-shadow: inset 0 -1px 0 var(--ux-grid-divider);
     }
 
     :global(.ux-grid-shell thead input.form-control) {

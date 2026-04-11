@@ -167,6 +167,6 @@
     }
 
     .ux-grid-empty {
-        color: var(--bs-secondary-color, #6c757d);
+        color: var(--ux-text-muted);
     }
 </style>

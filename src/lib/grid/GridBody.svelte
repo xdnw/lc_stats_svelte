@@ -189,7 +189,7 @@
     }
 
     .ux-grid-details-row td {
-        background: rgba(255, 255, 255, 0.6);
+        background: var(--ux-grid-detail-surface);
         max-width: none;
         white-space: normal;
         overflow: visible;
@@ -204,7 +204,7 @@
 
     .ux-grid-details-item {
         padding: 0.35rem 0.5rem;
-        border-left: 3px solid rgba(0, 0, 0, 0.1);
+        border-left: 3px solid var(--ux-grid-detail-accent);
     }
 
     :global(.ux-grid-shell tbody td) {
@@ -214,7 +214,7 @@
         vertical-align: top;
         border-top: 0;
         border-left: 0;
-        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        border-bottom: 1px solid var(--ux-grid-divider);
         overflow-wrap: anywhere;
     }
 
@@ -249,31 +249,31 @@
     }
 
     :global(.ux-grid-shell tbody tr:hover > td) {
-        background: rgba(15, 23, 42, 0.03);
+        background: var(--ux-grid-row-hover);
     }
 
     :global(.ux-grid-shell tbody tr.ux-grid-row-selected > td) {
-        background: rgba(255, 193, 7, 0.12);
+        background: var(--ux-grid-row-selected);
     }
 
     :global(.ux-grid-shell tbody tr.ux-conflict-row-c1 > td) {
-        background: rgba(220, 53, 69, 0.05);
+        background: var(--ux-grid-row-c1);
     }
 
     :global(.ux-grid-shell tbody tr.ux-conflict-row-c2 > td) {
-        background: rgba(13, 110, 253, 0.05);
+        background: var(--ux-grid-row-c2);
     }
 
     :global(.ux-grid-shell tbody tr.ux-conflicts-row-active > td) {
-        background: rgba(220, 53, 69, 0.07);
+        background: var(--ux-grid-row-active);
     }
 
     :global(.ux-grid-shell tbody tr.ux-conflicts-row-recent > td) {
-        background: rgba(255, 193, 7, 0.1);
+        background: var(--ux-grid-row-recent);
     }
 
     :global(.ux-grid-shell tbody tr.ux-conflicts-row-ended > td) {
-        background: rgba(248, 249, 250, 0.85);
+        background: var(--ux-grid-row-ended);
     }
 
     :global(.ux-grid-shell tbody td.ux-grid-tone-selected) {
