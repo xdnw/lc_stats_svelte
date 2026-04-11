@@ -2,7 +2,6 @@ import { browser } from "$app/environment";
 import {
     warmBubbleDefaultArtifact,
     warmConflictGraphPayload,
-    warmConflictTableArtifact,
 } from "$lib/prefetchArtifacts";
 
 export const load = ({ url }: { url: URL }) => {
@@ -22,12 +21,5 @@ export const load = ({ url }: { url: URL }) => {
         routeTarget: "/bubble",
         intentStrength: "load",
     });
-    warmConflictTableArtifact(conflictId, {
-        priority: "idle",
-        reason: "route-bubble-load-backpath-table",
-        routeTarget: "/conflict",
-        intentStrength: "idle",
-    });
-
     return {};
 };

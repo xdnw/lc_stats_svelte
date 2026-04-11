@@ -1,3 +1,4 @@
+import { replaceState } from "$app/navigation";
 import { getCompositeConflictSignature } from "./conflictIds";
 
 export function getPageStorageKey(pathname?: string): string {
@@ -99,7 +100,11 @@ export function applySavedQueryParamsIfMissing(
     }
 
     if (changed) {
-        window.history.replaceState({}, "", url.toString());
+        const pageState =
+            window.history.state && typeof window.history.state === "object"
+                ? (window.history.state as App.PageState)
+                : {};
+        replaceState(url.toString(), pageState);
     }
 
     return changed;

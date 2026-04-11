@@ -151,7 +151,7 @@
 
 {#if open}
     <div
-        class="modal fade show d-block"
+        class="modal show d-block ux-kpi-builder-modal"
         tabindex="-1"
         role="dialog"
         aria-modal="true"
@@ -559,10 +559,21 @@
             </div>
         </div>
     </div>
-    <div class="modal-backdrop fade show"></div>
+    <div class="modal-backdrop show ux-kpi-builder-backdrop"></div>
 {/if}
 
 <style>
+    .ux-kpi-builder-modal,
+    .ux-kpi-builder-modal .modal-dialog,
+    .ux-kpi-builder-backdrop {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    .ux-kpi-builder-modal .modal-dialog {
+        transform: none !important;
+    }
+
     .kpi-preview {
         border: 1px solid rgba(0, 0, 0, 0.12);
         border-radius: 0.4rem;

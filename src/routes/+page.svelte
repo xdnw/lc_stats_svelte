@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { getQueryParam, warmConflictsIndexPayload } from "$lib";
+  import { getQueryParam } from "$lib/queryState";
+  import { warmConflictsIndexPayload } from "$lib/prefetchArtifacts";
   import { appConfig as config } from "$lib/appConfig";
 
   type AdTemplate = {

@@ -2,7 +2,7 @@
     import { browser } from "$app/environment";
     import { base } from "$app/paths";
     import { page } from "$app/stores";
-    import { onMount, tick } from "svelte";
+    import { onMount } from "svelte";
     import Breadcrumbs from "../../../components/Breadcrumbs.svelte";
     import ColumnPresetManager from "../../../components/ColumnPresetManager.svelte";
     import ConflictRouteTabs from "../../../components/ConflictRouteTabs.svelte";
@@ -10,12 +10,15 @@
     import ShareResetBar from "../../../components/ShareResetBar.svelte";
     import { appConfig as config } from "$lib/appConfig";
     import { decompressBson } from "$lib/binary";
-    import { getOrComputeConflictTableData } from "$lib/conflictLayoutCache";
-    import { setupContainer } from "$lib/tableAdapter";
-    import { commafy, formatAllianceName, formatDate, formatNationName } from "$lib/formatting";
-    import { registerFormatters } from "$lib/formatters";
+    import DataGrid from "$lib/grid/DataGrid.svelte";
+    import {
+        parseGridPageSizeQueryState,
+        serializeGridPageSizeQueryState,
+    } from "$lib/grid/queryState";
+    import { formatAllianceName } from "$lib/formatting";
     import { modalWithCloseButton } from "$lib/modals";
     import {
+        decodeQueryParamValue,
         getCurrentQueryParams,
         setQueryParams,
     } from "$lib/queryState";
@@ -30,16 +33,19 @@
     import type { CompositeMergeDiagnostics } from "$lib/compositeMerge";
     import { loadConflictContext } from "$lib/conflictContext";
     import {
+        normalizeConflictLayoutColumns,
         parseConflictLayoutQuery,
         serializeConflictLayoutQuery,
     } from "$lib/conflictLayoutQueryState";
     import type { ConflictRouteContext } from "$lib/routeBootstrap";
+    import { createConflictGridDataset } from "$lib/conflictGrid/dataset";
+    import { createConflictGridLocalProvider } from "$lib/conflictGrid/localProvider";
     import {
         layoutTabFromIndex,
     } from "$lib/conflictTabs";
-    import type { TableCallbacks } from "$lib/tableCallbacks";
     import type { ColumnPreset } from "$lib/columnPresets";
     import type { Conflict } from "$lib/types";
+    import type { GridPageSize, GridQueryState } from "$lib/grid/types";
     import {
         CONFLICT_TABLE_LAYOUT_PRESETS,
         CONFLICT_TABLE_LAYOUT_PRESET_KEYS,
@@ -80,12 +86,15 @@
     let defaultAllianceId: number | null = null;
 
     let mergedConflict: Conflict | null = null;
+    let compositeGridDataset: ReturnType<typeof createConflictGridDataset> | null = null;
+    let compositeGridProvider = null;
+    let compositeGridPageSizePreference: GridPageSize | null = null;
+    let compositeGridInitialState: Partial<GridQueryState> | null = null;
+    let compositeGridResetVersion = 0;
     let mergeDiagnostics: CompositeMergeDiagnostics | null = null;
 
     let layoutState = createDefaultConflictTableLayoutState();
     let selectedLayoutPresetKey: string | null = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
-
-    let namesByAllianceId: Record<number, string> = {};
     let lastParsedUrlSearch = "";
 
     $: compositeTabCapabilities = {
@@ -114,12 +123,21 @@
         }
     }
 
-    $: layoutRenderSignature = [
-        layoutState.layout,
-        layoutState.sort,
-        layoutState.order,
-        layoutState.columns.join("."),
-    ].join("|");
+    $: compositeGridProvider =
+        compositeGridDataset == null
+            ? null
+            : createConflictGridLocalProvider({
+                  dataset: compositeGridDataset,
+                  layout: layoutState.layout,
+                  defaultSort: {
+                      key: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
+                      dir: "desc",
+                  },
+                  defaultVisibleColumnKeys: normalizeConflictLayoutColumns(
+                      layoutState.layout,
+                      DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns,
+                  ),
+              });
 
     function scopedStorageKey(aid: number | null): string {
         return getScopedPageStorageKey(
@@ -136,6 +154,31 @@
     function clearLoadError(): void {
         loadError = null;
         loadErrorDetails = [];
+    }
+
+    function buildCompositeGridInitialState(): Partial<GridQueryState> {
+        const normalizedColumns = normalizeConflictLayoutColumns(
+            layoutState.layout,
+            layoutState.columns,
+        );
+        return {
+            sort: {
+                key: layoutState.sort,
+                dir: layoutState.order,
+            },
+            visibleColumnKeys: [...normalizedColumns],
+            columnOrderKeys: [...normalizedColumns],
+            pageIndex: 0,
+            pageSize: compositeGridPageSizePreference ?? 10,
+            filters: {},
+            expandedRowIds: [],
+            selectedRowIds: [],
+        };
+    }
+
+    function resetCompositeGridState(): void {
+        compositeGridInitialState = buildCompositeGridInitialState();
+        compositeGridResetVersion += 1;
     }
 
     function parseLayoutFromQuery(query: URLSearchParams): void {
@@ -169,6 +212,7 @@
             {
                 ids,
                 aid: selectedAllianceId,
+                grid: serializeGridPageSizeQueryState(compositeGridPageSizePreference),
                 ...serializedLayout,
             },
             {
@@ -198,6 +242,11 @@
                 : layout === Layout.NATION
                   ? Layout.NATION
                   : Layout.COALITION;
+        layoutState.columns = normalizeConflictLayoutColumns(
+            layoutState.layout,
+            layoutState.columns,
+        );
+        resetCompositeGridState();
         syncQueryAndStorage(true);
     }
 
@@ -205,20 +254,25 @@
         const preset = layoutPresets[key];
         if (!preset) return;
         const nextOrder: "asc" | "desc" = preset.order === "asc" ? "asc" : "desc";
+        const nextColumns = normalizeConflictLayoutColumns(
+            layoutState.layout,
+            preset.columns,
+        );
         if (
             isSameLayoutState({
                 sort: preset.sort,
                 order: nextOrder,
-                columns: preset.columns,
+                columns: nextColumns,
             })
         ) {
             return;
         }
 
-        layoutState.columns = [...preset.columns];
+        layoutState.columns = nextColumns;
         layoutState.sort = preset.sort;
         layoutState.order = nextOrder;
         selectedLayoutPresetKey = key;
+        resetCompositeGridState();
         syncQueryAndStorage(true);
     }
 
@@ -231,8 +285,8 @@
                   ? "desc"
                   : layoutState.order;
         const nextColumns = Array.isArray(preset.columns)
-            ? [...preset.columns]
-            : [...layoutState.columns];
+            ? normalizeConflictLayoutColumns(layoutState.layout, preset.columns)
+            : normalizeConflictLayoutColumns(layoutState.layout, layoutState.columns);
 
         const noLayoutChange = isSameLayoutState({
             sort: nextSort,
@@ -244,6 +298,7 @@
         layoutState.sort = nextSort;
         layoutState.order = nextOrder;
         selectedLayoutPresetKey = detectConflictTableLayoutPresetKey(layoutState);
+        resetCompositeGridState();
 
         if (!noLayoutChange) {
             syncQueryAndStorage(true);
@@ -435,84 +490,6 @@
         return loaded;
     }
 
-    function formatNationCell(data: any): string {
-        const allianceId = Number(data[2]);
-        const allianceName = formatAllianceName(namesByAllianceId[allianceId], allianceId);
-        const nationName = formatNationName(data[0], data[1]);
-        return (
-            '<a href="https://politicsandwar.com/alliance/id=' +
-            allianceId +
-            '">' +
-            allianceName +
-            '</a> | <a href="https://politicsandwar.com/nation/id=' +
-            data[1] +
-            '">' +
-            nationName +
-            "</a>"
-        );
-    }
-
-    function formatAllianceCell(data: any): string {
-        const allianceId = Number(data[1]);
-        const allianceName = formatAllianceName(data[0], allianceId);
-        return (
-            '<a href="https://politicsandwar.com/alliance/id=' +
-            allianceId +
-            '">' +
-            allianceName +
-            "</a>"
-        );
-    }
-
-    function formatCoalitionCell(data: any): string {
-        const idx = Number(data);
-        const coalition = mergedConflict?.coalitions[idx];
-        return coalition?.name ?? `Coalition ${idx + 1}`;
-    }
-
-    function renderMergedTable(): void {
-        if (!mergedConflict) return;
-
-        namesByAllianceId = {};
-        for (const coalition of mergedConflict.coalitions) {
-            for (let i = 0; i < coalition.alliance_ids.length; i += 1) {
-                const allianceId = Number(coalition.alliance_ids[i]);
-                namesByAllianceId[allianceId] = coalition.alliance_names[i];
-            }
-        }
-
-        const tableData = getOrComputeConflictTableData(
-            `composite:${data.signature}:aid:${selectedAllianceId ?? "none"}:v${String(config.version.conflict_data)}`,
-            mergedConflict,
-            {
-                layout: layoutState.layout,
-                columns: [...layoutState.columns],
-                sort: layoutState.sort,
-                order: layoutState.order,
-            },
-        );
-
-        if (layoutState.layout === Layout.COALITION) {
-            tableData.row_format = (row: HTMLElement, rowData: any) => {
-                const index = Number(rowData[0]);
-                if (index === 0) row.classList.add("bg-danger-subtle");
-                else if (index === 1) row.classList.add("bg-info-subtle");
-            };
-        }
-
-        const callbacks: TableCallbacks = {
-            cellFormatters: {
-                formatNation: formatNationCell,
-                formatAA: formatAllianceCell,
-                formatCol: formatCoalitionCell,
-            },
-        };
-
-        const container = document.getElementById("composite-table");
-        if (!container) return;
-        setupContainer(container as HTMLElement, tableData, callbacks);
-    }
-
     function openWarningsModal(): void {
         if (mergeWarnings.length === 0) return;
 
@@ -534,6 +511,7 @@
 
     function rebuildMerge(conflicts: Array<{ id: string; data: Conflict }>): void {
         mergedConflict = null;
+        compositeGridDataset = null;
         mergeDiagnostics = null;
         mergeWarnings = [];
 
@@ -564,6 +542,12 @@
             .then((resolved) => {
                 if (requestId !== mergeRequestId) return;
                 mergedConflict = resolved.conflict;
+                compositeGridDataset = createConflictGridDataset({
+                    datasetKey: `composite:${data.signature}:aid:${selectedAllianceId ?? "none"}`,
+                    conflictId: data.signature,
+                    data: resolved.conflict,
+                });
+                resetCompositeGridState();
                 mergeDiagnostics = resolved.diagnostics;
                 mergeWarnings = [...resolved.warnings, ...resolved.aavaIncompatibilities];
                 clearLoadError();
@@ -593,6 +577,8 @@
 
         selectedAllianceId = defaultAllianceId ?? allianceOptions[0]?.id ?? selectedAllianceId;
         selectedAllianceIdValue = selectedAllianceId == null ? "" : String(selectedAllianceId);
+        compositeGridPageSizePreference = null;
+        resetCompositeGridState();
         rebuildResolvedMerge(true);
     }
 
@@ -605,7 +591,8 @@
             layoutState.sort !== DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort ||
             layoutState.order !== "desc" ||
             layoutState.columns.join(".") !== DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns.join(".") ||
-            selectedAllianceId !== defaultAllianceId
+            selectedAllianceId !== defaultAllianceId ||
+            compositeGridPageSizePreference != null
         );
     };
 
@@ -617,29 +604,52 @@
         }
     }
 
-    $: if (!loading && mergedConflict && layoutRenderSignature) {
-        void tick().then(() => {
-            if (!loading && mergedConflict) {
-                renderMergedTable();
-            }
+    function handleCompositeGridStateChange(
+        event: CustomEvent<{ state: GridQueryState }>,
+    ): void {
+        const state = event.detail.state;
+        const visible = new Set(state.visibleColumnKeys);
+        const orderedVisible = state.columnOrderKeys.filter((key) => visible.has(key));
+        const nextColumns = normalizeConflictLayoutColumns(
+            layoutState.layout,
+            orderedVisible.length > 0 ? orderedVisible : layoutState.columns,
+        );
+        const nextSort = state.sort?.key ?? DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort;
+        const nextOrder: "asc" | "desc" = state.sort?.dir === "asc" ? "asc" : "desc";
+        const nextPageSize = state.pageSize === 10 ? null : state.pageSize;
+        const layoutChanged = !isSameLayoutState({
+            sort: nextSort,
+            order: nextOrder,
+            columns: nextColumns,
         });
+
+        if (!layoutChanged && compositeGridPageSizePreference === nextPageSize) {
+            return;
+        }
+
+        if (layoutChanged) {
+            layoutState.columns = nextColumns;
+            layoutState.sort = nextSort;
+            layoutState.order = nextOrder;
+            selectedLayoutPresetKey = detectConflictTableLayoutPresetKey(layoutState);
+        }
+
+        compositeGridPageSizePreference = nextPageSize;
+        syncQueryAndStorage(true);
     }
 
     onMount(() => {
-        registerFormatters({
-            commafy,
-            formatDate,
-            formatAllianceName,
-            modalWithCloseButton,
-        });
-
         applySavedQueryParamsIfMissing(
-            ["aid", "layout", "sort", "order", "columns"],
+            ["aid", "layout", "sort", "order", "columns", "grid"],
             ["ids"],
             scopedStorageKey(data.selectedAllianceId),
         );
 
-        parseLayoutFromQuery(getCurrentQueryParams());
+        const query = getCurrentQueryParams();
+        parseLayoutFromQuery(query);
+        compositeGridPageSizePreference = parseGridPageSizeQueryState(
+            decodeQueryParamValue("grid", query.get("grid")),
+        );
 
         void loadConflicts(data.conflictIds)
             .then((loaded) => {
@@ -835,7 +845,21 @@
                 </div>
             {/if}
 
-            <div id="composite-table" class="inline-block"></div>
+            {#if compositeGridProvider && compositeGridInitialState}
+                <DataGrid
+                    provider={compositeGridProvider}
+                    initialState={compositeGridInitialState}
+                    resetKey={`${data.signature}:${layoutState.layout}:${compositeGridResetVersion}`}
+                    exportBaseFileName={`composite-${data.signature}`}
+                    exportDatasetKey="composite"
+                    exportDatasetLabel="Composite conflict"
+                    exportButtonLabel="Export"
+                    emptyMessage="No rows match the current composite layout."
+                    loadingMessage="Loading composite conflict table..."
+                    caption="Composite conflict grid"
+                    on:stateChange={handleCompositeGridStateChange}
+                />
+            {/if}
         {/if}
     {/if}
 </div>

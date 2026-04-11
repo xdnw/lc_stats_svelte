@@ -16,7 +16,6 @@ export type ArtifactPrefetchIntentStrength =
 
 export type ArtifactPrefetchKind =
     | "payload"
-    | "table"
     | "bubble"
     | "tiering"
     | "composite"
@@ -188,7 +187,6 @@ function isCheapIdleEligible(task: PrefetchTask): boolean {
     const isCheapKind =
         task.artifactKind === "payload" ||
         task.artifactKind === "runtime" ||
-        task.artifactKind === "table" ||
         task.artifactKind === "composite";
     return isCheapKind && !hasExpensiveDerivedReason(task.reason);
 }
@@ -519,7 +517,7 @@ export function queueRuntimePrefetch(
         routeTarget: "runtime",
         reason: "legacy-queueRuntimePrefetch",
         intentStrength: "idle",
-        estimatedBytes: group === "plotly" ? 900_000 : 450_000,
+        estimatedBytes: 900_000,
         estimatedCpuMs: 20,
         run: async () => {
             await prewarmRuntimeGroup(group);

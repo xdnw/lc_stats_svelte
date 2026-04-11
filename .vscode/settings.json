@@ -1,0 +1,29 @@
+{
+    "typescript.tsdk": "node_modules\\typescript\\lib",
+    "typescript.tsserver.maxTsServerMemory": 4096,
+    "typescript.disableAutomaticTypeAcquisition": true,
+    "typescript.preferences.includePackageJsonAutoImports": "off",
+    "typescript.tsserver.watchOptions": {
+        "watchFile": "useFsEventsOnParentDirectory",
+        "watchDirectory": "useFsEvents",
+        "fallbackPolling": "dynamicPriority",
+        "excludeDirectories": [
+            "**/node_modules",
+            "**/dist",
+            "**/.git"
+        ]
+    },
+    "files.watcherExclude": {
+        "**/node_modules/**": true,
+        "**/dist/**": true,
+        "**/.git/**": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/dist": true
+    },
+    "problems.exclude": {
+        "**/node_modules/**": true
+    },
+    "github.copilot.chat.responsesApiReasoningEffort": "high",
+}

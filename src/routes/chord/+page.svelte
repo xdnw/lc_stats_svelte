@@ -32,11 +32,12 @@
         buildSettingsRows,
         exportBundleData,
         type ExportDatasetOption,
+    } from "$lib";
+    import {
         warmBubbleDefaultArtifact,
         warmConflictGraphPayload,
-        warmConflictTableArtifact,
         warmTieringDefaultArtifact,
-    } from "$lib";
+    } from "$lib/prefetchArtifacts";
     import { onMount } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ExportDataMenu from "../../components/ExportDataMenu.svelte";
@@ -189,12 +190,6 @@
                     priority: "idle",
                     reason: "route-chord-idle-tiering-default",
                     routeTarget: "/tiering",
-                    intentStrength: "idle",
-                });
-                warmConflictTableArtifact(conflictId, {
-                    priority: "idle",
-                    reason: "route-chord-backpath-table",
-                    routeTarget: "/conflict",
                     intentStrength: "idle",
                 });
             })

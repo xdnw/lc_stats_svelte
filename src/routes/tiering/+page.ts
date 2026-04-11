@@ -1,7 +1,6 @@
 import { browser } from "$app/environment";
 import {
     warmConflictGraphPayload,
-    warmConflictTableArtifact,
     warmTieringDefaultArtifact,
 } from "$lib/prefetchArtifacts";
 
@@ -22,12 +21,5 @@ export const load = ({ url }: { url: URL }) => {
         routeTarget: "/tiering",
         intentStrength: "load",
     });
-    warmConflictTableArtifact(conflictId, {
-        priority: "idle",
-        reason: "route-tiering-load-backpath-table",
-        routeTarget: "/conflict",
-        intentStrength: "idle",
-    });
-
     return {};
 };

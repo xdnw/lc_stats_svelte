@@ -18,15 +18,23 @@ export type ConflictLayoutQueryState = {
     columns: string[];
 };
 
-const REQUIRED_CONFLICT_LAYOUT_COLUMN = "name";
+const REQUIRED_COLUMNS_BY_LAYOUT: Record<0 | 1 | 2, string[]> = {
+    0: ["name"],
+    1: ["name"],
+    2: ["alliance", "name"],
+};
 
-function normalizeConflictLayoutColumns(columns: string[]): string[] {
-    if (columns.includes(REQUIRED_CONFLICT_LAYOUT_COLUMN)) {
-        return columns;
-    }
-
-    // Conflict tables always render the leading identity column from `name`.
-    return [REQUIRED_CONFLICT_LAYOUT_COLUMN, ...columns];
+export function normalizeConflictLayoutColumns(
+    layout: 0 | 1 | 2,
+    columns: string[],
+): string[] {
+    const required = REQUIRED_COLUMNS_BY_LAYOUT[layout] ?? REQUIRED_COLUMNS_BY_LAYOUT[0];
+    const deduped = columns
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .filter((value, index, values) => values.indexOf(value) === index);
+    const remaining = deduped.filter((column) => !required.includes(column));
+    return [...required, ...remaining];
 }
 
 export function parseConflictLayoutQuery(
@@ -53,6 +61,7 @@ export function parseConflictLayoutQuery(
         sort,
         order,
         columns: normalizeConflictLayoutColumns(
+            CONFLICT_LAYOUT_TAB_INDEX[layoutTab],
             parsedColumns.length > 0
                 ? parsedColumns
                 : [...defaults.columns],

@@ -1,6 +1,11 @@
 type BootstrapModalInstance = {
     show: () => void;
     hide?: () => void;
+    dispose?: () => void;
+};
+
+type ManagedModalElement = Element & {
+    __lcModalController?: BootstrapModalInstance;
 };
 
 export function getVisGlobal<T = any>(): T | undefined {
@@ -23,6 +28,10 @@ export function getBootstrapModalInstance(
     element: Element | null,
 ): BootstrapModalInstance | null {
     if (!element) return null;
+    const managedElement = element as ManagedModalElement;
+    if (managedElement.__lcModalController) {
+        return managedElement.__lcModalController;
+    }
     const modalFactory = window.bootstrap?.Modal;
     if (!modalFactory) return null;
     return modalFactory.getOrCreateInstance(element) as BootstrapModalInstance;

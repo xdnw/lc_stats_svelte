@@ -32,9 +32,8 @@
         exportBundleData,
         type ExportBundle,
         type ExportDatasetOption,
-        warmConflictTableArtifact,
-        warmBubbleDefaultArtifact,
     } from "$lib";
+    import { warmBubbleDefaultArtifact } from "$lib/prefetchArtifacts";
     import { requestWorkerRpc } from "$lib/workerRpc";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { getPlotlyGlobal } from "$lib/globals";
@@ -410,13 +409,6 @@
                 endJourneySpan("journey.conflict_to_bubble.routeTransition");
                 saveCurrentQueryParams();
 
-                // Warm conflict detail cache so switching to table pages is faster.
-                warmConflictTableArtifact(conflictId, {
-                    priority: "idle",
-                    reason: "route-bubble-backpath-table",
-                    routeTarget: "/conflict",
-                    intentStrength: "idle",
-                });
                 warmBubbleDefaultArtifact(conflictId, {
                     priority: "high",
                     reason: "route-bubble-load-default-trace",

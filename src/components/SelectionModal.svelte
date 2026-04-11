@@ -1,6 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
     import { tick } from "svelte";
+    import ModalShell from "./ModalShell.svelte";
     import type {
         SelectionId,
         SelectionModalItem,
@@ -104,124 +105,70 @@
 </script>
 
 {#if open}
-    <div
-        class="modal fade show d-block"
-        tabindex="-1"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        on:click|self={close}
-        on:keydown={(event) => {
-            if (event.key === "Escape") close();
-        }}
-    >
-        <div
-            class="modal-dialog modal-lg modal-dialog-scrollable"
-            role="document"
-        >
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">{title}</h5>
-                    <button
-                        type="button"
-                        class="btn-close"
-                        aria-label="Close"
-                        on:click={close}
-                    ></button>
-                </div>
-                <div class="modal-body">
-                    {#if description}
-                        <div class="ux-callout mb-2">{description}</div>
-                    {/if}
-                    <input
-                        type="text"
-                        class="form-control mb-2"
-                        placeholder={searchPlaceholder}
-                        bind:value={search}
-                        bind:this={searchInputEl}
-                    />
-                    {#if !singleSelect}
-                        <div
-                            class="d-flex flex-wrap gap-2 align-items-center mb-2"
-                        >
-                            <button
-                                class="btn ux-btn btn-sm"
-                                type="button"
-                                on:click={selectAll}
-                            >
-                                Select All
-                            </button>
-                            <button
-                                class="btn ux-btn btn-sm"
-                                type="button"
-                                on:click={clearAll}
-                            >
-                                Clear
-                            </button>
-                            <span class="small ux-muted"
-                                >{selectedCountLabel}: {selectedCount}</span
-                            >
-                        </div>
-                    {:else}
-                        <div class="small ux-muted mb-2">
-                            {selectedCountLabel}: {selectedCount}
-                        </div>
-                    {/if}
-
-                    {#if validationError}
-                        <div class="alert alert-warning py-2 small mb-2">
-                            {validationError}
-                        </div>
-                    {/if}
-
-                    <div class="ux-surface p-2 selection-modal-list">
-                        {#if filteredItems.length === 0}
-                            <div class="ux-muted small">
-                                No items match your search.
-                            </div>
-                        {:else}
-                            {#each filteredItems as item}
-                                <label
-                                    class="form-check d-flex align-items-center gap-2 mb-1"
-                                >
-                                    <input
-                                        class="form-check-input mt-0"
-                                        type={singleSelect
-                                            ? "radio"
-                                            : "checkbox"}
-                                        name={singleSelect
-                                            ? "selection-modal-single"
-                                            : undefined}
-                                        checked={draftKeys.has(toKey(item.id))}
-                                        on:change={() => toggleDraft(item.id)}
-                                    />
-                                    <span>{itemLabel(item)}</span>
-                                    {#if item.group}
-                                        <span class="badge text-bg-light"
-                                            >{item.group}</span
-                                        >
-                                    {/if}
-                                </label>
-                            {/each}
-                        {/if}
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline-secondary" on:click={close}
-                        >Cancel</button
-                    >
-                    <button
-                        class="btn ux-btn"
-                        on:click={apply}
-                        disabled={!!validationError}
-                    >
-                        {applyLabel} ({selectedCount})
-                    </button>
-                </div>
+    <ModalShell {open} {title} size="lg" on:close={close}>
+        {#if description}
+            <div class="ux-callout mb-2">{description}</div>
+        {/if}
+        <input
+            type="text"
+            class="form-control mb-2"
+            placeholder={searchPlaceholder}
+            bind:value={search}
+            bind:this={searchInputEl}
+        />
+        {#if !singleSelect}
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                <button class="btn ux-btn btn-sm" type="button" on:click={selectAll}>
+                    Select All
+                </button>
+                <button class="btn ux-btn btn-sm" type="button" on:click={clearAll}>
+                    Clear
+                </button>
+                <span class="small ux-muted">{selectedCountLabel}: {selectedCount}</span>
             </div>
+        {:else}
+            <div class="small ux-muted mb-2">
+                {selectedCountLabel}: {selectedCount}
+            </div>
+        {/if}
+
+        {#if validationError}
+            <div class="alert alert-warning py-2 small mb-2">
+                {validationError}
+            </div>
+        {/if}
+
+        <div class="ux-surface p-2 selection-modal-list">
+            {#if filteredItems.length === 0}
+                <div class="ux-muted small">
+                    No items match your search.
+                </div>
+            {:else}
+                {#each filteredItems as item}
+                    <label class="form-check d-flex align-items-center gap-2 mb-1">
+                        <input
+                            class="form-check-input mt-0"
+                            type={singleSelect ? "radio" : "checkbox"}
+                            name={singleSelect ? "selection-modal-single" : undefined}
+                            checked={draftKeys.has(toKey(item.id))}
+                            on:change={() => toggleDraft(item.id)}
+                        />
+                        <span>{itemLabel(item)}</span>
+                        {#if item.group}
+                            <span class="badge text-bg-light">{item.group}</span>
+                        {/if}
+                    </label>
+                {/each}
+            {/if}
         </div>
-    </div>
-    <div class="modal-backdrop fade show"></div>
+
+        <div slot="footer">
+            <button class="btn btn-outline-secondary" on:click={close}>Cancel</button>
+            <button class="btn ux-btn" on:click={apply} disabled={!!validationError}>
+                {applyLabel} ({selectedCount})
+            </button>
+        </div>
+    </ModalShell>
 {/if}
 
 <style>

@@ -1,5 +1,4 @@
 import type { ScopeSnapshot, AavaScopeSnapshot } from "./kpi";
-import type { ConflictTableLayoutInput } from "./conflictLayoutCache";
 import type { CompositeContextCacheKey } from "./compositeContextCache";
 
 export type AavaSnapshot = Pick<AavaScopeSnapshot, "header" | "primaryIds" | "vsIds"> & {
@@ -15,17 +14,6 @@ export function buildScopeSnapshotKey(snapshot?: ScopeSnapshot): string {
 
 export function buildAavaSnapshotKey(snapshot: AavaSnapshot): string {
     return `${snapshot.header}|${snapshot.primaryCoalitionIndex === 1 ? 1 : 0}|${snapshot.primaryIds.join(".")}|${snapshot.vsIds.join(".")}`;
-}
-
-export function buildConflictLayoutInputKey(input: ConflictTableLayoutInput): string {
-    return [input.layout, input.sort, input.order, input.columns.join(".")].join("|");
-}
-
-export function buildConflictLayoutCacheKey(
-    sourceKey: string,
-    input: ConflictTableLayoutInput,
-): string {
-    return `${sourceKey}|${buildConflictLayoutInputKey(input)}`;
 }
 
 export function buildCompositeContextCacheKey(

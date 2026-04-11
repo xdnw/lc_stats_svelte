@@ -3,7 +3,6 @@ import type { Conflict, GraphData, TierMetric } from "./types";
 import { getConflictDataUrl, getConflictGraphDataUrl, getConflictsIndexUrl, prewarmRuntimeGroup, type RuntimePrefetchGroup } from "./runtime";
 import { queueArtifactPrefetch, promotePrefetchTarget, type ArtifactPrefetchTaskDescriptor, type PrefetchPriority } from "./prefetchCoordinator";
 import { appConfig as config } from "./appConfig";
-import { getOrComputeConflictTableData, warmConflictTableLayouts, type ConflictTableLayoutInput } from "./conflictLayoutCache";
 import {
     ensureBubbleDatasetReady,
     ensureTieringDatasetReady,
@@ -28,27 +27,6 @@ import { loadConflictContext } from "./conflictContext";
 import { getCompositeConflictSignature } from "./conflictIds";
 import { incrementPerfCounter, startPerfSpan } from "./perf";
 import type { ConflictRouteContext } from "./routeBootstrap";
-
-const DEFAULT_CONFLICT_LAYOUTS: ConflictTableLayoutInput[] = [
-    {
-        layout: 0,
-        sort: "off:wars",
-        order: "desc",
-        columns: ["name", "net:damage", "off:wars", "def:wars", "dealt:damage", "loss:damage"],
-    },
-    {
-        layout: 1,
-        sort: "off:wars",
-        order: "desc",
-        columns: ["name", "net:damage", "off:wars", "def:wars", "dealt:damage", "loss:damage"],
-    },
-    {
-        layout: 2,
-        sort: "off:wars",
-        order: "desc",
-        columns: ["name", "net:damage", "off:wars", "def:wars", "dealt:damage", "loss:damage"],
-    },
-];
 
 const DEFAULT_BUBBLE_METRICS: [TierMetric, TierMetric, TierMetric] = [
     { name: "dealt:loss_value", cumulative: true, normalize: false },
@@ -113,10 +91,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
                 reject(error);
             });
     });
-}
-
-function warmSourceKey(conflictId: string, dataVersion: string | number): string {
-    return `conflict:${conflictId}:v${String(dataVersion)}`;
 }
 
 function bubbleDatasetKey(conflictId: string, graphVersion: string | number): string {
@@ -484,40 +458,6 @@ export function warmConflictPayload(conflictId: string, options?: {
     });
 }
 
-export function warmConflictTableArtifact(conflictId: string, options?: {
-    priority?: PrefetchPriority;
-    reason?: string;
-    routeTarget?: string;
-    intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
-    layouts?: ConflictTableLayoutInput[];
-}): boolean {
-    const layouts = options?.layouts ?? DEFAULT_CONFLICT_LAYOUTS;
-    const version = config.version.conflict_data;
-
-    return enqueueArtifact({
-        key: `table:conflict:${conflictId}:v${String(version)}:${layouts.length}`,
-        artifactKind: "table",
-        routeTarget: options?.routeTarget ?? "/conflict",
-        reason: options?.reason ?? "route-intent-table",
-        intentStrength: options?.intentStrength ?? "hover",
-        priority: options?.priority ?? "high",
-        estimatedBytes: 0,
-        estimatedCpuMs: 260,
-        run: async () => {
-            const payload = await loadConflictPayload(conflictId, version);
-            warmConflictTableLayouts(
-                warmSourceKey(conflictId, version),
-                payload,
-                layouts,
-            );
-            incrementPerfCounter("prefetch.artifact.warm.hit", 1, {
-                artifact: "table",
-                routeTarget: options?.routeTarget ?? "/conflict",
-            });
-        },
-    });
-}
-
 export function warmConflictGraphPayload(conflictId: string, options?: {
     priority?: PrefetchPriority;
     reason?: string;
@@ -655,45 +595,6 @@ export function warmCompositeContextArtifact(options: {
     });
 }
 
-export function warmCompositeDefaultTableArtifact(options: {
-    ids: string[];
-    aid: number;
-    priority?: PrefetchPriority;
-    reason?: string;
-    routeTarget?: string;
-}): boolean {
-    const signature = getCompositeConflictSignature(options.ids);
-    return enqueueArtifact({
-        key: `table:composite:${signature}:aid:${options.aid}:v${String(config.version.conflict_data)}`,
-        artifactKind: "table",
-        routeTarget: options.routeTarget ?? "/conflicts/view",
-        reason: options.reason ?? "route-composite-default-table",
-        intentStrength: "load",
-        priority: options.priority ?? "high",
-        estimatedBytes: 0,
-        estimatedCpuMs: 420,
-        run: async () => {
-            const context: ConflictRouteContext = {
-                mode: "composite",
-                conflictId: null,
-                conflictSignature: signature,
-                compositeIds: options.ids,
-                selectedAllianceId: options.aid,
-            };
-
-            const resolved = await withTimeout(
-                loadConflictContext(context, config.version.conflict_data),
-                COMPOSITE_WARM_TIMEOUT_MS,
-            );
-            warmConflictTableLayouts(
-                `composite:${signature}:aid:${options.aid}:v${String(config.version.conflict_data)}`,
-                resolved.conflict,
-                DEFAULT_CONFLICT_LAYOUTS,
-            );
-        },
-    });
-}
-
 export function warmRuntimeArtifact(group: RuntimePrefetchGroup, options?: {
     priority?: PrefetchPriority;
     reason?: string;
@@ -707,7 +608,7 @@ export function warmRuntimeArtifact(group: RuntimePrefetchGroup, options?: {
         reason: options?.reason ?? "runtime-warm",
         intentStrength: options?.intentStrength ?? "idle",
         priority: options?.priority ?? "idle",
-        estimatedBytes: group === "plotly" ? 900_000 : 450_000,
+        estimatedBytes: 900_000,
         estimatedCpuMs: 20,
         run: async () => {
             const finish = startPerfSpan("runtime.group.warm", {
@@ -717,23 +618,4 @@ export function warmRuntimeArtifact(group: RuntimePrefetchGroup, options?: {
             finish();
         },
     });
-}
-
-export function getDefaultConflictLayouts(): ConflictTableLayoutInput[] {
-    return DEFAULT_CONFLICT_LAYOUTS.map((layout) => ({
-        ...layout,
-        columns: [...layout.columns],
-    }));
-}
-
-export function getConflictTableDataFromSharedCache(
-    conflictId: string,
-    payload: Conflict,
-    layout: ConflictTableLayoutInput,
-): ReturnType<typeof getOrComputeConflictTableData> {
-    return getOrComputeConflictTableData(
-        warmSourceKey(conflictId, config.version.conflict_data),
-        payload,
-        layout,
-    );
 }

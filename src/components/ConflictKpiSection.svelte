@@ -1,14 +1,12 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
-    import type { RankingViewRow } from "$lib/conflictKpiComputations";
+    import type { ConflictKpiRankingRow } from "$lib/conflictGrid/protocol";
     import type {
         CoalitionSummaryRow,
         OffWarsPerNationStats,
     } from "$lib/conflictKpiPresetComputations";
     import type {
         ConflictKPIWidget,
-        MetricCard,
-        RankingCard,
     } from "$lib/kpi";
 
     type KpiSectionEvents = {
@@ -20,6 +18,7 @@
     };
 
     export let visible = false;
+    export let presetReady = false;
     export let kpiWidgets: ConflictKPIWidget[] = [];
     export let draggingWidgetId: string | null = null;
 
@@ -30,10 +29,17 @@
     export let leadingCoalition: CoalitionSummaryRow | null = null;
     export let coalitionSummary: CoalitionSummaryRow[] | null = null;
     export let offWarsPerNationStats: OffWarsPerNationStats | null = null;
+    export let secondaryReady = false;
+    export let rankingRowsByWidgetId: Record<
+        string,
+        ConflictKpiRankingRow[] | undefined
+    > = {};
+    export let metricValuesByWidgetId: Record<
+        string,
+        number | null | undefined
+    > = {};
 
     export let formatKpiNumber: (value: number | null | undefined) => string;
-    export let getRankingRows: (card: RankingCard) => RankingViewRow[];
-    export let getMetricCardValue: (card: MetricCard) => number | null;
     export let metricLabel: (metric: string) => string;
     export let widgetScopeLabel: (widget: ConflictKPIWidget) => string;
     export let getAavaMetricLabel: (metric: string, header: string) => string;
@@ -73,7 +79,10 @@
                             on:click={() => dispatch("removeWidget", { id: card.id })}
                         ></button>
                         {#if card.kind === "preset"}
-                            {#if card.key === "duration"}
+                            {#if !presetReady}
+                                <div class="small text-muted">Loading preset KPI...</div>
+                                <div class="h6 m-0">-</div>
+                            {:else if card.key === "duration"}
                                 <div class="small text-muted">Duration</div>
                                 <div class="h6 m-0">{durationSoFar}</div>
                             {:else if card.key === "wars"}
@@ -118,7 +127,6 @@
                                 {/if}
                             {/if}
                         {:else if card.kind === "ranking"}
-                            {@const rows = getRankingRows(card)}
                             <div class="small text-muted mb-1">
                                 Top {card.limit}
                                 {card.entity}s by
@@ -127,40 +135,47 @@
                                     : metricLabel(card.metric)}
                                 ({widgetScopeLabel(card)})
                             </div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-striped m-0">
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th>{card.entity === "alliance" ? "Alliance" : "Nation"}</th>
-                                            {#if card.entity === "nation"}
-                                                <th>Alliance</th>
-                                            {/if}
-                                            <th class="text-end">Value</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {#each rows as row, i}
+                            {#if rankingRowsByWidgetId[card.id] === undefined && !secondaryReady}
+                                <div class="small text-muted">Loading ranking...</div>
+                            {:else if (rankingRowsByWidgetId[card.id] ?? []).length === 0}
+                                <div class="small text-muted">No ranking data for this widget.</div>
+                            {:else}
+                                {@const rows = rankingRowsByWidgetId[card.id] ?? []}
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped m-0">
+                                        <thead>
                                             <tr>
-                                                <td>{i + 1}</td>
-                                                <td>
-                                                    {#if card.entity === "alliance"}
-                                                        <a href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}>{row.label}</a>
-                                                    {:else}
-                                                        <a href={`https://politicsandwar.com/nation/id=${row.nationId}`}>{row.label}</a>
-                                                    {/if}
-                                                </td>
+                                                <th>#</th>
+                                                <th>{card.entity === "alliance" ? "Alliance" : "Nation"}</th>
                                                 {#if card.entity === "nation"}
-                                                    <td>
-                                                        <a href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}>{row.allianceName}</a>
-                                                    </td>
+                                                    <th>Alliance</th>
                                                 {/if}
-                                                <td class="text-end">{row.valueText}</td>
+                                                <th class="text-end">Value</th>
                                             </tr>
-                                        {/each}
-                                    </tbody>
-                                </table>
-                            </div>
+                                        </thead>
+                                        <tbody>
+                                            {#each rows as row, i}
+                                                <tr>
+                                                    <td>{i + 1}</td>
+                                                    <td>
+                                                        {#if card.entity === "alliance"}
+                                                            <a href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}>{row.label}</a>
+                                                        {:else}
+                                                            <a href={`https://politicsandwar.com/nation/id=${row.nationId}`}>{row.label}</a>
+                                                        {/if}
+                                                    </td>
+                                                    {#if card.entity === "nation"}
+                                                        <td>
+                                                            <a href={`https://politicsandwar.com/alliance/id=${row.allianceId}`}>{row.allianceName}</a>
+                                                        </td>
+                                                    {/if}
+                                                    <td class="text-end">{row.valueText}</td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {/if}
                         {:else}
                             <div class="small text-muted">
                                 {card.aggregation.toUpperCase()}
@@ -180,7 +195,13 @@
                                     : ""}
                                 ({widgetScopeLabel(card)})
                             </div>
-                            <div class="h6 m-0">{formatKpiNumber(getMetricCardValue(card))}</div>
+                            <div class="h6 m-0">
+                                {#if metricValuesByWidgetId[card.id] === undefined && !secondaryReady}
+                                    Loading...
+                                {:else}
+                                    {formatKpiNumber(metricValuesByWidgetId[card.id])}
+                                {/if}
+                            </div>
                         {/if}
                     </div>
                 </div>

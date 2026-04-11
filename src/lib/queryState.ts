@@ -1,3 +1,4 @@
+import { pushState, replaceState } from "$app/navigation";
 import LZString from "lz-string";
 import { saveCurrentQueryParams } from "./queryStorage";
 
@@ -8,26 +9,31 @@ type QueryParamCodec = {
     decode: (value: string) => string | null;
 };
 
-const KPIW_PREFIX = "lz:";
+const COMPRESSED_QUERY_PREFIX = "lz:";
 
-const queryParamCodecs: Record<string, QueryParamCodec> = {
-    kpiw: {
+function createCompressedQueryCodec(): QueryParamCodec {
+    return {
         encode: (value: string) => {
             const compressed = LZString.compressToEncodedURIComponent(value);
             if (!compressed) return null;
-            return `${KPIW_PREFIX}${compressed}`;
+            return `${COMPRESSED_QUERY_PREFIX}${compressed}`;
         },
         decode: (value: string) => {
-            if (value.startsWith(KPIW_PREFIX)) {
-                const decompressed = LZString.decompressFromEncodedURIComponent(
-                    value.slice(KPIW_PREFIX.length),
-                );
-                return decompressed ?? null;
+            if (!value.startsWith(COMPRESSED_QUERY_PREFIX)) {
+                return value;
             }
 
-            return value;
+            const decompressed = LZString.decompressFromEncodedURIComponent(
+                value.slice(COMPRESSED_QUERY_PREFIX.length),
+            );
+            return decompressed ?? null;
         },
-    },
+    };
+}
+
+const queryParamCodecs: Record<string, QueryParamCodec> = {
+    kpiw: createCompressedQueryCodec(),
+    grid: createCompressedQueryCodec(),
 };
 
 export type SetQueryParamOptions = {
@@ -71,10 +77,15 @@ function commitQueryUrl(url: URL, replace = false): void {
     const newUrl = url.toString();
     if (oldUrl === newUrl) return;
 
+    const pageState =
+        window.history.state && typeof window.history.state === "object"
+            ? (window.history.state as App.PageState)
+            : {};
+
     if (replace) {
-        window.history.replaceState({}, "", newUrl);
+        replaceState(newUrl, pageState);
     } else {
-        window.history.pushState({}, "", newUrl);
+        pushState(newUrl, pageState);
     }
 }
 
@@ -158,7 +169,11 @@ export function resetQueryParams(
         }
     }
 
-    window.history.replaceState({}, "", url.toString());
+    const pageState =
+        window.history.state && typeof window.history.state === "object"
+            ? (window.history.state as App.PageState)
+            : {};
+    replaceState(url.toString(), pageState);
     saveCurrentQueryParams();
 
     for (const required of requiredKeys) {

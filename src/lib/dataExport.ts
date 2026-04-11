@@ -82,12 +82,6 @@ const ExportTypeByFormat: Record<Exclude<ExportFormat, 'JSON'>, ExportType> = {
     TSV: ExportTypes.TSV,
 };
 
-export interface DownloadableTableData {
-    columns: string[];
-    data: any[][];
-    visible: number[];
-}
-
 function coerceExportCell(value: unknown): ExportCell {
     if (
         value == null ||
@@ -269,46 +263,6 @@ export function exportBundleData(request: ExportBundleRequest): boolean {
     const text = rowsToDelimitedText(rows, type, true);
     writeTextExport(text, `${bundle.baseFileName}-${dataset.key}.${type.ext}`, type, target);
     return true;
-}
-
-export function downloadTableData(currentRowData: DownloadableTableData | null | undefined, useClipboard: boolean, type: ExportType, fileBaseName?: string) {
-    if (!currentRowData) {
-        modalStrWithCloseButton('Error', 'No data to download');
-        return;
-    }
-
-    const visibleColumns = currentRowData.visible.map((index) => currentRowData.columns[index]);
-    const tableData: any[][] = currentRowData.data.map((row) => currentRowData.visible.map((index) => row[index]));
-    tableData.unshift(visibleColumns);
-    downloadCells(tableData, useClipboard, type, fileBaseName);
-}
-
-export function downloadTableElem(elem: HTMLTableElement, useClipboard: boolean, type: ExportType, fileBaseName?: string) {
-    const table = $(elem).DataTable();
-    const visibleColumnNames: string[] = [];
-    const visibleColumnIds: Set<number> = new Set();
-
-    table.columns().every(function (index: number) {
-        if (table.column(index).visible()) {
-            if (index === 0) return;
-            visibleColumnNames.push(table.column(index).header().textContent || 'name');
-            visibleColumnIds.add(index);
-        }
-    });
-
-    const data2dInclHeaderNames: any[][] = [visibleColumnNames];
-
-    table.rows({ search: 'applied' }).every(function (this: any) {
-        const rowData: any[] = [];
-        this.data().forEach((cellData: any, cellIdx: number) => {
-            if (visibleColumnIds.has(cellIdx + 1)) {
-                rowData.push(cellData);
-            }
-        });
-        data2dInclHeaderNames.push(rowData);
-    });
-
-    downloadCells(data2dInclHeaderNames, useClipboard, type, fileBaseName);
 }
 
 export function downloadCells(data: any[][], useClipboard: boolean, type: ExportType, fileBaseName?: string) {

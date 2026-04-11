@@ -10,45 +10,23 @@ type StyleManifestEntry = {
 };
 
 const scriptManifest: Record<string, ScriptManifestEntry> = {
-    jqjs: {
-        src: 'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js',
-    },
-    dtjs1: {
-        src: 'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js',
-    },
-    dtjs2: {
-        src: 'https://cdn.datatables.net/colreorder/1.7.0/js/dataTables.colReorder.min.js',
-    },
-    dtjs3: {
-        src: 'https://cdn.datatables.net/plug-ins/1.13.7/sorting/numeric-comma.js',
-    },
     plotjs: {
         src: 'https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.29.1/plotly.min.js',
     },
 };
 
-const styleManifest: Record<string, StyleManifestEntry> = {
-    dtcss1: {
-        href: 'https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css',
-    },
-    dtcss2: {
-        href: 'https://cdn.datatables.net/colreorder/1.7.0/css/colReorder.dataTables.min.css',
-    },
-};
+const styleManifest: Record<string, StyleManifestEntry> = {};
 
 const scriptLoadPromises = new Map<string, Promise<void>>();
 const styleLoadPromises = new Map<string, Promise<void>>();
 
-export type RuntimePrefetchGroup = "plotly" | "table";
+export type RuntimePrefetchGroup = "plotly";
 
 const runtimeGroupToScripts: Record<RuntimePrefetchGroup, string[]> = {
     plotly: ["plotjs"],
-    table: ["jqjs", "dtjs1", "dtjs2", "dtjs3"],
 };
 
-const runtimeGroupToStyles: Partial<Record<RuntimePrefetchGroup, string[]>> = {
-    table: ["dtcss1", "dtcss2"],
-};
+const runtimeGroupToStyles: Partial<Record<RuntimePrefetchGroup, string[]>> = {};
 
 function buildConflictDatasetUrl(path: string): string {
     return `${appConfig.data_origin}${path}`;

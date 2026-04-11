@@ -6,7 +6,6 @@
         warmBubbleDefaultArtifact,
         warmConflictGraphPayload,
         warmConflictPayload,
-        warmConflictTableArtifact,
         warmRuntimeArtifact,
         warmTieringDefaultArtifact,
     } from "$lib/prefetchArtifacts";
@@ -155,27 +154,13 @@
                 routeTarget: "/tiering",
                 intentStrength,
             });
-        } else {
+        } else if (tab === "aava" || tab === "chord") {
             warmConflictPayload(conflictId, {
                 priority: primaryPriority,
                 reason: `tabs-${intentStrength}-${tab}-payload`,
-                routeTarget: tab === "chord" ? "/chord" : tab === "aava" ? "/aava" : "/conflict",
+                routeTarget: tab === "chord" ? "/chord" : "/aava",
                 intentStrength,
             });
-            warmConflictTableArtifact(conflictId, {
-                priority: primaryPriority,
-                reason: `tabs-${intentStrength}-${tab}-table`,
-                routeTarget: "/conflict",
-                intentStrength,
-            });
-            if (tab === "coalition" || tab === "alliance" || tab === "nation") {
-                warmRuntimeArtifact("table", {
-                    priority: runtimePriority,
-                    reason: `tabs-${intentStrength}-table-runtime`,
-                    routeTarget: "/conflict",
-                    intentStrength,
-                });
-            }
         }
 
         if (tab === "bubble") {

@@ -105,23 +105,13 @@ export type {
 export {
     warmConflictsIndexPayload,
     warmConflictPayload,
-    warmConflictTableArtifact,
     warmConflictGraphPayload,
     warmBubbleDefaultArtifact,
     warmTieringDefaultArtifact,
     warmCompositeContextArtifact,
-    warmCompositeDefaultTableArtifact,
     warmRuntimeArtifact,
     promoteArtifactTarget,
-    getDefaultConflictLayouts,
-    getConflictTableDataFromSharedCache,
 } from './prefetchArtifacts';
-export type { ConflictTableLayoutInput } from './conflictLayoutCache';
-export {
-    getOrComputeConflictTableData,
-    warmConflictTableLayouts,
-    invalidateConflictLayouts,
-} from './conflictLayoutCache';
 export {
     ensureBubbleDatasetReady,
     ensureTieringDatasetReady,
@@ -150,8 +140,6 @@ export {
     getPerfSnapshot,
     clearPerfSnapshot,
 } from './perf';
-export { computeLayoutTableData } from './layoutTable';
-export { setupContainer, setupContainerWithDeps } from './tableAdapter';
 export { requestWorkerRpc } from './workerRpc';
 export type { WorkerRpcOptions } from './workerRpc';
 export {
@@ -159,14 +147,6 @@ export {
     releaseWorkerDataset,
     terminateWorker,
 } from './workerDatasetLifecycle';
-export {
-    resolveCellFormatter,
-} from './tableCallbacks';
-export type {
-    TableCallbacks,
-    DataTableRender,
-    DownloadAction,
-} from './tableCallbacks';
 export {
     trimHeader,
     getDefaultWarWebHeader,
@@ -206,8 +186,6 @@ export type {
 } from './dataExport';
 export {
     ExportTypes,
-    downloadTableData,
-    downloadTableElem,
     downloadCells,
     buildSettingsRows,
     exportBundleData,

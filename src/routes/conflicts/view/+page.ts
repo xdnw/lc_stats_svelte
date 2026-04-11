@@ -7,7 +7,6 @@ import {
 } from "$lib/conflictIds";
 import {
     warmCompositeContextArtifact,
-    warmCompositeDefaultTableArtifact,
 } from "$lib/prefetchArtifacts";
 import type { PageLoad } from "./$types";
 
@@ -51,13 +50,6 @@ export const load: PageLoad = ({ url }) => {
             reason: "route-composite-load-context",
             routeTarget: "/conflicts/view",
             intentStrength: "load",
-        });
-        warmCompositeDefaultTableArtifact({
-            ids: parsed.ids,
-            aid: selectedAllianceId,
-            priority: "high",
-            reason: "route-composite-load-default-table",
-            routeTarget: "/conflicts/view",
         });
     }
 

@@ -5,6 +5,7 @@
    */
   import { base } from "$app/paths";
   import { goto } from "$app/navigation";
+  import DataGrid from "$lib/grid/DataGrid.svelte";
   import Breadcrumbs from "../../components/Breadcrumbs.svelte";
   import ShareResetBar from "../../components/ShareResetBar.svelte";
   import Progress from "../../components/Progress.svelte";
@@ -16,9 +17,9 @@
   import { onDestroy, onMount } from "svelte";
   import { decompressBson } from "$lib/binary";
   import { modalStrWithCloseButton } from "$lib/modals";
-  import { setupContainer } from "$lib/tableAdapter";
-  import { ExportTypes, downloadTableElem } from "$lib/dataExport";
+  import { openConflictCoalitionModal } from "$lib/conflictCoalitionModal";
   import {
+    decodeQueryParamValue,
     getCurrentQueryParams,
     setQueryParam,
     resetQueryParams,
@@ -37,12 +38,27 @@
   } from "$lib/runtime";
   import { formatAllianceName } from "$lib/formatting";
   import {
-    promoteArtifactTarget,
+    CONFLICTS_INDEX_GRID_COLUMN_ORDER,
+    CONFLICTS_INDEX_GRID_DEFAULT_SORT,
+    createConflictsIndexGridProvider,
+    getConflictsIndexDefaultVisibleColumnKeys,
+    type ConflictsIndexRow,
+  } from "$lib/conflictsIndexGrid";
+  import {
+    createGridQueryStateOverride,
+    parseGridQueryState,
+    serializeGridQueryState,
+  } from "$lib/grid/queryState";
+  import type { GridDataProvider, GridQueryState } from "$lib/grid/types";
+  import {
+    warmConflictGridWorkerDataset,
+  } from "$lib/conflictGrid/workerClient";
+  import {
+    ConflictGridLayout,
+  } from "$lib/conflictGrid/rowIds";
+  import {
     warmBubbleDefaultArtifact,
     warmConflictGraphPayload,
-    warmConflictPayload,
-    warmConflictTableArtifact,
-    warmRuntimeArtifact,
     warmTieringDefaultArtifact,
   } from "$lib/prefetchArtifacts";
   import { toNumberSelection } from "$lib/selectionModalHelpers";
@@ -54,14 +70,12 @@
     startPerfSpan,
   } from "$lib/perf";
   import { ConflictIndex } from "$lib/types";
-  import type { TableCallbacks } from "$lib/tableCallbacks";
-  import type { JSONValue, RawData, TableData } from "$lib/types";
+  import type { JSONValue, RawData } from "$lib/types";
   import {
     getBootstrapModalInstance,
     getVisGlobal,
   } from "$lib/globals";
 
-  let _currentRowData: TableData;
   let _rawData: RawData | null = null;
   let currSource = ["All", 0];
   let _loaded = false;
@@ -99,6 +113,9 @@
   let guildParam: string | null = null;
   let selectedConflictIds: Set<number> = new Set();
   let selectionMessage: string | null = null;
+  let conflictsGridProvider: GridDataProvider | null = null;
+  let conflictsGridStateOverride: Partial<GridQueryState> | null = null;
+  let conflictsGridResetVersion = 0;
 
   const VIS_TIMELINE_SCRIPT_ID = "visjs";
   const VIS_TIMELINE_SCRIPT_SRC =
@@ -121,77 +138,99 @@
     return !allAlliancesSelected ||
       !!guildParam ||
       !allCategoriesSelected ||
-      selectedConflictIds.size > 0;
+      selectedConflictIds.size > 0 ||
+      conflictsGridStateOverride != null;
   })();
 
   const getVis = (): any => getVisGlobal();
 
-  function formatConflictUrlCell(
-    data: unknown,
-    _type: any,
-    row: any,
-    _meta: any,
-  ): string {
-    const id = row[ConflictIndex.ID] as number;
-    const safeLabel = escapeHtml(`${data}`);
-    const conflictUrl = `${base}/conflict?id=${id}`;
-    return `<span class='ux-conflict-cell'><a href='${conflictUrl}' class='btn ux-btn btn-sm fw-bold ux-conflict-name-btn' data-conflict-action='open-card-from-name' data-conflict-id='${id}' aria-label='Open conflict details for ${safeLabel}' title='Left click: open card • Middle click/right click: open conflict page'>${safeLabel}</a></span>`;
-  }
-
-  function formatPinnedAlliancesCell(
-    _data: unknown,
-    _type: any,
-    row: any,
-    _meta: any,
-  ): string {
-    if (_allowedAllianceIds.size === _rawData?.alliance_ids.length) {
-      return "";
-    }
-    const c1_ids = row[ConflictIndex.C1_ID] as number[];
-    const c2_ids = row[ConflictIndex.C2_ID] as number[];
-
-    const c1 = c1_ids.filter((id) => _allowedAllianceIds.has(id));
-    const c2 = c2_ids.filter((id) => _allowedAllianceIds.has(id));
-    const total = c1.length + c2.length;
-
-    if (total === 0) return "<span class='ux-muted'>-</span>";
-
-    let chips: string[] = [];
-    const pushChip = (ids: number[], side: string, cls: string) => {
-      for (const id of ids) {
-        if (chips.length >= 4) return;
-        const name = allianceNameById[id] ?? `AA:${id}`;
-        chips.push(
-          `<span class='badge ${cls}' title='${side}: ${name}'>${side}:${name}</span>`,
-        );
-      }
+  function createConflictsGridDefaults(showPinnedColumn: boolean): Partial<GridQueryState> {
+    return {
+      sort: CONFLICTS_INDEX_GRID_DEFAULT_SORT,
+      filters: {},
+      pageIndex: 0,
+      pageSize: 10,
+      visibleColumnKeys: getConflictsIndexDefaultVisibleColumnKeys(showPinnedColumn),
+      columnOrderKeys: [...CONFLICTS_INDEX_GRID_COLUMN_ORDER],
+      expandedRowIds: [],
+      selectedRowIds: [],
     };
-
-    pushChip(c1, "C1", "text-bg-primary");
-    pushChip(c2, "C2", "text-bg-danger");
-    if (total > chips.length) {
-      chips.push(
-        `<span class='badge text-bg-secondary'>+${total - chips.length}</span>`,
-      );
-    }
-    return `<div class='d-flex flex-wrap gap-1'>${chips.join("")}</div>`;
   }
 
-  function downloadConflictsTable(useClipboard: boolean, type: string): void {
-    const tableElem = (document.getElementById("conflictTable") as HTMLElement)
-      .querySelector("table") as HTMLTableElement;
-    downloadTableElem(
-      tableElem,
-      useClipboard,
-      ExportTypes[type as keyof typeof ExportTypes],
+  function syncConflictsGridQueryState(state: GridQueryState): void {
+    const showPinnedColumn =
+      _rawData != null && _allowedAllianceIds.size !== _rawData.alliance_ids.length;
+    const defaults = createConflictsGridDefaults(showPinnedColumn);
+    conflictsGridStateOverride = createGridQueryStateOverride(state, defaults);
+    setQueryParam(
+      "grid",
+      serializeGridQueryState(conflictsGridStateOverride),
+      { replace: true },
     );
+    saveCurrentQueryParams();
+  }
+
+  function handleConflictsGridSelectionChange(
+    event: CustomEvent<{ selectedRowIds: Array<string | number> }>,
+  ): void {
+    const next = new Set<number>();
+    for (const rowId of event.detail.selectedRowIds) {
+      const id = Number(rowId);
+      if (Number.isFinite(id)) {
+        next.add(id);
+      }
+    }
+    selectedConflictIds = next;
+    selectionMessage =
+      selectedConflictIds.size > MAX_COMPOSITE_CONFLICT_IDS
+        ? `Composite selection is limited to ${MAX_COMPOSITE_CONFLICT_IDS} conflicts.`
+        : null;
+  }
+
+  function handleConflictsGridStateChange(
+    event: CustomEvent<{ state: GridQueryState }>,
+  ): void {
+    syncConflictsGridQueryState(event.detail.state);
+  }
+
+  function handleConflictsGridCellAction(
+    event: CustomEvent<{
+      rowId: string | number;
+      columnKey: string;
+      actionId: string;
+      args?: Record<string, string | number | boolean | null>;
+    }>,
+  ): void {
+    const args = event.detail.args ?? {};
+    const conflictId = Number(args.conflictId ?? event.detail.rowId);
+    if (!Number.isFinite(conflictId)) return;
+
+    if (event.detail.actionId === "open-conflict-card") {
+      openConflictCard(undefined, conflictId);
+      return;
+    }
+
+    if (event.detail.actionId === "open-coalition") {
+      const coalitionIndex = Number(args.coalitionIndex);
+      if (coalitionIndex === 0 || coalitionIndex === 1) {
+        openCoalitionForConflict(undefined, conflictId, coalitionIndex, false);
+      }
+      return;
+    }
+
+    if (event.detail.actionId === "open-field") {
+      const field = `${args.field ?? ""}`;
+      if (field === "status" || field === "cb" || field === "posts") {
+        openConflictField(undefined, conflictId, field);
+      }
+    }
   }
 
   // onMount runs when this component (i.e. the page) is loaded
   // This registers the formatting functions, and then loads the data from s3 and creates the conflict list table
   onMount(() => {
     try {
-      applySavedQueryParamsIfMissing(["ids", "guild"]);
+      applySavedQueryParamsIfMissing(["ids", "guild", "grid"]);
       conflictActionClickListener = (event: MouseEvent) => {
         const target = parseConflictActionTarget(event);
         if (!target) return;
@@ -199,20 +238,8 @@
         const action = target.dataset.conflictAction;
         if (!action) return;
 
-        if (action === "copy-ids") {
-          const value = target.dataset.copyValue ?? "";
-          copyToClipboard(value);
-          return;
-        }
-
         const conflictId = parseConflictId(target.dataset.conflictId);
         if (conflictId == null) return;
-
-        if (action === "open-card-from-name") {
-          const allowDefault = openConflictCardFromName(event, conflictId);
-          if (!allowDefault) stopTableEvent(event);
-          return;
-        }
 
         if (action === "open-conflict-page") {
           const allowDefault = openConflictPageFromCard(event, conflictId);
@@ -264,7 +291,9 @@
       conflictHoverIntentListener = (event: Event) => {
         const target = findConflictLinkTarget(event);
         if (!target) return;
-        const parsedId = parseConflictId(target.dataset.conflictId);
+        const parsedId = parseConflictId(
+          `${parseGridActionArgs(target)?.conflictId ?? ""}`,
+        );
         if (parsedId == null) return;
         warmConflictLinkIntent(
           parsedId,
@@ -275,7 +304,9 @@
       conflictPointerIntentListener = (event: PointerEvent) => {
         const target = findConflictLinkTarget(event);
         if (!target) return;
-        const parsedId = parseConflictId(target.dataset.conflictId);
+        const parsedId = parseConflictId(
+          `${parseGridActionArgs(target)?.conflictId ?? ""}`,
+        );
         if (parsedId == null) return;
         warmConflictLinkIntent(parsedId, "pointerdown");
       };
@@ -356,6 +387,9 @@
           }
 
           guildParam = queryParams.get("guild");
+          conflictsGridStateOverride = parseGridQueryState(
+            decodeQueryParamValue("grid", queryParams.get("grid")),
+          );
 
           await yieldToMain();
           setupConflicts(result);
@@ -419,29 +453,10 @@
   });
 
   function setupConflicts(result: RawData) {
-    let columns: string[] = [...(result.headers as string[])];
-    let visible: number[] = [
-      ConflictIndex.NAME,
-      ConflictIndex.C1_NAME,
-      ConflictIndex.C2_NAME,
-      ConflictIndex.START,
-      ConflictIndex.END,
-      ConflictIndex.WARS,
-      ConflictIndex.ACTIVE_WARS,
-      ConflictIndex.C1_DEALT,
-      ConflictIndex.C2_DEALT,
-      ConflictIndex.CATEGORY,
-    ];
-    let searchable: number[] = [
-      ConflictIndex.NAME,
-      ConflictIndex.CATEGORY,
-      ConflictIndex.C1_NAME,
-      ConflictIndex.C2_NAME,
-    ];
-    let cell_format: { [key: string]: number[] } = {};
-    let sort: [number, string] = [ConflictIndex.END + 1, "desc"];
     let rows: JSONValue[][] = result.conflicts as JSONValue[][];
     conflictDetailsById = {};
+    selectedConflictIds = new Set();
+    selectionMessage = null;
     if (_allowedAllianceIds.size != _rawData?.alliance_ids.length) {
       rows = rows.filter((row) => {
         const c1_ids: number[] = row[ConflictIndex.C1_ID] as number[];
@@ -540,92 +555,94 @@
 
     timelineRows = rows;
 
-    // Add total damage column (as combination of c1_dealt and c2_dealt)
-    columns.push("total");
     const showPinnedColumn =
       _allowedAllianceIds.size !== _rawData?.alliance_ids.length;
-    if (showPinnedColumn) {
-      columns.push("pinned");
-    }
-    rows = rows.map((row) => {
-      const damage =
-        (row[ConflictIndex.C1_DEALT] as number) +
-        (row[ConflictIndex.C2_DEALT] as number);
-      if (!showPinnedColumn) {
-        return [...row, damage];
-      }
-      return [...row, damage, ""];
+    const gridRows: ConflictsIndexRow[] = rows.map((row) => {
+      const id = Number(row[ConflictIndex.ID] ?? 0);
+      const c1Ids = (row[ConflictIndex.C1_ID] as number[] | undefined) ?? [];
+      const c2Ids = (row[ConflictIndex.C2_ID] as number[] | undefined) ?? [];
+      const c1Dealt = Number(row[ConflictIndex.C1_DEALT] ?? 0);
+      const c2Dealt = Number(row[ConflictIndex.C2_DEALT] ?? 0);
+      const total = c1Dealt + c2Dealt;
+      const pinned = showPinnedColumn
+        ? [
+            ...c1Ids
+              .filter((aaId) => _allowedAllianceIds.has(aaId))
+              .slice(0, 2)
+              .map((aaId) => ({
+                side: "C1" as const,
+                allianceId: aaId,
+                name: allianceNameById[aaId] ?? `AA:${aaId}`,
+              })),
+            ...c2Ids
+              .filter((aaId) => _allowedAllianceIds.has(aaId))
+              .slice(0, 2)
+              .map((aaId) => ({
+                side: "C2" as const,
+                allianceId: aaId,
+                name: allianceNameById[aaId] ?? `AA:${aaId}`,
+              })),
+          ]
+        : [];
+      const wikiValue = `${row[ConflictIndex.WIKI] ?? ""}`.trim();
+      const wikiUrl =
+        wikiValue.length === 0
+          ? null
+          : /^https?:\/\//i.test(wikiValue)
+            ? wikiValue
+            : `https://politicsandwar.fandom.com/wiki/${encodeURIComponent(wikiValue)}`;
+      const posts = Object.entries(
+        (row[ConflictIndex.POSTS] as Record<string, [number, string, number]>) ?? {},
+      )
+        .map(([title, post]) => ({
+          title,
+          url: `https://forum.politicsandwar.com/index.php?/topic/${post[0]}-${post[1]}`,
+          timestamp: post[2],
+        }))
+        .sort((left, right) => right.timestamp - left.timestamp);
+      const end = Number(row[ConflictIndex.END] ?? -1);
+
+      return {
+        id,
+        name: `${row[ConflictIndex.NAME] ?? "Unknown conflict"}`,
+        c1Name: `${row[ConflictIndex.C1_NAME] ?? "Coalition 1"}`,
+        c2Name: `${row[ConflictIndex.C2_NAME] ?? "Coalition 2"}`,
+        start: Number(row[ConflictIndex.START] ?? 0),
+        end,
+        category: `${row[ConflictIndex.CATEGORY] ?? "uncategorized"}`,
+        wars: Number(row[ConflictIndex.WARS] ?? 0),
+        activeWars: Number(row[ConflictIndex.ACTIVE_WARS] ?? 0),
+        c1Dealt,
+        c2Dealt,
+        total,
+        pinned,
+        c1Alliances: c1Ids.map((aaId) => ({
+          allianceId: aaId,
+          name: formatAllianceName(allianceNameById[aaId], aaId),
+        })),
+        c2Alliances: c2Ids.map((aaId) => ({
+          allianceId: aaId,
+          name: formatAllianceName(allianceNameById[aaId], aaId),
+        })),
+        wikiUrl,
+        status: (row[ConflictIndex.STATUS] as string | null) ?? null,
+        cb: (row[ConflictIndex.CB] as string | null) ?? null,
+        posts,
+        rowClass:
+          end === -1
+            ? "ux-conflicts-row-active"
+            : end < Date.now() - 432000000
+              ? "ux-conflicts-row-ended"
+              : "ux-conflicts-row-recent",
+      };
     });
 
-    const pinnedIdx = showPinnedColumn ? columns.length - 1 : -1;
-    if (showPinnedColumn) {
-      visible.push(pinnedIdx);
-    }
-
-    // Set the cell format functions to specific columns
-    cell_format["formatUrl"] = [ConflictIndex.NAME];
-    cell_format["formatNumber"] = [
-      ConflictIndex.WARS,
-      ConflictIndex.ACTIVE_WARS,
-    ];
-    cell_format["formatMoney"] = [
-      ConflictIndex.C1_DEALT,
-      ConflictIndex.C2_DEALT,
-      ConflictIndex.TOTAL,
-    ];
-    cell_format["formatDate"] = [ConflictIndex.START, ConflictIndex.END];
-    if (showPinnedColumn) {
-      cell_format["formatPinnedAlliances"] = [pinnedIdx];
-    }
-
-    let container = document.getElementById("conflictTable");
-    _currentRowData = {
-      columns: columns,
-      data: rows,
-      visible: visible,
-      searchable: searchable,
-      cell_format: cell_format,
-      row_format: (row: HTMLElement, data: any, _index: number) => {
-        // Highlight rows based on the end date (ongoing = warning, ended <5d ago = light, ended = no color)
-        let end = data[5];
-        if (end == -1) {
-          row.classList.add("bg-danger-subtle");
-        } else if (end < Date.now() - 432000000) {
-          // 432000000 = 5 days in milliseconds
-          row.classList.add("bg-light-subtle");
-        } else {
-          row.classList.add("bg-warning-subtle");
-        }
-      },
-      onSelectionChange: (selection) => {
-        const next = new Set<number>();
-        for (const row of selection.selectedRows) {
-          const id = Number(row[ConflictIndex.ID]);
-          if (Number.isFinite(id)) {
-            next.add(id);
-          }
-        }
-        selectedConflictIds = next;
-        selectionMessage =
-          selectedConflictIds.size > MAX_COMPOSITE_CONFLICT_IDS
-            ? `Composite selection is limited to ${MAX_COMPOSITE_CONFLICT_IDS} conflicts.`
-            : null;
-      },
-      sort: sort,
-    };
-
-    // Setup the conflicts table
-    const tableCallbacks: TableCallbacks = {
-      cellFormatters: {
-        formatUrl: formatConflictUrlCell,
-        formatPinnedAlliances: formatPinnedAlliancesCell,
-      },
-      actions: {
-        download: downloadConflictsTable,
-      },
-    };
-
-    setupContainer(container as HTMLElement, _currentRowData, tableCallbacks);
+    conflictsGridProvider = createConflictsIndexGridProvider({
+      rows: gridRows,
+      showPinnedColumn,
+      conflictHref: (conflictId) => `${base}/conflict?id=${conflictId}`,
+    });
+    conflictsGridResetVersion += 1;
   }
   function selectSource(event: Event) {
     const target = event.target as HTMLSelectElement;
@@ -713,31 +730,21 @@
     intent: "hover" | "focus" | "pointerdown" | "enter",
   ): void {
     const id = String(conflictId);
-    const routeTarget = "/conflict";
-
-    warmConflictPayload(id, {
-      priority: intent === "pointerdown" || intent === "enter" ? "high" : "idle",
-      reason: `conflicts-link-${intent}-payload`,
-      routeTarget,
-      intentStrength: intent,
-    });
-
-    warmConflictTableArtifact(id, {
-      priority: intent === "pointerdown" || intent === "enter" ? "high" : "idle",
-      reason: `conflicts-link-${intent}-table`,
-      routeTarget,
-      intentStrength: intent,
-    });
-
-    warmRuntimeArtifact("table", {
-      priority: "idle",
-      reason: `conflicts-link-${intent}-runtime-table`,
-      routeTarget,
-      intentStrength: intent,
-    });
 
     if (intent === "pointerdown" || intent === "enter") {
-      promoteArtifactTarget("/conflict");
+      void warmConflictGridWorkerDataset({
+        conflictId: id,
+        version: config.version.conflict_data,
+        layouts: [
+          ConflictGridLayout.COALITION,
+          ConflictGridLayout.ALLIANCE,
+          ConflictGridLayout.NATION,
+        ],
+        aggressive: true,
+      }).catch((error) => {
+        console.warn("Failed to prewarm conflict worker dataset", error);
+      });
+
       warmConflictGraphPayload(id, {
         priority: "high",
         reason: `conflicts-link-${intent}-graph-payload`,
@@ -762,8 +769,23 @@
   function findConflictLinkTarget(event: Event): HTMLElement | null {
     const target = event.target;
     if (!(target instanceof Element)) return null;
-    const element = target.closest(".ux-conflict-name-btn[data-conflict-id]");
+    const element = target.closest(
+      '[data-grid-action-id="open-conflict-card"][data-grid-action-args]',
+    );
     return element instanceof HTMLElement ? element : null;
+  }
+
+  function parseGridActionArgs(target: HTMLElement): Record<string, unknown> | null {
+    const rawArgs = target.dataset.gridActionArgs;
+    if (!rawArgs) return null;
+    try {
+      const parsed = JSON.parse(rawArgs);
+      return parsed && typeof parsed === "object"
+        ? parsed as Record<string, unknown>
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   function isPlainLeftClick(event?: MouseEvent): boolean {
@@ -787,36 +809,6 @@
         formatAllianceName(allianceNameById[id], id)
       ),
     };
-  }
-
-  function copyToClipboard(value: string): void {
-    navigator.clipboard
-      .writeText(value)
-      .then(() => {
-        alert("Copied to clipboard");
-      })
-      .catch((error) => {
-        alert("Failed to copy to clipboard" + error);
-      });
-  }
-
-  function openConflictCardFromName(
-    event: MouseEvent | undefined,
-    conflictId: number,
-  ): boolean {
-    if (!event) {
-      openConflictCard(undefined, conflictId);
-      return false;
-    }
-
-    event.stopPropagation();
-    if (!isPlainLeftClick(event)) {
-      return true;
-    }
-
-    event.preventDefault();
-    openConflictCard(undefined, conflictId);
-    return false;
   }
 
   function openConflictField(
@@ -864,47 +856,22 @@
     const coalition = getConflictAlliances(details.name, index);
     if (!coalition) return;
 
-    const alliance_ids = coalition.alliance_ids;
-    const ul = document.createElement("ul");
-    ul.className = "mb-0";
-    for (let i = 0; i < alliance_ids.length; i++) {
-      const alliance_id = alliance_ids[i];
-      const alliance_name = formatAllianceName(
-        coalition.alliance_names[i],
-        alliance_id,
-      );
-      const a = document.createElement("a");
-      a.setAttribute(
-        "href",
-        `https://politicsandwar.com/alliance/id=${alliance_id}`,
-      );
-      a.setAttribute("target", "_blank");
-      a.setAttribute("rel", "noopener noreferrer");
-      a.textContent = alliance_name;
-      const li = document.createElement("li");
-      li.appendChild(a);
-      ul.appendChild(li);
-    }
-
-    const modalBody = document.createElement("div");
-    const idsStr = alliance_ids.join(",");
-    const areaElem = document.createElement("kbd");
-    areaElem.textContent = idsStr;
-    areaElem.setAttribute("readonly", "true");
-    areaElem.setAttribute("class", "form-control m-0");
-    modalBody.appendChild(areaElem);
-    modalBody.innerHTML += `<button class='btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3' data-conflict-action='copy-ids' data-copy-value='${escapeHtml(idsStr)}' aria-label='Copy alliance ids'><i class='bi bi-clipboard'></i></button>`;
-    modalBody.appendChild(ul);
-
-    modalStrWithCloseButton(
-      fromCard
+    openConflictCoalitionModal({
+      title: `Coalition ${index + 1}: ${details.name}`,
+      titleHtml: fromCard
         ? conflictModalTitleWithBack(
             `Coalition ${index + 1}: ${details.name}`,
             conflictId,
           )
-        : `Coalition ${index + 1}: ${details.name}`,
-      modalBody.outerHTML,
-    );
+        : undefined,
+      alliances: coalition.alliance_ids.map((allianceId, allianceIndex) => ({
+        id: allianceId,
+        name: formatAllianceName(
+          coalition.alliance_names[allianceIndex],
+          allianceId,
+        ),
+      })),
+    });
   }
 
   function openConflictCard(
@@ -1127,8 +1094,9 @@
     selectedCategories = new Set();
     selectedConflictIds = new Set();
     selectionMessage = null;
+    conflictsGridStateOverride = null;
     showAllianceModal = false;
-    resetQueryParams(["ids", "guild"]);
+    resetQueryParams(["ids", "guild", "grid"]);
     saveCurrentQueryParams();
     setupConflicts(_rawData);
     requestTimelineRender(true);
@@ -1412,7 +1380,23 @@
         ids.length === 0 ? "Select at least one alliance." : null}
     />
   {/if}
-  <div id="conflictTable" class="inline-block"></div>
+  {#if conflictsGridProvider}
+    <DataGrid
+      provider={conflictsGridProvider}
+      initialState={conflictsGridStateOverride}
+      resetKey={`conflicts:${conflictsGridResetVersion}`}
+      exportBaseFileName="conflicts"
+      exportDatasetKey="conflicts"
+      exportDatasetLabel="Conflicts"
+      exportButtonLabel="Export"
+      emptyMessage="No conflicts match the current filters."
+      loadingMessage="Loading conflicts table..."
+      caption="Conflicts index grid"
+      on:stateChange={handleConflictsGridStateChange}
+      on:selectionChange={handleConflictsGridSelectionChange}
+      on:cellAction={handleConflictsGridCellAction}
+    />
+  {/if}
   <div class="ux-surface p-2 mt-2">
     <h4 class="m-1">Timeline</h4>
     <p class="ps-1 ux-muted">Use ctrl+mousewheel to zoom on PC</p>

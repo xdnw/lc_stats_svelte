@@ -11,8 +11,9 @@ Libraries used:
 - bootstrap (js/css/icons)
 - halfmoon (modern: bootstrap theme)
 - chart.js
-- datatables + colreorder, numeric-comma
-- jquery
+- shared provider-driven Svelte data grid
+- d3
+- msgpackr
 - bytebuffer.js (forked and modified to support longs)
 - PSON (forked and modified to support longs)
 

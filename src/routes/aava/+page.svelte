@@ -1,13 +1,18 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { page } from "$app/stores";
-    import { onMount, tick } from "svelte";
+    import { onMount } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import SelectionModal from "../../components/SelectionModal.svelte";
     import KpiBuilderModal from "../../components/KpiBuilderModal.svelte";
+    import DataGrid from "$lib/grid/DataGrid.svelte";
+    import {
+        parseGridPageSizeQueryState,
+        serializeGridPageSizeQueryState,
+    } from "$lib/grid/queryState";
     import type {
         SelectionId,
         SelectionModalItem,
@@ -18,8 +23,7 @@
         buildCoalitionAllianceItems,
         buildStringSelectionItems,
         bootstrapConflictRouteLifecycle,
-        downloadTableElem,
-        ExportTypes,
+        decodeQueryParamValue,
         firstSelectedString,
         formatAllianceName,
         formatDatasetProvenance,
@@ -29,20 +33,11 @@
         resetQueryParams,
         resolveWarWebMetricMeta,
         saveCurrentQueryParams,
-        setQueryParam,
-        setupContainer,
+        setQueryParams,
         toNumberSelection,
         type ConflictRouteContext,
         type Conflict,
-        type TableCallbacks,
-        type TableData,
         validateSingleSelection,
-        yieldToMain,
-        warmBubbleDefaultArtifact,
-        warmCompositeContextArtifact,
-        warmCompositeDefaultTableArtifact,
-        warmConflictGraphPayload,
-        warmTieringDefaultArtifact,
     } from "$lib";
     import { registerFormatters } from "$lib/formatters";
     import { modalWithCloseButton } from "$lib/modals";
@@ -72,41 +67,27 @@
     import { deriveAavaCapability } from "$lib/aava";
     import { loadConflictContext } from "$lib/conflictContext";
     import {
+        warmBubbleDefaultArtifact,
+        warmCompositeContextArtifact,
+        warmConflictGraphPayload,
+        warmTieringDefaultArtifact,
+    } from "$lib/prefetchArtifacts";
+    import {
+        AAVA_ALL_COLUMN_KEYS,
+        AAVA_DEFAULT_VISIBLE_COLUMN_KEYS,
+        createAavaGridProvider,
+        getAavaColumnLabels,
+        type AavaColumnKey,
+    } from "$lib/aavaGrid";
+    import type { AavaSelectionRow } from "$lib/aavaSelection";
+    import type { GridDataProvider, GridPageSize, GridQueryState } from "$lib/grid/types";
+    import {
         applyConflictReturnQuery,
         readConflictReturnQuery,
         type ConflictReturnQuery,
     } from "$lib/conflictReturnQuery";
 
-    type ColumnKey =
-        | "name"
-        | "primary_to_row"
-        | "row_to_primary"
-        | "net"
-        | "total"
-        | "primary_share_pct"
-        | "row_share_pct"
-        | "abs_net";
-
-    const ALL_COLUMN_KEYS: ColumnKey[] = [
-        "name",
-        "primary_to_row",
-        "row_to_primary",
-        "net",
-        "total",
-        "primary_share_pct",
-        "row_share_pct",
-        "abs_net",
-    ];
-
-    const DEFAULT_VISIBLE_COLUMN_KEYS: ColumnKey[] = [
-        "name",
-        "primary_to_row",
-        "row_to_primary",
-        "net",
-        "total",
-        "primary_share_pct",
-        "row_share_pct",
-    ];
+    type ColumnKey = AavaColumnKey;
 
     let conflictName = "";
     let conflictId: string | null = null;
@@ -133,7 +114,9 @@
     let selectedByCoalition: [number[], number[]] = [[], []];
     let selectedPrimaryIds: number[] = [];
     let selectedVsIds: number[] = [];
-    let selectedColumns: ColumnKey[] = [...DEFAULT_VISIBLE_COLUMN_KEYS];
+    let selectedColumns: ColumnKey[] = [...AAVA_DEFAULT_VISIBLE_COLUMN_KEYS];
+    let currentGridSortKey: ColumnKey = "net";
+    let currentGridSortOrder: "asc" | "desc" = "desc";
     let rankingMetricToAdd = "net";
     let rankingLimitToAdd = 10;
     let metricMetricToAdd = "net";
@@ -146,8 +129,12 @@
     let headerModalItems: SelectionModalItem[] = [];
     let primaryAllianceModalItems: SelectionModalItem[] = [];
     let vsAllianceModalItems: SelectionModalItem[] = [];
-    let rowsCache = new Map<string, any[]>();
-    let renderQueued = false;
+    let rowsCache = new Map<string, AavaSelectionRow[]>();
+    let aavaRows: AavaSelectionRow[] = [];
+    let aavaGridProvider: GridDataProvider | null = null;
+    let aavaGridPageSizePreference: GridPageSize | null = null;
+    let aavaGridInitialState: Partial<GridQueryState> | null = null;
+    let aavaGridResetVersion = 0;
     let sharedKpiWidgets: ConflictKPIWidget[] = [];
     let primaryCoalition: Conflict["coalitions"][number] | undefined;
     let vsCoalition: Conflict["coalitions"][number] | undefined;
@@ -188,31 +175,6 @@
             tabCompositeIds = compositeIds;
             tabSelectedAllianceId = selectedAllianceId;
         }
-    }
-
-    function formatAllianceLinkCell(data: unknown): string {
-        const value = data as [string, number] | undefined;
-        const allianceId = value?.[1] ?? 0;
-        const allianceName = formatAllianceName(value?.[0], allianceId);
-        return `<a href="https://politicsandwar.com/alliance/id=${allianceId}">${allianceName}</a>`;
-    }
-
-    function formatPercentCell(data: unknown): string {
-        const value = Number(data);
-        if (!Number.isFinite(value)) return "0.00%";
-        return `${value.toFixed(2)}%`;
-    }
-
-    function downloadAavaTable(useClipboard: boolean, type: string): void {
-        const tableElem = document
-            .getElementById("aava-table")
-            ?.querySelector("table") as HTMLTableElement | null;
-        if (!tableElem) return;
-        downloadTableElem(
-            tableElem,
-            useClipboard,
-            ExportTypes[type as keyof typeof ExportTypes],
-        );
     }
 
     function clearRowsCache() {
@@ -279,6 +241,14 @@
     $: primaryCoalition = _rawData?.coalitions[primaryCoalitionIndex];
     $: vsCoalition = _rawData?.coalitions[primaryCoalitionIndex === 0 ? 1 : 0];
     $: aavaMetricLabels = getAavaMetricLabels(currentHeader);
+    $: aavaRows =
+        _rawData && selectedPrimaryIds.length > 0 && selectedVsIds.length > 0
+            ? buildRows()
+            : [];
+    $: aavaGridProvider =
+        _rawData && aavaRows.length > 0
+            ? createAavaGridProvider(aavaRows, currentHeader)
+            : null;
     $: encodedCompositeIds = compositeIds
         ? encodeCompositeSelectionIds(compositeIds)
         : null;
@@ -300,7 +270,7 @@
         if (!_rawData) return false;
         const defaultHeader = getDefaultWarWebHeader(_rawData);
         const defaults = defaultSelectionsByCoalition(_rawData);
-        const defaultCols = DEFAULT_VISIBLE_COLUMN_KEYS;
+        const defaultCols = AAVA_DEFAULT_VISIBLE_COLUMN_KEYS;
         const sameCols =
             selectedColumns.length === defaultCols.length &&
             selectedColumns.every((col, idx) => col === defaultCols[idx]);
@@ -313,24 +283,26 @@
         return !(
             primaryCoalitionIndex === 0 &&
             currentHeader === defaultHeader &&
+            currentGridSortKey === "net" &&
+            currentGridSortOrder === "desc" &&
             sameCols &&
             sameC0 &&
             sameC1
-        );
+        ) || aavaGridPageSizePreference != null;
     })();
 
-    function getColumnLabels(header: string): Record<ColumnKey, string> {
-        const labels = getAavaMetricLabels(header);
-        return {
-            name: "Alliance",
-            primary_to_row: labels.primary_to_row,
-            row_to_primary: labels.row_to_primary,
-            net: "Net",
-            total: "Total",
-            primary_share_pct: labels.primary_share_pct,
-            row_share_pct: labels.row_share_pct,
-            abs_net: "Abs Net",
-        };
+    function serializeColumns(columns: ColumnKey[]): string {
+        return columns.join(".");
+    }
+
+    function parseSortKey(raw: string | null): ColumnKey {
+        return AAVA_ALL_COLUMN_KEYS.includes(raw as ColumnKey)
+            ? (raw as ColumnKey)
+            : "net";
+    }
+
+    function parseSortOrder(raw: string | null): "asc" | "desc" {
+        return raw === "asc" ? "asc" : "desc";
     }
 
     function parseIdList(raw: string | null): number[] {
@@ -352,11 +324,11 @@
         const normalized = normalizeColumnToken(token);
         if (!normalized) return null;
 
-        if (ALL_COLUMN_KEYS.includes(token as ColumnKey)) {
+        if (AAVA_ALL_COLUMN_KEYS.includes(token as ColumnKey)) {
             return token as ColumnKey;
         }
 
-        for (const key of ALL_COLUMN_KEYS) {
+        for (const key of AAVA_ALL_COLUMN_KEYS) {
             if (normalizeColumnToken(labels[key]) === normalized) {
                 return key;
             }
@@ -367,7 +339,7 @@
 
     function parseColumns(raw: string | null, header: string): ColumnKey[] {
         if (!raw) return [];
-        const labels = getColumnLabels(header);
+        const labels = getAavaColumnLabels(header);
         const unique: ColumnKey[] = [];
 
         for (const token of raw.split(".")) {
@@ -496,32 +468,41 @@
 
     function syncQueryParams() {
         const contextQuery = currentContextQuery();
-        setQueryParam("id", contextQuery.id ?? null);
-        setQueryParam("ids", contextQuery.ids ?? null);
-        setQueryParam("aid", contextQuery.aid ?? null);
-
         const primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
         const vsIds =
             selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
-        setQueryParam("header", currentHeader);
-        setQueryParam("pc", primaryCoalitionIndex);
-        setQueryParam(
-            "c0",
-            selectedByCoalition[0].length
-                ? selectedByCoalition[0].join(".")
-                : "none",
+        setQueryParams(
+            {
+                id: contextQuery.id ?? null,
+                ids: contextQuery.ids ?? null,
+                aid: contextQuery.aid ?? null,
+                header: currentHeader,
+                pc: primaryCoalitionIndex,
+                c0: selectedByCoalition[0].length
+                    ? selectedByCoalition[0].join(".")
+                    : "none",
+                c1: selectedByCoalition[1].length
+                    ? selectedByCoalition[1].join(".")
+                    : "none",
+                pids: primaryIds.length ? primaryIds.join(".") : "none",
+                vids: vsIds.length ? vsIds.join(".") : "none",
+                columns: serializeColumns(selectedColumns),
+                cols: null,
+                sort: currentGridSortKey,
+                order: currentGridSortOrder,
+                grid: serializeGridPageSizeQueryState(aavaGridPageSizePreference),
+            },
+            {
+                replace: true,
+                defaults: {
+                    header: _rawData ? getDefaultWarWebHeader(_rawData) : undefined,
+                    pc: 0,
+                    columns: serializeColumns(AAVA_DEFAULT_VISIBLE_COLUMN_KEYS),
+                    sort: "net",
+                    order: "desc",
+                },
+            },
         );
-        setQueryParam(
-            "c1",
-            selectedByCoalition[1].length
-                ? selectedByCoalition[1].join(".")
-                : "none",
-        );
-        setQueryParam(
-            "pids",
-            primaryIds.length ? primaryIds.join(".") : "none",
-        );
-        setQueryParam("vids", vsIds.length ? vsIds.join(".") : "none");
         saveCurrentQueryParams(getAavaQueryStorageKey());
     }
 
@@ -687,6 +668,24 @@
         return `${widget.aggregation.toUpperCase()} ${widget.entity} ${metric}`;
     }
 
+    function formatAavaMetricLabel(metric: string): string {
+        return aavaMetricLabels[metric as keyof typeof aavaMetricLabels] ?? metric;
+    }
+
+    function validateHeaderSelection(ids: SelectionId[]): string | null {
+        return validateSingleSelection(ids, "header");
+    }
+
+    function handleRemoveWidget(event: CustomEvent<{ id: string }>) {
+        removeSharedWidget(event.detail.id);
+    }
+
+    function handleMoveWidget(
+        event: CustomEvent<{ id: string; delta: number }>,
+    ) {
+        moveSharedWidget(event.detail.id, event.detail.delta);
+    }
+
     function aavaKpiSelectionReason(): string {
         if (selectedPrimaryIds.length > 0 && selectedVsIds.length > 0) {
             return "";
@@ -694,20 +693,12 @@
         return "Select at least one alliance on both sides before adding snapshot widgets.";
     }
 
-    function refreshSelectedColumnsFromQuery() {
-        const query = getCurrentQueryParams();
-        const parsedColumns = parseColumns(query.get("columns"), currentHeader);
-        const parsedLegacy = parseColumns(query.get("cols"), currentHeader);
-        const parsed = parsedColumns.length > 0 ? parsedColumns : parsedLegacy;
-        if (parsed.length > 0) selectedColumns = parsed;
-    }
-
     function buildRowsForSelection(
         header: string,
         primaryIds: number[],
         vsIds: number[],
-    ) {
-        if (!_rawData) return [] as any[];
+    ): AavaSelectionRow[] {
+        if (!_rawData) return [];
         const cacheKey = `${header}|${primaryCoalitionIndex}|${primaryIds.join(".")}|${vsIds.join(".")}`;
         const cached = rowsCache.get(cacheKey);
         if (cached) return cached;
@@ -721,7 +712,7 @@
         return rows;
     }
 
-    function buildRows() {
+    function buildRows(): AavaSelectionRow[] {
         return buildRowsForSelection(
             currentHeader,
             selectedPrimaryIds,
@@ -729,82 +720,61 @@
         );
     }
 
-    function renderTable() {
-        renderQueued = false;
-        const container = document.getElementById("aava-table");
-        if (!container) return;
-
-        let primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
-        let vsIds =
-            selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ?? [];
-
-        if (_rawData && (primaryIds.length === 0 || vsIds.length === 0)) {
-            const query = getCurrentQueryParams();
-            if (!hasIntentionalSelectionParams(query)) {
-                selectedByCoalition = defaultSelectionsByCoalition(_rawData);
-                primaryIds = selectedByCoalition[primaryCoalitionIndex] ?? [];
-                vsIds =
-                    selectedByCoalition[primaryCoalitionIndex === 0 ? 1 : 0] ??
-                    [];
-            }
-        }
-
-        if (!_rawData || primaryIds.length === 0 || vsIds.length === 0) return;
-
-        refreshSelectedColumnsFromQuery();
-
-        const labels = getColumnLabels(currentHeader);
-        const rows = buildRows();
-        const visible = ALL_COLUMN_KEYS.map((k, idx) =>
-            selectedColumns.includes(k) ? idx : -1,
-        ).filter((idx) => idx >= 0);
-
-        const rowData: TableData = {
-            columns: ALL_COLUMN_KEYS.map((k) => labels[k]),
-            data: rows.map((row) => [
-                row.alliance,
-                row.primary_to_row,
-                row.row_to_primary,
-                row.net,
-                row.total,
-                row.primary_share_pct,
-                row.row_share_pct,
-                row.abs_net,
-            ]),
-            searchable: [0],
-            visible,
-            cell_format: {
-                formatAllianceLink: [0],
-                formatNumber: [1, 2, 3, 4, 7],
-                formatPercent: [5, 6],
+    function buildAavaGridInitialState(): Partial<GridQueryState> {
+        return {
+            sort: {
+                key: currentGridSortKey,
+                dir: currentGridSortOrder,
             },
-            row_format: null,
-            sort: [ALL_COLUMN_KEYS.indexOf("net"), "desc"],
+            visibleColumnKeys: [...selectedColumns],
+            columnOrderKeys: [
+                ...selectedColumns,
+                ...AAVA_ALL_COLUMN_KEYS.filter(
+                    (key) => !selectedColumns.includes(key),
+                ),
+            ],
+            pageIndex: 0,
+            pageSize: aavaGridPageSizePreference ?? 10,
+            filters: {},
+            expandedRowIds: [],
+            selectedRowIds: [],
         };
-
-        const tableCallbacks: TableCallbacks = {
-            cellFormatters: {
-                formatAllianceLink: formatAllianceLinkCell,
-                formatPercent: formatPercentCell,
-            },
-            actions: {
-                download: downloadAavaTable,
-            },
-        };
-
-        setupContainer(container, rowData, tableCallbacks);
     }
 
-    function scheduleRenderTable() {
-        if (renderQueued) return;
-        renderQueued = true;
-        requestAnimationFrame(() => renderTable());
+    function resetAavaGridState(): void {
+        aavaGridInitialState = buildAavaGridInitialState();
+        aavaGridResetVersion += 1;
+    }
+
+    function handleAavaGridStateChange(
+        event: CustomEvent<{ state: GridQueryState }>,
+    ): void {
+        const state = event.detail.state;
+        const visible = new Set(
+            state.visibleColumnKeys.filter((key) =>
+                AAVA_ALL_COLUMN_KEYS.includes(key as ColumnKey),
+            ) as ColumnKey[],
+        );
+        const orderedVisible = state.columnOrderKeys.filter(
+            (key): key is ColumnKey =>
+                AAVA_ALL_COLUMN_KEYS.includes(key as ColumnKey) && visible.has(key as ColumnKey),
+        );
+
+        if (orderedVisible.length > 0) {
+            selectedColumns = orderedVisible;
+        }
+
+        currentGridSortKey = state.sort
+            ? parseSortKey(state.sort.key)
+            : "net";
+        currentGridSortOrder = state.sort?.dir === "asc" ? "asc" : "desc";
+        aavaGridPageSizePreference = state.pageSize === 10 ? null : state.pageSize;
+        syncQueryParams();
     }
 
     function setHeader(header: string) {
         currentHeader = header;
         syncQueryParams();
-        scheduleRenderTable();
     }
 
     function openHeaderModal() {
@@ -831,7 +801,6 @@
         primaryCoalitionIndex = primaryCoalitionIndex === 0 ? 1 : 0;
 
         syncQueryParams();
-        scheduleRenderTable();
     }
 
     function buildCoalitionModalItems(
@@ -872,7 +841,6 @@
         });
         showPrimaryAllianceModal = false;
         syncQueryParams();
-        scheduleRenderTable();
     }
 
     function applyVsAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
@@ -881,7 +849,6 @@
         setCoalitionSelection(vsIndex, nextIds, { allowEmpty: true });
         showVsAllianceModal = false;
         syncQueryParams();
-        scheduleRenderTable();
     }
 
     function resetFilters() {
@@ -889,7 +856,10 @@
         primaryCoalitionIndex = 0;
         currentHeader = getDefaultWarWebHeader(_rawData);
         selectedByCoalition = defaultSelectionsByCoalition(_rawData);
-        selectedColumns = [...DEFAULT_VISIBLE_COLUMN_KEYS];
+        selectedColumns = [...AAVA_DEFAULT_VISIBLE_COLUMN_KEYS];
+        currentGridSortKey = "net";
+        currentGridSortOrder = "desc";
+        aavaGridPageSizePreference = null;
         resetQueryParams(
             [
                 "header",
@@ -902,11 +872,12 @@
                 "cols",
                 "sort",
                 "order",
+                "grid",
             ],
             contextPreserveParams(),
         );
         saveCurrentQueryParams(getAavaQueryStorageKey());
-        scheduleRenderTable();
+        resetAavaGridState();
     }
 
     function retryLoad() {
@@ -940,6 +911,8 @@
         currentHeader: string;
         selectedByCoalition: [number[], number[]];
         selectedColumns: ColumnKey[];
+        sortKey: ColumnKey;
+        sortOrder: "asc" | "desc";
     };
 
     function deriveAavaHydrationState(
@@ -991,11 +964,16 @@
             selectedColumns.unshift("name");
         }
 
+        const sortKey = parseSortKey(query.get("sort"));
+        const sortOrder = parseSortOrder(query.get("order"));
+
         return {
             primaryCoalitionIndex,
             currentHeader,
             selectedByCoalition,
             selectedColumns,
+            sortKey,
+            sortOrder,
         };
     }
 
@@ -1008,13 +986,18 @@
             query,
             defaultHeader: getDefaultWarWebHeader(data),
             defaultSelections: defaults,
-            defaultColumns: DEFAULT_VISIBLE_COLUMN_KEYS,
+            defaultColumns: AAVA_DEFAULT_VISIBLE_COLUMN_KEYS,
         });
 
         primaryCoalitionIndex = nextState.primaryCoalitionIndex;
         currentHeader = nextState.currentHeader;
         selectedByCoalition = nextState.selectedByCoalition;
         selectedColumns = nextState.selectedColumns;
+        currentGridSortKey = nextState.sortKey;
+        currentGridSortOrder = nextState.sortOrder;
+        aavaGridPageSizePreference = parseGridPageSizeQueryState(
+            decodeQueryParamValue("grid", query.get("grid")),
+        );
     }
 
     function loadFromContext(context: ConflictRouteContext) {
@@ -1045,9 +1028,7 @@
                     (resolved.conflict as any).update_ms,
                 );
                 hydrateStateFromQuery(resolved.conflict);
-                await tick();
-                await yieldToMain();
-                renderTable();
+                resetAavaGridState();
                 _loaded = true;
                 refreshSharedKpiWidgets();
                 saveCurrentQueryParams(getAavaQueryStorageKey());
@@ -1086,13 +1067,6 @@
                         routeTarget: "/conflicts/view",
                         intentStrength: "idle",
                     });
-                    warmCompositeDefaultTableArtifact({
-                        ids: resolved.sourceConflictIds,
-                        aid: selectedAllianceId,
-                        priority: "idle",
-                        reason: "route-aava-composite-table",
-                        routeTarget: "/conflicts/view",
-                    });
                 }
             })
             .catch((error) => {
@@ -1106,7 +1080,7 @@
 
     onMount(() => {
         bootstrapConflictRouteLifecycle({
-            restoreParams: ["header", "pc", "columns", "cols"],
+            restoreParams: ["header", "pc", "columns", "cols", "sort", "order", "grid"],
             preserveParams: ["id", "ids", "aid"],
             storageKey: (query) => getAavaQueryStorageKey(query),
             onBeforeResolve: () => {
@@ -1314,7 +1288,7 @@
         searchPlaceholder="Search headers..."
         on:close={closeHeaderModal}
         on:apply={applyHeaderModal}
-        validateSelection={(ids) => validateSingleSelection(ids, "header")}
+        validateSelection={validateHeaderSelection}
     />
 
     <KpiBuilderModal
@@ -1339,13 +1313,11 @@
         canAddRankingReason={aavaKpiSelectionReason()}
         canAddMetricReason={aavaKpiSelectionReason()}
         {widgetManagerLabel}
-        metricLabel={(metric) =>
-            aavaMetricLabels[metric as keyof typeof aavaMetricLabels] ?? metric}
+        metricLabel={formatAavaMetricLabel}
         {metricDescription}
         on:close={closeKpiBuilderModal}
-        on:removeWidget={(event) => removeSharedWidget(event.detail.id)}
-        on:moveWidget={(event) =>
-            moveSharedWidget(event.detail.id, event.detail.delta)}
+        on:removeWidget={handleRemoveWidget}
+        on:moveWidget={handleMoveWidget}
         on:addRanking={addAavaRankingWidget}
         on:addMetric={addAavaMetricWidget}
         bind:rankingMetricToAdd
@@ -1383,7 +1355,18 @@
         </div>
     {/if}
 
-    <div id="aava-table"></div>
+    {#if aavaGridProvider}
+        <DataGrid
+            provider={aavaGridProvider}
+            initialState={aavaGridInitialState}
+            resetKey={`${aavaGridResetVersion}`}
+            exportBaseFileName="aava"
+            exportDatasetKey="aava"
+            exportDatasetLabel="AAvA table"
+            caption="Alliance versus alliance table"
+            on:stateChange={handleAavaGridStateChange}
+        />
+    {/if}
 
     {#if datasetProvenance}
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>

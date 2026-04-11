@@ -1,3 +1,5 @@
+import { normalizeConflictLayoutColumns } from "./conflictLayoutQueryState";
+
 export type ConflictTableLayoutPreset = {
     sort: string;
     columns: string[];
@@ -128,19 +130,23 @@ export function createDefaultConflictTableLayoutState(): ConflictTableLayoutStat
 }
 
 export function isConflictTableLayoutStateEqual(
-    state: Pick<ConflictTableLayoutState, "sort" | "order" | "columns">,
+    state: Pick<ConflictTableLayoutState, "layout" | "sort" | "order" | "columns">,
     input: Pick<ConflictTableLayoutState, "sort" | "order" | "columns">,
 ): boolean {
+    const normalizedInputColumns = normalizeConflictLayoutColumns(
+        state.layout,
+        input.columns,
+    );
     return (
         state.sort === input.sort &&
         state.order === input.order &&
-        state.columns.length === input.columns.length &&
-        state.columns.every((value, index) => value === input.columns[index])
+        state.columns.length === normalizedInputColumns.length &&
+        state.columns.every((value, index) => value === normalizedInputColumns[index])
     );
 }
 
 export function detectConflictTableLayoutPresetKey(
-    state: Pick<ConflictTableLayoutState, "sort" | "order" | "columns">,
+    state: Pick<ConflictTableLayoutState, "layout" | "sort" | "order" | "columns">,
 ): string | null {
     return (
         CONFLICT_TABLE_LAYOUT_PRESET_KEYS.find((key) => {

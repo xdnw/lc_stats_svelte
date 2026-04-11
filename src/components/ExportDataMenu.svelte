@@ -20,20 +20,23 @@
         selectedDatasetKey = datasets[0].key;
     }
     $: hasDatasets = datasets.length > 0;
+    $: showDatasetSelect = datasets.length > 1;
 </script>
 
 <div class="d-flex flex-nowrap gap-1 align-items-center">
-    <select
-        id={selectId}
-        class="form-select form-select-sm ux-export-select"
-        bind:value={selectedDatasetKey}
-        aria-label="Choose export dataset"
-        disabled={!hasDatasets}
-    >
-        {#each datasets as dataset}
-            <option value={dataset.key}>{dataset.label}</option>
-        {/each}
-    </select>
+    {#if showDatasetSelect}
+        <select
+            id={selectId}
+            class="form-select form-select-sm ux-export-select"
+            bind:value={selectedDatasetKey}
+            aria-label="Choose export dataset"
+            disabled={!hasDatasets}
+        >
+            {#each datasets as dataset}
+                <option value={dataset.key}>{dataset.label}</option>
+            {/each}
+        </select>
+    {/if}
     <div class="dropdown">
         <button
             class="btn ux-btn btn-sm fw-bold dropdown-toggle"
