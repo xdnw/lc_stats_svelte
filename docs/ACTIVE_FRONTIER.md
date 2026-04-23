@@ -5,27 +5,46 @@ Keep this file small and rewrite it whenever the frontier changes.
 
 ## Workstream
 
-Shared-grid `All`-mode mixed-height scroll stability is now closed.
+Navigation perf hardening for conflict-adjacent route entry and warmed tab transitions.
 
 ## Focus
 
-`src/lib/grid/DataGrid.svelte` no longer lets later `All`-mode slabs rewrite the global row-height estimate. The grid now seeds one baseline row height per meaningful `All` view state (sort/filter/visible-column set) and reuses that baseline for subsequent virtual-window math, so tall wrapped rows no longer cause spacer recalculation to jump the scroll position backward or strand the viewport on blank content. `src/lib/grid/virtualization.ts` now owns the pure `resolveGridRowHeightEstimate(...)` helper with focused coverage, and `DataGrid.svelte` also now skips its summary-paint `requestAnimationFrame(...)` hop during SSR so server-rendered in-memory routes do not crash when they instantiate a provider eagerly.
+- Shared `/conflict` entry now has an explicit `warmConflictRouteArtifacts(...)` helper in `src/lib/prefetchArtifacts.ts`, so callers use the reusable conflict-grid bootstrap path instead of ad hoc route-specific warm mixes.
+- `src/components/ConflictRouteTabs.svelte` now routes conflict-layout tab intent through that shared helper, which keeps visible `/conflict` entry on the attachable bootstrap path instead of escalating pointerdown into aggressive grid prewarm.
+- `src/routes/conflicts/+page.svelte` no longer speculatively warms `/bubble` and `/tiering` when opening a conflict card; the actual `Open Conflict Page` control now owns `/conflict` warm intent and only warms the destination the user is choosing.
+- `scripts/verifyNavigation.mjs` now asserts that opening the conflict card and using `Open Conflict Page` do not leak graph-route warm activity onto the conflict-entry path, and its static-build probes were tightened to avoid stateful false negatives while keeping the branch-level perf matrix green.
+
+## Latest Baseline
+
+From targeted Vitest coverage, `npm run check`, `npm run build`, and `npm run verify:navigation:perf` on `2026-04-23`:
+
+- Targeted tests pass:
+  - `npm test -- src/lib/prefetchArtifacts.test.ts src/lib/conflictArtifactRegistry.test.ts src/lib/conflictGrid/workerClient.test.ts src/lib/prefetchCoordinator.test.ts`
+- `npm run check` passes.
+- `npm run build` passes.
+- `npm run verify:navigation:perf` passes.
+- Static-build perf verifier baseline currently reports:
+  - `/conflict?id=33` ready around `879.5ms`
+  - `/bubble?id=33` ready around `806.1ms`
+  - `/tiering?id=33` ready around `744.5ms`
+  - `/metric-time?id=33` ready around `764.1ms`
+  - `/metric-time?id=33&aggregation=coalition` ready around `719ms`
+  - `/aava?id=33` ready around `880.2ms`
 
 ## Remaining Acceptance Gaps
 
-- None for the shared-grid `All`-mode mixed-height scroll bug.
-- If another `All`-mode scroll regression appears, inspect whether the new issue is a baseline-estimate problem, a true variable-height cumulative-offset problem, or a paint/compositor bottleneck before increasing slab size or reintroducing per-scroll estimate updates.
+- None for the current navigation perf hardening workstream.
 
 ## Next Command
 
-`npx vite dev --host localhost --port 4173`
+- None. Choose the next roadmap workstream before further investigation.
 
 ## Last Verified Command
 
+- `npm test -- src/lib/prefetchArtifacts.test.ts src/lib/conflictArtifactRegistry.test.ts src/lib/conflictGrid/workerClient.test.ts src/lib/prefetchCoordinator.test.ts`
 - `npm run check`
 - `npm run build`
-- Targeted tests: `src/lib/grid/virtualization.test.ts`
-- Live validation on `http://localhost:4173/grid-scroll-probe`: `All` mode over a mixed-height in-memory dataset kept `blankSamples = 0` and `backwardsJumps = 0` across 18 deep scroll steps, with the rendered row slab remaining populated the whole way.
+- `npm run verify:navigation:perf`
 
 ## Blocker
 
@@ -33,4 +52,4 @@ Shared-grid `All`-mode mixed-height scroll stability is now closed.
 
 ## Replace This File When
 
-- A new shared-grid regression, profiling slice, or blocker changes the active workstream.
+- Replace it when a new highest-priority roadmap workstream is selected.
