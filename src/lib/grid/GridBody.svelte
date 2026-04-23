@@ -32,7 +32,7 @@
 
     $: expandedSet = new Set(expandedRowIds);
     $: selectedSet = new Set(selectedRowIds);
-    $: colspan = columns.length + 1;
+    $: colspan = columns.length + 2;
     $: hasExpandableDetails = hiddenDetailColumns.length > 0;
 
     function detailRowKey(rowId: GridRowId): string {
@@ -62,9 +62,11 @@
     }
 
     function cellClass(column: GridColumnDefinition): string {
-        const widthClass = column.filterable
-            ? "ux-grid-column-text"
-            : "ux-grid-column-compact";
+        const widthClass = column.widthHint === "wide"
+            ? "ux-grid-column-wide"
+            : column.widthHint === "text"
+              ? "ux-grid-column-text"
+              : "ux-grid-column-fit";
         return `${widthClass} ${column.toneClass ?? ""}`.trim();
     }
 </script>
@@ -82,9 +84,10 @@
         </tr>
     {/if}
 
-    {#each rows as row, index}
+    {#each rows as row, index (row.id)}
         <tr
             class:ux-grid-row-selected={selectedSet.has(row.id)}
+            class:ux-grid-row-striped={index % 2 === 1}
             class={row.rowClass ?? ""}
             on:click={(event) => handleRowClick(event, row.id)}
         >
@@ -108,8 +111,8 @@
                     </label>
                 </div>
             </td>
-            {#each columns as column (column.key)}
-                <td class={cellClass(column)}>
+            {#each columns as column, index (column.key)}
+                <td class={cellClass(column)} class:ux-grid-last-data-column={index === columns.length - 1}>
                     <GridCell
                         cell={row.cells[column.key] ?? { kind: "empty" }}
                         on:action={(event) =>
@@ -122,6 +125,7 @@
                     />
                 </td>
             {/each}
+            <td class="ux-grid-filler-column" aria-hidden="true"></td>
         </tr>
         {#if expandedSet.has(row.id)}
             <tr class="ux-grid-details-row">
@@ -165,27 +169,36 @@
 
 <style>
     .ux-grid-lead-cell {
-        min-width: 2.75rem;
-        width: 2.75rem;
+        min-width: 3.2rem;
+        width: 3.2rem;
+        max-width: 3.2rem;
         white-space: nowrap;
-        padding: 0.2rem 0.28rem;
+        padding: 0.18rem 0.24rem;
         font-size: 0.68rem;
     }
 
     .ux-grid-row-controls {
         display: flex;
         align-items: center;
-        gap: 0.18rem;
+        gap: 0;
     }
 
     .ux-grid-row-index {
+        gap: 0.12rem;
         font-size: 0.68rem;
         line-height: 1;
+    }
+
+    .ux-grid-row-index :global(.form-check-input) {
+        margin: 0 0.12rem 0 0 !important;
+        flex: 0 0 auto;
     }
 
     .ux-grid-row-index-text {
         display: inline-flex;
         align-items: center;
+        min-width: 1.35rem;
+        font-variant-numeric: tabular-nums;
     }
 
     .ux-grid-details-row td {
@@ -208,52 +221,66 @@
     }
 
     :global(.ux-grid-shell tbody td) {
-        padding: 0.22rem 0.38rem;
+        padding: 0.18rem 0.32rem;
         font-size: 0.72rem;
         line-height: 1.22;
         vertical-align: top;
         border-top: 0;
         border-left: 0;
         border-bottom: 1px solid var(--ux-grid-divider);
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
+        word-break: normal;
+    }
+
+    :global(.ux-grid-shell tbody td.ux-grid-column-wide) {
+        width: 13rem;
+        min-width: 8rem;
+        max-width: none;
     }
 
     :global(.ux-grid-shell tbody td.ux-grid-column-text) {
-        width: 6.4rem;
-        min-width: 6.4rem;
-        max-width: 6.4rem;
+        width: 8.5rem;
+        min-width: 6rem;
+        max-width: none;
     }
 
-    :global(.ux-grid-shell tbody td.ux-grid-column-compact) {
-        width: 4.6rem;
-        min-width: 4.6rem;
-        max-width: 4.6rem;
+    :global(.ux-grid-shell tbody td.ux-grid-column-fit) {
+        width: auto;
+        min-width: 0;
+        max-width: none;
+        white-space: nowrap;
+    }
+
+    :global(.ux-grid-shell tbody tr.ux-grid-row-striped > td) {
+        box-shadow: inset 0 0 0 9999px var(--ux-grid-row-stripe-overlay);
     }
 
     @media (max-width: 640px) {
         :global(.ux-grid-shell tbody td) {
-            padding: 0.16rem 0.28rem;
+            padding: 0.14rem 0.24rem;
+        }
+
+        :global(.ux-grid-shell tbody td.ux-grid-column-wide) {
+            min-width: 6.6rem;
         }
 
         :global(.ux-grid-shell tbody td.ux-grid-column-text) {
-            width: 5.2rem;
-            min-width: 5.2rem;
-            max-width: 5.2rem;
+            min-width: 4.8rem;
         }
 
-        :global(.ux-grid-shell tbody td.ux-grid-column-compact) {
-            width: 4rem;
-            min-width: 4rem;
-            max-width: 4rem;
+        :global(.ux-grid-shell tbody td.ux-grid-column-fit) {
+            min-width: 0;
         }
     }
 
     :global(.ux-grid-shell tbody tr:hover > td) {
         background: var(--ux-grid-row-hover);
+        box-shadow: none;
     }
 
     :global(.ux-grid-shell tbody tr.ux-grid-row-selected > td) {
         background: var(--ux-grid-row-selected);
+        box-shadow: none;
     }
 
     :global(.ux-grid-shell tbody tr.ux-conflict-row-c1 > td) {

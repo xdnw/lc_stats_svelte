@@ -1,0 +1,171 @@
+/* Deferred and secondary widget chrome shared across conflict-family routes. */
+
+.ux-control-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.28rem;
+    padding: 0.18rem 0.28rem;
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    background: color-mix(in srgb, var(--ux-surface-alt) 88%, transparent);
+}
+
+.ux-range-slider-wrap {
+    min-width: 0;
+    padding-top: 0.12rem;
+}
+
+.ux-filter-chip {
+    min-height: 1.34rem;
+    padding: 0.03rem 0.3rem !important;
+    font-size: 0.74rem !important;
+    font-weight: 500 !important;
+}
+
+.ux-filter-chip .badge {
+    margin-left: 0.25rem !important;
+}
+
+.ux-toggle-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0;
+    min-height: 1.42rem;
+    padding: 0 0.34rem;
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    background: color-mix(in srgb, var(--ux-surface) 92%, transparent);
+    font-size: 0.74rem;
+    font-weight: 500;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.ux-toggle-chip input {
+    margin: 0 0 0 0.1rem !important;
+}
+
+.ux-toggle-chip select {
+    flex: 0 0 auto;
+    width: auto;
+}
+
+.ux-quick-layouts {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.ux-quick-layouts .ux-btn {
+    margin: 0 !important;
+}
+
+.ux-conflict-popup-meta {
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    padding: 0.38rem 0.45rem;
+    background: color-mix(in srgb, var(--ux-surface) 93%, transparent);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+    font-size: 0.88rem;
+}
+
+.ux-conflict-popup-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.38rem;
+}
+
+.ux-conflict-popup-actions .btn {
+    min-height: 1.95rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ux-conflict-popup-actions .btn[aria-disabled="true"] {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.app-shell .input-group.ux-inputbar .input-group-text,
+.app-shell .input-group.ux-inputbar .form-select,
+.app-shell .input-group.ux-inputbar .btn {
+    border-radius: 0 !important;
+    min-height: 1.42rem;
+    padding-top: 0.03rem !important;
+    padding-bottom: 0.03rem !important;
+    font-size: 0.74rem !important;
+    font-weight: 500 !important;
+}
+
+.app-shell .input-group.ux-inputbar > :first-child {
+    border-top-left-radius: var(--ux-radius-sm) !important;
+    border-bottom-left-radius: var(--ux-radius-sm) !important;
+}
+
+.app-shell .input-group.ux-inputbar > :last-child {
+    border-top-right-radius: var(--ux-radius-sm) !important;
+    border-bottom-right-radius: var(--ux-radius-sm) !important;
+}
+
+.ux-coalition-panel {
+    background: color-mix(in srgb, var(--ux-surface-alt) 92%, transparent);
+    border: 1px solid var(--ux-border);
+    border-radius: var(--ux-radius-sm);
+    padding: 0.38rem 0.42rem;
+    margin-bottom: 0.3rem;
+}
+
+.ux-coalition-panel--compact {
+    padding: 0.24rem 0.34rem;
+    margin-bottom: 0.2rem;
+}
+
+.ux-coalition-panel--red {
+    border-left: 0.28rem solid color-mix(in srgb, var(--ux-danger) 60%, var(--ux-border));
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface-alt)),
+        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
+    );
+    box-shadow: none;
+}
+
+.ux-coalition-panel--blue {
+    border-left: 0.28rem solid color-mix(in srgb, var(--ux-brand) 60%, var(--ux-border));
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface-alt)),
+        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
+    );
+    box-shadow: none;
+}
+
+.ux-coalition-panel--red .ux-btn.active,
+.ux-coalition-panel--red .ux-btn:active {
+    border-color: color-mix(in srgb, var(--ux-danger) 52%, transparent);
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-danger) 12%, transparent);
+}
+
+.ux-coalition-panel--blue .ux-btn.active,
+.ux-coalition-panel--blue .ux-btn:active {
+    border-color: color-mix(in srgb, var(--ux-brand) 52%, transparent);
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-brand) 14%, transparent);
+}
+
+@media (max-width: 768px) {
+    .ux-conflict-popup-actions {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.34rem;
+    }
+
+    .ux-conflict-popup-actions .btn {
+        min-height: 2.35rem;
+        font-size: 0.95rem;
+    }
+}

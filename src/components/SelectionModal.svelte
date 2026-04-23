@@ -1,13 +1,11 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
-    import { tick } from "svelte";
-    import ModalShell from "./ModalShell.svelte";
-    import type {
-        SelectionId,
-        SelectionModalItem,
-    } from "$lib/selection/types";
+    import type { AppIconName } from "$lib/icons";
+    import DeferredModalTrigger from "./DeferredModalTrigger.svelte";
+    import type { SelectionId, SelectionModalItem } from "$lib/selection/types";
 
-    export let open = false;
+    type SelectionPickerPanelComponent = typeof import("./SelectionPickerPanel.svelte").default;
+
     export let title = "Select Items";
     export let description = "";
     export let items: SelectionModalItem[] = [];
@@ -16,164 +14,112 @@
     export let applyLabel = "Apply";
     export let selectedCountLabel = "Selected";
     export let singleSelect = false;
+    export let maxSelectedCount: number | null = null;
+    export let size: "sm" | "md" | "lg" | "xl" = "md";
     export let validateSelection:
         | ((ids: SelectionId[]) => string | null)
         | null = null;
+    export let buttonLabel = "Open";
+    export let buttonClass = "btn ux-btn btn-sm";
+    export let buttonTitle = "";
+    export let buttonAriaLabel = "";
+    export let buttonIcon: AppIconName | null = null;
+    export let buttonIconSize = "0.8rem";
+    export let buttonIconClass = "";
+    export let iconOnly = false;
+    export let active = false;
+    export let activeClass = "";
+    export let showActiveIndicator = false;
+    export let disabled = false;
 
     const dispatch = createEventDispatcher<{
+        open: void;
         close: void;
         apply: { ids: SelectionId[] };
     }>();
 
-    let search = "";
-    let draftKeys = new Set<string>();
-    let idByKey = new Map<string, SelectionId>();
-    let prevOpen = false;
-    let searchInputEl: HTMLInputElement | null = null;
-    let normalizedItems: SelectionModalItem[] = [];
-    let normalizedSelectedIds: SelectionId[] = [];
+    let open = false;
+    let selectionPickerPanelComponent: SelectionPickerPanelComponent | null = null;
+    let selectionPickerPanelLoadPromise: Promise<void> | null = null;
 
-    function itemLabel(item: SelectionModalItem): string {
-        const raw = item?.label;
-        if (typeof raw === "string") return raw;
-        if (raw == null) return `${item.id}`;
-        return `${raw}`;
-    }
-
-    $: normalizedItems = Array.isArray(items) ? items : [];
-    $: normalizedSelectedIds = Array.isArray(selectedIds) ? selectedIds : [];
-    $: idByKey = new Map(
-        normalizedItems.map((item) => [toKey(item.id), item.id]),
-    );
-
-    $: {
-        if (open && !prevOpen) {
-            draftKeys = new Set(normalizedSelectedIds.map((id) => toKey(id)));
-            search = "";
-            tick().then(() => {
-                searchInputEl?.focus();
-            });
+    async function ensureSelectionPickerLoaded(): Promise<void> {
+        if (selectionPickerPanelComponent) return;
+        if (!selectionPickerPanelLoadPromise) {
+            selectionPickerPanelLoadPromise = import("./SelectionPickerPanel.svelte")
+                .then((module) => {
+                    selectionPickerPanelComponent = module.default;
+                })
+                .catch((error) => {
+                    open = false;
+                    console.error("Failed to load selection picker panel", error);
+                })
+                .finally(() => {
+                    selectionPickerPanelLoadPromise = null;
+                });
         }
-        prevOpen = open;
+
+        await selectionPickerPanelLoadPromise;
     }
 
-    $: normalizedSearch = search.trim().toLowerCase();
-    $: filteredItems = normalizedItems.filter((item) =>
-        itemLabel(item).toLowerCase().includes(normalizedSearch),
-    );
-    $: selectedCount = draftKeys.size;
-    $: draftIds = Array.from(draftKeys)
-        .map((key) => idByKey.get(key))
-        .filter((id): id is SelectionId => id !== undefined);
-    $: validationError = validateSelection ? validateSelection(draftIds) : null;
-
-    function toKey(id: SelectionId): string {
-        return `${typeof id}:${id}`;
+    function close(): void {
+        open = false;
     }
 
-    function toggleDraft(id: SelectionId) {
-        const key = toKey(id);
-        const next = singleSelect ? new Set<string>() : new Set(draftKeys);
-        if (next.has(key)) next.delete(key);
-        else {
-            next.add(key);
-            if (singleSelect) {
-                for (const existing of Array.from(next)) {
-                    if (existing !== key) next.delete(existing);
-                }
-            }
-        }
-        draftKeys = next;
+    function handleApply(event: CustomEvent<{ ids: SelectionId[] }>): void {
+        open = false;
+        dispatch("apply", event.detail);
     }
 
-    function selectAll() {
-        draftKeys = new Set(normalizedItems.map((item) => toKey(item.id)));
-    }
-
-    function clearAll() {
-        draftKeys = new Set();
-    }
-
-    function close() {
-        dispatch("close");
-    }
-
-    function apply() {
-        if (validationError) return;
-        dispatch("apply", { ids: draftIds });
+    $: if (open && !selectionPickerPanelComponent) {
+        void ensureSelectionPickerLoaded();
     }
 </script>
 
-{#if open}
-    <ModalShell {open} {title} size="lg" on:close={close}>
-        {#if description}
-            <div class="ux-callout mb-2">{description}</div>
-        {/if}
-        <input
-            type="text"
-            class="form-control mb-2"
-            placeholder={searchPlaceholder}
-            bind:value={search}
-            bind:this={searchInputEl}
+<DeferredModalTrigger
+    bind:open
+    {title}
+    {size}
+    scrollable={false}
+    {buttonLabel}
+    {buttonClass}
+    {buttonTitle}
+    {buttonAriaLabel}
+    {buttonIcon}
+    {buttonIconSize}
+    {buttonIconClass}
+    {iconOnly}
+    {active}
+    {activeClass}
+    {showActiveIndicator}
+    {disabled}
+    on:open={() => dispatch("open")}
+    on:close={() => dispatch("close")}
+>
+    {#if selectionPickerPanelComponent}
+        <svelte:component
+            this={selectionPickerPanelComponent}
+            {description}
+            {items}
+            {selectedIds}
+            {searchPlaceholder}
+            {applyLabel}
+            {selectedCountLabel}
+            {singleSelect}
+            {maxSelectedCount}
+            {validateSelection}
+            on:cancel={close}
+            on:apply={handleApply}
         />
-        {#if !singleSelect}
-            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <button class="btn ux-btn btn-sm" type="button" on:click={selectAll}>
-                    Select All
-                </button>
-                <button class="btn ux-btn btn-sm" type="button" on:click={clearAll}>
-                    Clear
-                </button>
-                <span class="small ux-muted">{selectedCountLabel}: {selectedCount}</span>
-            </div>
-        {:else}
-            <div class="small ux-muted mb-2">
-                {selectedCountLabel}: {selectedCount}
-            </div>
-        {/if}
-
-        {#if validationError}
-            <div class="alert alert-warning py-2 small mb-2">
-                {validationError}
-            </div>
-        {/if}
-
-        <div class="ux-surface p-2 selection-modal-list">
-            {#if filteredItems.length === 0}
-                <div class="ux-muted small">
-                    No items match your search.
-                </div>
-            {:else}
-                {#each filteredItems as item}
-                    <label class="form-check d-flex align-items-center gap-2 mb-1">
-                        <input
-                            class="form-check-input mt-0"
-                            type={singleSelect ? "radio" : "checkbox"}
-                            name={singleSelect ? "selection-modal-single" : undefined}
-                            checked={draftKeys.has(toKey(item.id))}
-                            on:change={() => toggleDraft(item.id)}
-                        />
-                        <span>{itemLabel(item)}</span>
-                        {#if item.group}
-                            <span class="badge text-bg-light">{item.group}</span>
-                        {/if}
-                    </label>
-                {/each}
-            {/if}
-        </div>
-
-        <div slot="footer">
-            <button class="btn btn-outline-secondary" on:click={close}>Cancel</button>
-            <button class="btn ux-btn" on:click={apply} disabled={!!validationError}>
-                {applyLabel} ({selectedCount})
-            </button>
-        </div>
-    </ModalShell>
-{/if}
+    {:else}
+        <div class="selection-modal-loading small ux-muted">Loading options...</div>
+    {/if}
+</DeferredModalTrigger>
 
 <style>
-    .selection-modal-list {
-        max-height: 50vh;
-        overflow: auto;
+    .selection-modal-loading {
+        min-height: 5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 </style>

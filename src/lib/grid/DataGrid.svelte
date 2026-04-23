@@ -18,10 +18,15 @@
     } from "./controller";
     import { exportGridData } from "./export";
     import { incrementPerfCounter, startPerfSpan } from "../perf";
+    import {
+        areGridPageResultsEqual,
+        areGridSummaryByColumnKeyEqual,
+    } from "./renderState";
     import GridBody from "./GridBody.svelte";
     import GridFooter from "./GridFooter.svelte";
     import GridHeader from "./GridHeader.svelte";
     import GridToolbar from "./GridToolbar.svelte";
+    import { prepareGridTableForWidthMeasurement } from "./columnMeasurement";
     import { GRID_PAGE_SIZE_OPTIONS, getHiddenDetailColumns, getVisibleColumns, toGridQueryState } from "./state";
     import {
         getGridVisibleRange,
@@ -29,6 +34,7 @@
         isGridRangeWithinWindow,
         resolveGridRowHeightEstimate,
         resolveGridVirtualMinimumRows,
+        resolveGridVirtualWindowChunkCount,
         resolveGridRowWindow,
     } from "./virtualization";
     import type {
@@ -46,7 +52,7 @@
 
     const GRID_LOADING_SKELETON_ROWS = 10;
     const GRID_LOADING_SKELETON_COLUMNS = 6;
-    const GRID_LOADING_MIN_HEIGHT = 280;
+    const GRID_LOADING_MIN_HEIGHT = 220;
     const COMPACT_GRID_MAX_WIDTH = 640;
 
     export let provider: GridDataProvider | null = null;
@@ -81,8 +87,11 @@
     let bootstrap: GridBootstrapResult | null = null;
     let controllerState: GridControllerState | null = null;
     let pageResult: GridPageResult | null = null;
+    let lastResolvedPageResult: GridPageResult | null = null;
     let detailRowsById: Record<string, GridPageRow | null | undefined> = {};
+    let lastResolvedDetailRowsById: Record<string, GridPageRow | null | undefined> = {};
     let summaryByColumnKey: GridSummaryByColumnKey = {};
+    let lastResolvedSummaryByColumnKey: GridSummaryByColumnKey = {};
     let loading = false;
     let loadError: string | null = null;
     let scrollContainer: HTMLDivElement | null = null;
@@ -104,6 +113,16 @@
     let allFilteredRowsSelected = false;
     let compactViewport = false;
     let coarsePointer = false;
+    let tableElement: HTMLTableElement | null = null;
+    let tableRegionElement: HTMLDivElement | null = null;
+    let columnWidthMeasurementFrame = 0;
+    let expandedLeadColumnWidthPx: number | null = null;
+    let expandedColumnWidths: number[] = [];
+    let lastColumnWidthLayoutKey = "";
+    let gridUsesOverflowColumnMins = false;
+
+    const GRID_OVERFLOW_TEXT_MIN_PX = 64;
+    const GRID_OVERFLOW_WIDE_MIN_PX = 80;
 
     let exportDatasets: ExportMenuDataset[] = [];
 
@@ -130,23 +149,22 @@
     $: canGoPrev = (controllerState?.pageIndex ?? 0) > 0;
     $: canGoNext = (controllerState?.pageIndex ?? 0) + 1 < pageCount;
     $: exportDatasets = [{ key: exportDatasetKey, label: exportDatasetLabel }];
+    $: loadingBodyColumns = visibleColumns.length > 0
+        ? visibleColumns
+        : (bootstrap?.columns.slice(0, Math.max(1, GRID_LOADING_SKELETON_COLUMNS - 1)) ?? []);
     $: loadingUsesAllRowsHeight =
         controllerState?.pageSize === "all" || initialState?.pageSize === "all";
     $: loadingShellHeight = loadingUsesAllRowsHeight
         ? allRowsHeight
         : Math.max(
             GRID_LOADING_MIN_HEIGHT,
-            Math.round(rowHeightEstimate * GRID_LOADING_SKELETON_ROWS + 96),
+            Math.round(rowHeightEstimate * GRID_LOADING_SKELETON_ROWS + 72),
         );
     $: tableWrapStyle = controllerState?.pageSize === "all"
         ? `max-height:${allRowsHeight}px;--ux-grid-row-height:${rowHeightEstimate}px;`
         : `--ux-grid-row-height:${rowHeightEstimate}px;`;
     $: loadingRowPlaceholders = Array.from(
         { length: GRID_LOADING_SKELETON_ROWS },
-        (_, index) => index,
-    );
-    $: loadingColumnPlaceholders = Array.from(
-        { length: GRID_LOADING_SKELETON_COLUMNS },
         (_, index) => index,
     );
     $: virtualMinimumRows = resolveGridVirtualMinimumRows({
@@ -156,6 +174,165 @@
         compactViewport,
         coarsePointer,
     });
+    $: virtualWindowChunkCount = resolveGridVirtualWindowChunkCount({
+        compactViewport,
+        coarsePointer,
+    });
+
+    function loadingColumnClass(column: (typeof loadingBodyColumns)[number]): string {
+        const widthClass = column.widthHint === "wide"
+            ? "ux-grid-column-wide"
+            : column.widthHint === "text"
+              ? "ux-grid-column-text"
+              : "ux-grid-column-fit";
+        return `${widthClass} ${column.toneClass ?? ""}`.trim();
+    }
+
+    function clearExpandedColumnWidths(): void {
+        expandedLeadColumnWidthPx = null;
+        expandedColumnWidths = [];
+        gridUsesOverflowColumnMins = false;
+    }
+
+    function scheduleColumnWidthMeasurement(): void {
+        if (columnWidthMeasurementFrame !== 0) return;
+        columnWidthMeasurementFrame = requestAnimationFrame(() => {
+            columnWidthMeasurementFrame = 0;
+            measureExpandedColumnWidths();
+        });
+    }
+
+    function measureExpandedColumnWidths(): void {
+        if (!scrollContainer || !tableElement || !tableRegionElement || visibleColumns.length === 0) {
+            clearExpandedColumnWidths();
+            return;
+        }
+
+        const measurementHost = document.createElement("div");
+        Object.assign(measurementHost.style, {
+            position: "absolute",
+            visibility: "hidden",
+            pointerEvents: "none",
+            left: "0",
+            top: "0",
+            overflow: "hidden",
+            width: "0",
+            height: "0",
+        });
+
+        const measurementTable = prepareGridTableForWidthMeasurement(tableElement);
+        Object.assign(measurementTable.style, {
+            width: "max-content",
+            minWidth: "0",
+            maxWidth: "none",
+        });
+
+        measurementHost.appendChild(measurementTable);
+        tableRegionElement.appendChild(measurementHost);
+
+        const headerCells = Array.from(
+            measurementTable.querySelectorAll("thead tr:first-child th"),
+        ) as HTMLElement[];
+        if (headerCells.length !== visibleColumns.length + 1) {
+            measurementHost.remove();
+            clearExpandedColumnWidths();
+            return;
+        }
+
+        const naturalWidths = headerCells.map((cell) =>
+            Math.max(1, cell.getBoundingClientRect().width)
+        );
+        const computedMinimumWidths = headerCells.map((cell, index) => {
+            if (index === 0) return naturalWidths[0];
+            const parsed = Number.parseFloat(getComputedStyle(cell).minWidth);
+            return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+        });
+        measurementHost.remove();
+        const naturalTotalWidth = naturalWidths.reduce((sum, width) => sum + width, 0);
+        const availableWidth = tableRegionElement.clientWidth;
+        const useOverflowColumnMins = naturalTotalWidth > availableWidth;
+        const minimumWidths = computedMinimumWidths.map((width, index) => {
+            if (!useOverflowColumnMins || index === 0) return width;
+            const hint = visibleColumns[index - 1]?.widthHint ?? "fit";
+            if (hint === "wide") {
+                return Math.min(width, GRID_OVERFLOW_WIDE_MIN_PX);
+            }
+            if (hint === "text") {
+                return Math.min(width, GRID_OVERFLOW_TEXT_MIN_PX);
+            }
+            return width;
+        });
+        gridUsesOverflowColumnMins = useOverflowColumnMins;
+
+        if (naturalTotalWidth <= availableWidth) {
+            expandedLeadColumnWidthPx = naturalWidths[0];
+            expandedColumnWidths = naturalWidths.slice(1);
+            return;
+        }
+
+        const shrunk = [...naturalWidths];
+        let remainingOverflow = naturalTotalWidth - availableWidth;
+        const shrinkableIndexes = Array.from({ length: visibleColumns.length }, (_, index) => index + 1)
+            .filter((index) => shrunk[index] > minimumWidths[index]);
+
+        while (remainingOverflow > 0 && shrinkableIndexes.length > 0) {
+            const totalShrinkWeight = shrinkableIndexes.reduce(
+                (sum, index) => sum + Math.max(1, shrunk[index] - minimumWidths[index]),
+                0,
+            );
+            if (totalShrinkWeight <= 0) break;
+
+            let distributed = 0;
+            for (let listIndex = 0; listIndex < shrinkableIndexes.length; listIndex += 1) {
+                const index = shrinkableIndexes[listIndex];
+                const capacity = Math.max(0, shrunk[index] - minimumWidths[index]);
+                if (capacity <= 0) continue;
+                const share = listIndex === shrinkableIndexes.length - 1
+                    ? remainingOverflow - distributed
+                    : Math.min(
+                        capacity,
+                        Math.max(
+                            0,
+                            Math.floor((remainingOverflow * capacity) / totalShrinkWeight),
+                        ),
+                    );
+                if (share <= 0) continue;
+                shrunk[index] -= share;
+                distributed += share;
+            }
+
+            if (distributed <= 0) break;
+            remainingOverflow -= distributed;
+        }
+
+        expandedLeadColumnWidthPx = shrunk[0];
+        expandedColumnWidths = shrunk.slice(1);
+    }
+
+    function buildColumnWidthLayoutKey(): string {
+        const visibleKeys = visibleColumns.map((column) => column.key).join("|");
+        const rowIds = pageResult?.rows.map((row) => String(row.id)).join("|") ?? "loading";
+        const summarySignature = Object.entries(summaryByColumnKey)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, value]) => `${key}:${value.sum ?? ""}:${value.avg ?? ""}`)
+            .join("|");
+        return `${compactViewport ? "compact" : "wide"}::${visibleKeys}::${rowIds}::${summarySignature}`;
+    }
+
+    $: gridCanExpandToWidth = true;
+    $: loadingGridCanExpandToWidth = true;
+
+    $: {
+        const nextColumnWidthLayoutKey = buildColumnWidthLayoutKey();
+        if (nextColumnWidthLayoutKey !== lastColumnWidthLayoutKey) {
+            lastColumnWidthLayoutKey = nextColumnWidthLayoutKey;
+            clearExpandedColumnWidths();
+            if (bootstrap && controllerState) {
+                void tick().then(() => scheduleColumnWidthMeasurement());
+            }
+        }
+    }
+
     $: if (controllerState?.pageSize === "all" && pageResult) {
         const start = renderedViewport?.start ?? 0;
         const renderedCount = pageResult.rows.length;
@@ -172,8 +349,11 @@
         bootstrap = null;
         controllerState = null;
         pageResult = null;
+        lastResolvedPageResult = null;
         detailRowsById = {};
+        lastResolvedDetailRowsById = {};
         summaryByColumnKey = {};
+        lastResolvedSummaryByColumnKey = {};
         requestedViewport = undefined;
         renderedViewport = undefined;
         queuedViewport = undefined;
@@ -217,7 +397,17 @@
         coarsePointer = nextCoarsePointer;
 
         if (changed && controllerState?.pageSize === "all" && pageResult) {
+            const nextRowHeightSeedKey = buildAllRowsHeightSeedKey(controllerState);
+            if (nextRowHeightSeedKey !== rowHeightSeedKey) {
+                resetRowHeightEstimate(controllerState);
+                void tick().then(() => scheduleRowHeightMeasurement());
+            }
             requestViewportSync();
+        }
+
+        clearExpandedColumnWidths();
+        if (bootstrap && controllerState) {
+            void tick().then(() => scheduleColumnWidthMeasurement());
         }
     }
 
@@ -230,6 +420,7 @@
             containerHeight: scrollContainer?.clientHeight ?? allRowsHeight,
             rowHeight: rowHeightEstimate,
             minimumRows: virtualMinimumRows,
+            windowChunkCount: virtualWindowChunkCount,
         });
         return {
             start: initialWindow.start,
@@ -269,7 +460,9 @@
     ): string {
         if (!state || state.pageSize !== "all") return "";
         const visibleColumnKeys = [...state.visibleColumnKeys].sort().join("|");
-        return `${buildAllRowsResetKey(state)}::${visibleColumnKeys}`;
+        const responsiveMode = compactViewport ? "compact" : "wide";
+        const pointerMode = coarsePointer ? "coarse" : "fine";
+        return `${buildAllRowsResetKey(state)}::${visibleColumnKeys}::${responsiveMode}::${pointerMode}`;
     }
 
     function resetRowHeightEstimate(
@@ -375,6 +568,7 @@
         nextProvider: GridDataProvider,
         shouldReset: boolean,
     ): Promise<void> {
+        syncResponsiveViewportSignals();
         const token = ++requestToken;
         loading = true;
         loadError = null;
@@ -386,9 +580,10 @@
             if (token !== requestToken) return;
 
             bootstrap = nextBootstrap;
-            controllerState = shouldReset || !controllerState
+            const previousState = controllerState;
+            controllerState = shouldReset || !previousState
                 ? initializeGridController(nextBootstrap, initialState)
-                : reconcileGridController(nextBootstrap, controllerState);
+                : reconcileGridController(nextBootstrap, previousState);
             resetRowHeightEstimate(controllerState);
             viewportLoading = false;
             requestedViewport =
@@ -396,13 +591,16 @@
                     ? createInitialViewport(nextBootstrap.rowCount)
                     : undefined;
             pageResult = null;
+            lastResolvedPageResult = null;
             detailRowsById = {};
+            lastResolvedDetailRowsById = {};
             queuedViewport = undefined;
             summaryByColumnKey = {};
+            lastResolvedSummaryByColumnKey = {};
             renderedViewport = undefined;
             lastSummaryStateKey = "";
             dispatch("ready", { bootstrap: nextBootstrap });
-            dispatchStateChange();
+            dispatchStateChange(previousState);
             await queryCurrentState();
         } catch (error) {
             if (token !== requestToken) return;
@@ -454,9 +652,6 @@
             const finishDataSpan = startPerfSpan("grid.query.data", perfTags);
             const summaryStateKey = buildSummaryStateKey(queryState);
             const shouldRefreshSummary = summaryStateKey !== lastSummaryStateKey;
-            if (shouldRefreshSummary) {
-                summaryByColumnKey = {};
-            }
             const result = await provider.query(queryState)
                 .finally(() => {
                     finishDataSpan();
@@ -484,12 +679,24 @@
                 filteredRowCount: result.filteredRowCount,
                 returnedRowCount: result.rows.length,
             });
-            pageResult = result;
+            const appliedPageResult: GridPageResult =
+                lastResolvedPageResult &&
+                areGridPageResultsEqual(lastResolvedPageResult, result)
+                    ? lastResolvedPageResult
+                    : result;
+            const pageResultChanged = appliedPageResult !== lastResolvedPageResult;
+            pageResult = appliedPageResult;
+            lastResolvedPageResult = appliedPageResult;
             renderedViewport = queryViewport;
             loading = false;
             viewportLoading = false;
-            detailRowsById = {};
-            dispatch("queryResult", { result });
+            if (pageResultChanged) {
+                detailRowsById = {};
+                lastResolvedDetailRowsById = {};
+            } else {
+                detailRowsById = lastResolvedDetailRowsById;
+            }
+            dispatch("queryResult", { result: appliedPageResult });
             void tick().then(() => {
                 incrementPerfCounter("grid.query.applied", 1, {
                     ...perfTags,
@@ -508,6 +715,15 @@
                 const nextViewport = { ...queuedViewport };
                 queuedViewport = undefined;
                 requestViewportQuery(nextViewport);
+            } else if (controllerState.pageSize === "all") {
+                if (viewportSyncFrame !== 0) {
+                    cancelAnimationFrame(viewportSyncFrame);
+                    viewportSyncFrame = 0;
+                }
+                void tick().then(() => {
+                    if (token !== requestToken) return;
+                    syncViewportToScroll();
+                });
             }
             if (shouldRefreshSummary) {
                 void queryCurrentSummary(token, queryState, summaryStateKey);
@@ -546,11 +762,21 @@
         if (token !== requestToken) return;
 
         try {
-            summaryByColumnKey = await provider.querySummary(queryState);
+            const nextSummary = await provider.querySummary(queryState);
+            const appliedSummary = areGridSummaryByColumnKeyEqual(
+                lastResolvedSummaryByColumnKey,
+                nextSummary,
+            )
+                ? lastResolvedSummaryByColumnKey
+                : nextSummary;
+            summaryByColumnKey = appliedSummary;
+            lastResolvedSummaryByColumnKey = appliedSummary;
             lastSummaryStateKey = summaryStateKey;
         } catch {
             if (token !== requestToken) return;
             summaryByColumnKey = {};
+            lastResolvedSummaryByColumnKey = {};
+            lastSummaryStateKey = "";
         }
     }
 
@@ -567,7 +793,16 @@
         return `${filters}::${visibleColumns}::${selectedRowIds}`;
     }
 
-    function dispatchStateChange(): void {
+    function areRowIdListsEqual(
+        left: GridRowId[],
+        right: GridRowId[],
+    ): boolean {
+        if (left === right) return true;
+        if (left.length !== right.length) return false;
+        return left.every((rowId, index) => rowId === right[index]);
+    }
+
+    function dispatchStateChange(previousState?: GridControllerState | null): void {
         if (!controllerState) return;
         dispatch("stateChange", {
             state: {
@@ -575,6 +810,15 @@
                 viewport: undefined,
             },
         });
+        if (
+            previousState &&
+            areRowIdListsEqual(
+                previousState.selectedRowIds,
+                controllerState.selectedRowIds,
+            )
+        ) {
+            return;
+        }
         dispatch("selectionChange", {
             selectedRowIds: [...controllerState.selectedRowIds],
         });
@@ -585,6 +829,8 @@
         options?: { query?: boolean; silent?: boolean },
     ): void {
         const previousState = controllerState;
+        if (previousState === nextState) return;
+
         const shouldResetViewport = shouldResetAllRowsViewport(previousState, nextState);
         const nextRowHeightSeedKey = buildAllRowsHeightSeedKey(nextState);
         if (nextRowHeightSeedKey !== rowHeightSeedKey) {
@@ -611,7 +857,7 @@
             }
         }
 
-        if (!options?.silent) dispatchStateChange();
+        if (!options?.silent) dispatchStateChange(previousState);
         if (options?.query === false) return;
         void queryCurrentState();
     }
@@ -667,6 +913,7 @@
             rowHeight: rowHeightEstimate,
             totalRows: filteredRowCount,
             minimumRows: virtualMinimumRows,
+            windowChunkCount: virtualWindowChunkCount,
         });
         if (
             activeWindow.start === nextWindow.start &&
@@ -679,6 +926,7 @@
     }
 
     function requestViewportSync(): void {
+        let viewportMiss = false;
         if (
             scrollContainer &&
             controllerState?.pageSize === "all" &&
@@ -691,7 +939,17 @@
                 rowHeight: rowHeightEstimate,
                 totalRows: filteredRowCount,
             });
-            viewportLoading = !rangesIntersect(visibleRange, renderedViewport);
+            viewportMiss = !rangesIntersect(visibleRange, renderedViewport);
+            viewportLoading = viewportMiss;
+        }
+        if (viewportMiss) {
+            // Mobile momentum can jump past the current slab before the queued rAF runs.
+            if (viewportSyncFrame !== 0) {
+                cancelAnimationFrame(viewportSyncFrame);
+                viewportSyncFrame = 0;
+            }
+            syncViewportToScroll();
+            return;
         }
         if (viewportSyncFrame !== 0) return;
         viewportSyncFrame = requestAnimationFrame(() => {
@@ -714,6 +972,12 @@
         const entries = pageResult.rows.filter((row) => expandedSet.has(row.id));
         for (const row of entries) {
             const key = String(row.id);
+            if (
+                Object.prototype.hasOwnProperty.call(detailRowsById, key) &&
+                detailRowsById[key] !== undefined
+            ) {
+                continue;
+            }
             detailRowsById = { ...detailRowsById, [key]: undefined };
             const detail = await provider.getRowDetails(
                 row.id,
@@ -721,6 +985,7 @@
             );
             if (token !== requestToken) return;
             detailRowsById = { ...detailRowsById, [key]: detail };
+            lastResolvedDetailRowsById = detailRowsById;
         }
     }
 
@@ -786,6 +1051,7 @@
                 ...detailRowsById,
                 [String(event.detail.rowId)]: detail,
             };
+            lastResolvedDetailRowsById = detailRowsById;
         }
     }
 
@@ -929,45 +1195,106 @@
         <div class="alert alert-danger py-2 mb-2">{loadError}</div>
     {/if}
 
-    {#if !bootstrap || !controllerState || !pageResult}
-        <div
-            class="ux-grid-loading-shell"
-            style={`min-height:${loadingShellHeight}px;`}
-            aria-live="polite"
-        >
+    {#if !bootstrap || !controllerState}
+        <div class="ux-grid-loading-shell" aria-live="polite" aria-label={loadingMessage}>
             <div class="ux-grid-loading-toolbar" aria-hidden="true">
                 <span class="ux-grid-skeleton ux-grid-skeleton-button"></span>
                 <span class="ux-grid-skeleton ux-grid-skeleton-button"></span>
             </div>
-            <div class="ux-grid-loading-status">{loadingMessage}</div>
-            <div class="ux-grid-loading-table" aria-hidden="true">
-                <div class="ux-grid-loading-header">
-                    {#each loadingColumnPlaceholders as placeholder}
-                        <span class="ux-grid-skeleton ux-grid-skeleton-header" data-placeholder={placeholder}></span>
-                    {/each}
-                </div>
-                <div class="ux-grid-loading-rows">
-                    {#each loadingRowPlaceholders as placeholder}
-                        <div class="ux-grid-loading-row" data-placeholder={placeholder}>
-                            {#each loadingColumnPlaceholders as columnPlaceholder}
-                                <span class="ux-grid-skeleton ux-grid-skeleton-cell" data-placeholder={columnPlaceholder}></span>
+            <div class="ux-grid-table-region">
+                <div
+                    class="ux-grid-table-wrap"
+                    class:ux-grid-table-wrap-expand={loadingGridCanExpandToWidth}
+                    style={`min-height:${loadingShellHeight}px;`}
+                    aria-hidden="true"
+                >
+                    <table
+                        class="ux-grid-table table mb-0"
+                        class:ux-grid-table-expand={loadingGridCanExpandToWidth}
+                    >
+                        <thead>
+                            <tr>
+                                <th class="ux-grid-lead-header">
+                                    <span class="ux-grid-skeleton ux-grid-skeleton-header"></span>
+                                </th>
+                                {#each loadingBodyColumns as column, index (column.key)}
+                                    <th
+                                        class={loadingColumnClass(column)}
+                                        class:ux-grid-last-data-column={index === loadingBodyColumns.length - 1}
+                                    >
+                                        <span class="ux-grid-skeleton ux-grid-skeleton-header"></span>
+                                    </th>
+                                {/each}
+                                <th class="ux-grid-filler-column" aria-hidden="true"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="ux-grid-table-loading-body">
+                            {#each loadingRowPlaceholders as placeholder (placeholder)}
+                                <tr class="ux-grid-table-loading-row" data-placeholder={placeholder}>
+                                    <td class="ux-grid-lead-cell">
+                                        <span class="ux-grid-skeleton ux-grid-skeleton-cell"></span>
+                                    </td>
+                                    {#each loadingBodyColumns as column, index (column.key)}
+                                        <td
+                                            class={loadingColumnClass(column)}
+                                            class:ux-grid-last-data-column={index === loadingBodyColumns.length - 1}
+                                        >
+                                            <span class="ux-grid-skeleton ux-grid-skeleton-cell"></span>
+                                        </td>
+                                    {/each}
+                                    <td class="ux-grid-filler-column" aria-hidden="true"></td>
+                                </tr>
                             {/each}
-                        </div>
-                    {/each}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th class="ux-grid-lead-header">
+                                    <span class="ux-grid-skeleton ux-grid-skeleton-footer"></span>
+                                </th>
+                                {#each loadingBodyColumns as column, index (column.key)}
+                                    <th
+                                        class={loadingColumnClass(column)}
+                                        class:ux-grid-last-data-column={index === loadingBodyColumns.length - 1}
+                                    >
+                                        <span class="ux-grid-skeleton ux-grid-skeleton-footer"></span>
+                                    </th>
+                                {/each}
+                                <th class="ux-grid-filler-column" aria-hidden="true"></th>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </div>
+            <div class="visually-hidden">{loadingMessage}</div>
         </div>
     {:else}
-        <div class="ux-grid-table-region">
+        <div class="ux-grid-table-region" bind:this={tableRegionElement}>
             <div
                 class="ux-grid-table-wrap"
+                class:ux-grid-table-wrap-expand={gridCanExpandToWidth}
                 class:ux-grid-table-wrap-all={controllerState.pageSize === "all"}
+                class:ux-grid-table-wrap-stable-mobile-all={controllerState.pageSize === "all" && (compactViewport || coarsePointer)}
                 bind:this={scrollContainer}
                 on:scroll={requestViewportSync}
                 data-viewport-loading={viewportLoading ? "1" : undefined}
+                aria-busy={loading ? "true" : undefined}
                 style={tableWrapStyle}
             >
-                <table class="ux-grid-table table mb-0">
+                <table
+                    class="ux-grid-table table mb-0"
+                    class:ux-grid-table-expand={gridCanExpandToWidth}
+                    class:ux-grid-table-overflow={gridUsesOverflowColumnMins}
+                    bind:this={tableElement}
+                >
+                    {#if gridCanExpandToWidth && expandedLeadColumnWidthPx != null}
+                        <colgroup>
+                            <col style={`width:${expandedLeadColumnWidthPx}px;`} />
+                            {#each visibleColumns as column, index (column.key)}
+                                <col style={`width:${expandedColumnWidths[index]}px;`} />
+                            {/each}
+                            <col class="ux-grid-filler-column" />
+                        </colgroup>
+                    {/if}
                     <caption class="visually-hidden">{caption}</caption>
                     <GridHeader
                         columns={visibleColumns}
@@ -977,37 +1304,56 @@
                         on:filterChange={handleFilterChange}
                         on:reorderColumn={handleHeaderReorderColumn}
                     />
-                    <GridBody
-                        columns={visibleColumns}
-                        hiddenDetailColumns={hiddenDetailColumns}
-                        rows={pageResult.rows}
-                        {detailRowsById}
-                        expandedRowIds={controllerState.expandedRowIds}
-                        selectedRowIds={controllerState.selectedRowIds}
-                        {displayStartIndex}
-                        {topSpacerPx}
-                        {bottomSpacerPx}
-                        {emptyMessage}
-                        on:toggleRowSelection={handleToggleRowSelection}
-                        on:toggleRowExpanded={handleToggleRowExpanded}
-                        on:cellAction={handleCellAction}
-                    />
-                    <GridFooter
-                        columns={visibleColumns}
-                        {summaryByColumnKey}
-                        {allFilteredRowsSelected}
-                        on:toggleFilteredSelection={handleToggleFilteredSelection}
-                    />
+                    {#if pageResult}
+                        <GridBody
+                            columns={visibleColumns}
+                            hiddenDetailColumns={hiddenDetailColumns}
+                            rows={pageResult.rows}
+                            {detailRowsById}
+                            expandedRowIds={controllerState.expandedRowIds}
+                            selectedRowIds={controllerState.selectedRowIds}
+                            {displayStartIndex}
+                            {topSpacerPx}
+                            {bottomSpacerPx}
+                            {emptyMessage}
+                            on:toggleRowSelection={handleToggleRowSelection}
+                            on:toggleRowExpanded={handleToggleRowExpanded}
+                            on:cellAction={handleCellAction}
+                        />
+                        <GridFooter
+                            columns={visibleColumns}
+                            {summaryByColumnKey}
+                            {allFilteredRowsSelected}
+                            on:toggleFilteredSelection={handleToggleFilteredSelection}
+                        />
+                    {:else}
+                        <tbody class="ux-grid-table-loading-body" aria-hidden="true">
+                            {#each loadingRowPlaceholders as placeholder (placeholder)}
+                                <tr class="ux-grid-table-loading-row" data-placeholder={placeholder}>
+                                    <td class="ux-grid-lead-cell">
+                                        <span class="ux-grid-skeleton ux-grid-skeleton-cell"></span>
+                                    </td>
+                                    {#each loadingBodyColumns as column (column.key)}
+                                        <td
+                                            class={loadingColumnClass(column)}
+                                        >
+                                            <span class="ux-grid-skeleton ux-grid-skeleton-cell"></span>
+                                        </td>
+                                    {/each}
+                                </tr>
+                            {/each}
+                        </tbody>
+                    {/if}
                 </table>
             </div>
         </div>
 
-        <div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mt-2">
+        <div class="d-flex flex-wrap justify-content-start align-items-center gap-2 mt-2 ux-grid-bottom-bar">
             <div class="d-flex flex-wrap align-items-center gap-2">
-                <label class="small d-flex align-items-center gap-2">
+                <label class="small d-flex align-items-center gap-2 ux-grid-page-size-label">
                     <span>Rows</span>
                     <select
-                        class="form-select form-select-sm"
+                        class="form-select form-select-sm ux-grid-page-size-select"
                         value={controllerState.pageSize}
                         on:change={handlePageSizeChange}
                         aria-label="Rows per page"
@@ -1046,11 +1392,17 @@
 <style>
     .ux-grid-table-wrap {
         position: relative;
-        width: 100%;
+        width: fit-content;
+        max-width: 100%;
         min-width: 0;
+        margin: 0;
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
+    }
+
+    .ux-grid-table-wrap-expand {
+        width: 100%;
     }
 
     .ux-grid-table-wrap-all {
@@ -1081,6 +1433,9 @@
 
     .ux-grid-table-region {
         position: relative;
+        display: flex;
+        justify-content: flex-start;
+        width: 100%;
     }
 
     .ux-grid-shell :global(table) {
@@ -1101,9 +1456,37 @@
         overflow-anchor: none;
     }
 
+    /* Mobile/touch all-mode keeps rows single-line so height-based virtualization stays stable. */
+    .ux-grid-table-wrap-stable-mobile-all :global(tbody td) {
+        overflow: hidden;
+    }
+
+    .ux-grid-table-wrap-stable-mobile-all :global(.ux-grid-cell-text),
+    .ux-grid-table-wrap-stable-mobile-all :global(.ux-grid-cell-link),
+    .ux-grid-table-wrap-stable-mobile-all :global(.ux-grid-cell-metric),
+    .ux-grid-table-wrap-stable-mobile-all :global(.ux-grid-cell-date),
+    .ux-grid-table-wrap-stable-mobile-all :global(.ux-grid-cell-action) {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        overflow-wrap: normal;
+        word-break: normal;
+    }
+
+    .ux-grid-table-wrap-stable-mobile-all :global(.ux-grid-stack) {
+        flex-wrap: nowrap;
+        overflow: hidden;
+    }
+
+    .ux-grid-table-wrap-stable-mobile-all :global(.ux-grid-stack-item) {
+        overflow: hidden;
+    }
+
     .ux-grid-shell {
         --ux-grid-divider: color-mix(in srgb, var(--ux-border) 82%, transparent);
         --ux-grid-muted: var(--ux-text-muted);
+        --ux-grid-header-surface: color-mix(in srgb, var(--ux-surface-alt) 92%, var(--ux-surface));
+        --ux-grid-footer-surface: color-mix(in srgb, var(--ux-surface-alt) 90%, var(--ux-surface));
         --ux-grid-sticky-surface: color-mix(
             in srgb,
             var(--ux-surface-alt) 96%,
@@ -1129,8 +1512,9 @@
         --ux-grid-loading-line-strong: color-mix(in srgb, var(--ux-border) 62%, transparent);
         --ux-grid-skeleton-low: color-mix(in srgb, var(--ux-border) 30%, transparent);
         --ux-grid-skeleton-high: color-mix(in srgb, var(--ux-text-muted) 28%, transparent);
+        --ux-grid-row-stripe-overlay: color-mix(in srgb, var(--ux-text) 2.5%, transparent);
         --ux-grid-row-hover: color-mix(in srgb, var(--ux-brand) 6%, var(--ux-surface));
-        --ux-grid-row-selected: color-mix(in srgb, var(--ux-warning) 18%, var(--ux-surface));
+        --ux-grid-row-selected: color-mix(in srgb, var(--ux-brand) 9%, var(--ux-surface));
         --ux-grid-row-c1: color-mix(in srgb, var(--ux-danger) 11%, var(--ux-surface));
         --ux-grid-row-c2: color-mix(in srgb, var(--ux-brand) 11%, var(--ux-surface));
         --ux-grid-row-active: color-mix(in srgb, var(--ux-danger) 16%, var(--ux-surface));
@@ -1140,16 +1524,16 @@
         --ux-grid-drop-outline: color-mix(in srgb, var(--ux-brand) 42%, transparent);
         position: relative;
         min-width: 0;
-        padding: 0.7rem;
+        padding: 0.5rem;
         border: 1px solid var(--ux-border);
-        border-radius: var(--ux-radius-md);
-        background: color-mix(in srgb, var(--ux-surface) 96%, transparent);
-        box-shadow: var(--ux-shadow-sm);
+        border-radius: var(--ux-radius-sm);
+        background: color-mix(in srgb, var(--ux-surface) 98%, transparent);
+        box-shadow: none;
     }
 
     .ux-grid-loading-shell {
         display: grid;
-        gap: 0.7rem;
+        gap: 0.45rem;
     }
 
     .ux-grid-loading-toolbar {
@@ -1157,32 +1541,25 @@
         gap: 0.5rem;
     }
 
-    .ux-grid-loading-status {
-        font-size: 0.72rem;
-        color: var(--ux-grid-muted);
+    .ux-grid-table-loading-row {
+        pointer-events: none;
     }
 
-    .ux-grid-loading-table {
-        display: grid;
-        gap: 0.45rem;
-        min-height: 0;
+    .ux-grid-loading-shell :global(thead th) {
+        background: var(--ux-grid-header-surface);
     }
 
-    .ux-grid-loading-header,
-    .ux-grid-loading-row {
-        display: grid;
-        grid-template-columns: 2.5rem repeat(5, minmax(0, 1fr));
-        gap: 0.38rem;
+    .ux-grid-loading-shell :global(tfoot th) {
+        background: var(--ux-grid-footer-surface);
     }
 
-    .ux-grid-loading-rows {
-        display: grid;
-        gap: 0.28rem;
+    .ux-grid-table-loading-body td {
+        background: color-mix(in srgb, var(--ux-surface-alt) 68%, transparent);
     }
 
     .ux-grid-skeleton {
         display: block;
-        border-radius: 0.45rem;
+        border-radius: 0.25rem;
         background: linear-gradient(
             90deg,
             var(--ux-grid-skeleton-low) 0%,
@@ -1195,11 +1572,15 @@
 
     .ux-grid-skeleton-button {
         width: 8.5rem;
-        height: 1.95rem;
+        height: 1.75rem;
     }
 
     .ux-grid-skeleton-header {
-        height: 1.65rem;
+        height: 0.92rem;
+    }
+
+    .ux-grid-skeleton-footer {
+        height: 0.76rem;
     }
 
     .ux-grid-skeleton-cell {
@@ -1221,13 +1602,74 @@
         min-width: 100%;
         max-width: none;
         table-layout: auto;
-        font-size: 0.74rem;
+        font-size: 0.72rem;
         line-height: 1.22;
+    }
+
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-expand) {
+        width: 100%;
+    }
+
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow th.ux-grid-column-wide),
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow td.ux-grid-column-wide) {
+        min-width: 5rem !important;
+    }
+
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow th.ux-grid-column-text),
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow td.ux-grid-column-text) {
+        min-width: 4rem !important;
+    }
+
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow .ux-grid-cell-text),
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow .ux-grid-cell-link) {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow .ux-grid-stack) {
+        min-width: 0;
+    }
+
+    .ux-grid-shell :global(.ux-grid-table.ux-grid-table-overflow .ux-grid-stack-item) {
+        max-width: 100%;
+    }
+
+    .ux-grid-shell :global(.ux-grid-filler-column) {
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        padding: 0 !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        box-shadow: none !important;
+    }
+
+    .ux-grid-shell :global(.ux-grid-last-data-column) {
+        border-right: 0 !important;
     }
 
     .ux-grid-shell :global(.ux-grid-table a) {
         color: inherit;
         text-decoration-thickness: 0.06em;
+    }
+
+    .ux-grid-page-size-label {
+        font-size: 0.76rem;
+        font-weight: 500;
+    }
+
+    .ux-grid-page-size-select {
+        width: auto;
+        min-width: 4.1rem;
+        min-height: 1.7rem;
+        padding: 0.12rem 1.7rem 0.12rem 0.42rem;
+        font-size: 0.76rem;
+    }
+
+    .ux-grid-bottom-bar {
+        width: 100%;
+        max-width: 100%;
+        margin: 0.5rem 0 0;
     }
 
     @media (max-width: 640px) {

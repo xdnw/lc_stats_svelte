@@ -1,7 +1,6 @@
 import { decompressBson } from "./binary";
 import { scheduleWhenIdle } from "./misc";
 import { incrementPerfCounter } from "./perf";
-import { prewarmRuntimeGroup, type RuntimePrefetchGroup } from "./runtime";
 import { nowMs } from "./time";
 
 type PrefetchPriority = "high" | "idle";
@@ -16,18 +15,21 @@ export type ArtifactPrefetchIntentStrength =
 
 export type ArtifactPrefetchKind =
     | "payload"
+    | "conflict-grid"
     | "bubble"
+    | "metric-time"
     | "tiering"
-    | "composite"
-    | "runtime";
+    | "composite";
 
 export type ArtifactPrefetchTaskDescriptor = {
     key: string;
     artifactKind: ArtifactPrefetchKind;
     run: (signal: AbortSignal) => Promise<unknown>;
+    isFresh?: () => boolean;
     priority?: PrefetchPriority;
     crossRoute?: boolean;
     routeTarget?: string;
+    promotionTargets?: string[];
     reason?: string;
     intentStrength?: ArtifactPrefetchIntentStrength;
     estimatedBytes?: number;
@@ -39,9 +41,11 @@ type PrefetchTask = {
     key: string;
     artifactKind: ArtifactPrefetchKind;
     run: (signal: AbortSignal) => Promise<unknown>;
+    isFresh?: () => boolean;
     priority: PrefetchPriority;
     crossRoute: boolean;
     routeTarget: string;
+    promotionTargets: string[];
     reason: string;
     intentStrength: ArtifactPrefetchIntentStrength;
     estimatedBytes: number;
@@ -170,14 +174,20 @@ function hasExpensiveDerivedReason(reason: string): boolean {
     const normalized = reason.toLowerCase();
     return (
         normalized.includes("bubble-default") ||
+        normalized.includes("metric-time-default") ||
         normalized.includes("tiering-default") ||
         normalized.includes("warmbubbledefaultartifact") ||
+        normalized.includes("warmmetrictimedefaultartifact") ||
         normalized.includes("warmtieringdefaultartifact")
     );
 }
 
 function isExpensiveDerived(task: PrefetchTask): boolean {
-    if (task.artifactKind === "bubble" || task.artifactKind === "tiering") {
+    if (
+        task.artifactKind === "bubble" ||
+        task.artifactKind === "metric-time" ||
+        task.artifactKind === "tiering"
+    ) {
         return true;
     }
     return hasExpensiveDerivedReason(task.reason);
@@ -186,7 +196,6 @@ function isExpensiveDerived(task: PrefetchTask): boolean {
 function isCheapIdleEligible(task: PrefetchTask): boolean {
     const isCheapKind =
         task.artifactKind === "payload" ||
-        task.artifactKind === "runtime" ||
         task.artifactKind === "composite";
     return isCheapKind && !hasExpensiveDerivedReason(task.reason);
 }
@@ -205,6 +214,20 @@ function currentInFlightBytes(): number {
         total += task.estimatedBytes;
     }
     return total;
+}
+
+function isTaskFresh(task: Pick<PrefetchTask, "isFresh">): boolean {
+    if (!task.isFresh) return true;
+
+    try {
+        return task.isFresh();
+    } catch {
+        return false;
+    }
+}
+
+function hasFreshnessCheck(task: Pick<PrefetchTask, "isFresh">): boolean {
+    return typeof task.isFresh === "function";
 }
 
 function canAdmitTask(task: PrefetchTask): boolean {
@@ -256,6 +279,28 @@ function keyPriorityWeight(priority: PrefetchPriority): number {
     return priority === "high" ? 2 : 1;
 }
 
+function normalizePromotionTargets(
+    routeTarget: string | undefined,
+    promotionTargets: string[] | undefined,
+): string[] {
+    const targets = [routeTarget, ...(promotionTargets ?? [])].filter(
+        (value): value is string => typeof value === "string" && value.length > 0,
+    );
+
+    if (targets.length === 0) {
+        return ["unknown"];
+    }
+
+    return Array.from(new Set(targets));
+}
+
+function mergePromotionTargets(task: PrefetchTask, nextTargets: string[]): void {
+    if (nextTargets.length === 0) return;
+    task.promotionTargets = Array.from(
+        new Set([...task.promotionTargets, ...nextTargets]),
+    );
+}
+
 function intentWeight(intent: ArtifactPrefetchIntentStrength): number {
     switch (intent) {
         case "pointerdown":
@@ -284,7 +329,14 @@ function processQueue(): void {
         const [task] = queue.splice(taskIndex, 1);
         if (!task) break;
         queuedByKey.delete(task.key);
-        if (completedKeys.has(task.key)) continue;
+        if (hasFreshnessCheck(task) && isTaskFresh(task)) {
+            completedKeys.add(task.key);
+            continue;
+        }
+        if (completedKeys.has(task.key)) {
+            if (isTaskFresh(task)) continue;
+            completedKeys.delete(task.key);
+        }
 
         if (task.priority === "idle" && isCheapIdleEligible(task)) {
             if (!policyAllowedIdleCheapKeys.has(task.key)) {
@@ -358,20 +410,36 @@ function shouldSkipTask(task: PrefetchTask): string | null {
             return "constrained-client";
         }
     }
-    if (completedKeys.has(task.key) || queuedByKey.has(task.key) || inFlightByKey.has(task.key)) {
+    if (hasFreshnessCheck(task) && isTaskFresh(task)) {
+        return "already-fresh";
+    }
+    if (completedKeys.has(task.key)) {
+        if (isTaskFresh(task)) {
+            return "already-cached-or-running";
+        }
+        completedKeys.delete(task.key);
+    }
+    if (queuedByKey.has(task.key) || inFlightByKey.has(task.key)) {
         return "already-cached-or-running";
     }
     return null;
 }
 
 function toTask(descriptor: ArtifactPrefetchTaskDescriptor): PrefetchTask {
+    const promotionTargets = normalizePromotionTargets(
+        descriptor.routeTarget,
+        descriptor.promotionTargets,
+    );
+
     return {
         key: descriptor.key,
         artifactKind: descriptor.artifactKind,
         run: descriptor.run,
+        isFresh: descriptor.isFresh,
         priority: descriptor.priority ?? "idle",
         crossRoute: descriptor.crossRoute ?? true,
-        routeTarget: descriptor.routeTarget ?? "unknown",
+        routeTarget: promotionTargets[0] ?? "unknown",
+        promotionTargets,
         reason: descriptor.reason ?? "unspecified",
         intentStrength: descriptor.intentStrength ?? "idle",
         estimatedBytes: Math.max(0, descriptor.estimatedBytes ?? 0),
@@ -383,6 +451,12 @@ function toTask(descriptor: ArtifactPrefetchTaskDescriptor): PrefetchTask {
 function enqueueTask(task: PrefetchTask): boolean {
     const skipReason = shouldSkipTask(task);
     if (skipReason) {
+        if (skipReason === "already-cached-or-running") {
+            const existing = queuedByKey.get(task.key) ?? inFlightByTaskKey.get(task.key);
+            if (existing) {
+                mergePromotionTargets(existing, task.promotionTargets);
+            }
+        }
         incrementPerfCounter("prefetch.skipped", 1, {
             key: `${task.artifactKind}:${task.routeTarget}`,
             kind: task.artifactKind,
@@ -411,7 +485,7 @@ function promotePendingForTarget(
     let hasPromotion = false;
 
     for (const task of queue) {
-        if (task.routeTarget !== routeTarget) continue;
+        if (!task.promotionTargets.includes(routeTarget)) continue;
 
         const shouldPromoteIntent = intentRank > intentWeight(task.intentStrength);
         if (shouldPromoteIntent) {
@@ -444,7 +518,11 @@ export function queueArtifactPrefetch(descriptor: ArtifactPrefetchTaskDescriptor
 
     if (
         task.routeTarget !== "unknown" &&
-        (task.intentStrength === "pointerdown" || task.intentStrength === "enter")
+        (
+            task.priority === "high" ||
+            task.intentStrength === "pointerdown" ||
+            task.intentStrength === "enter"
+        )
     ) {
         promotePendingForTarget(task.routeTarget, task.intentStrength);
     }
@@ -498,29 +576,6 @@ export function queueUrlPrefetch(
         estimatedCpuMs: 60,
         run: async () => {
             await decompressBson(url);
-        },
-    });
-}
-
-export function queueRuntimePrefetch(
-    group: RuntimePrefetchGroup,
-    options?: {
-        priority?: PrefetchPriority;
-        crossRoute?: boolean;
-    },
-): boolean {
-    return queueArtifactPrefetch({
-        key: `runtime:${group}`,
-        artifactKind: "runtime",
-        priority: options?.priority,
-        crossRoute: options?.crossRoute,
-        routeTarget: "runtime",
-        reason: "legacy-queueRuntimePrefetch",
-        intentStrength: "idle",
-        estimatedBytes: 900_000,
-        estimatedCpuMs: 20,
-        run: async () => {
-            await prewarmRuntimeGroup(group);
         },
     });
 }

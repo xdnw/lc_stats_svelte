@@ -1,25 +1,26 @@
 import { browser } from "$app/environment";
 import {
-    warmConflictGraphPayload,
-    warmTieringDefaultArtifact,
-} from "$lib/prefetchArtifacts";
+    primeConflictGraphPayloadBytes,
+} from "$lib/conflictGraphPayload";
+import { appConfig as config } from "$lib/appConfig";
 
-export const load = ({ url }: { url: URL }) => {
+export const load = ({
+    url,
+    fetch,
+}: {
+    url: URL;
+    fetch: typeof globalThis.fetch;
+}) => {
     if (!browser) return {};
     const conflictId = url.searchParams.get("id")?.trim();
     if (!conflictId) return {};
 
-    warmConflictGraphPayload(conflictId, {
-        priority: "high",
-        reason: "route-tiering-load-graph-payload",
-        routeTarget: "/tiering",
-        intentStrength: "load",
-    });
-    warmTieringDefaultArtifact(conflictId, {
-        priority: "high",
-        reason: "route-tiering-load-default-dataset",
-        routeTarget: "/tiering",
-        intentStrength: "load",
+    void primeConflictGraphPayloadBytes({
+        conflictId,
+        version: config.version.graph_data,
+        fetcher: fetch,
+    }).catch(() => {
+        // The page-owned bootstrap path will surface failures if the prime is not usable.
     });
     return {};
 };

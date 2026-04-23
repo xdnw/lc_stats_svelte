@@ -9,14 +9,16 @@ export const ConflictGridLayout = {
 export type ConflictGridLayoutValue =
     (typeof ConflictGridLayout)[keyof typeof ConflictGridLayout];
 
+export const ALL_CONFLICT_GRID_LAYOUTS: ConflictGridLayoutValue[] = [
+    ConflictGridLayout.COALITION,
+    ConflictGridLayout.ALLIANCE,
+    ConflictGridLayout.NATION,
+];
+
 export function isConflictGridLayout(
     value: number,
 ): value is ConflictGridLayoutValue {
-    return (
-        value === ConflictGridLayout.COALITION ||
-        value === ConflictGridLayout.ALLIANCE ||
-        value === ConflictGridLayout.NATION
-    );
+    return ALL_CONFLICT_GRID_LAYOUTS.includes(value as ConflictGridLayoutValue);
 }
 
 export function conflictGridLayoutLabel(

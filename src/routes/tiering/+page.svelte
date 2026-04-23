@@ -1,70 +1,115 @@
 <script lang="ts">
+    import "../../styles/conflict-shell.css";
     /**
      * This page is for viewing tiering charts for a conflict
      */
+    import { browser } from "$app/environment";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
-    import ExportDataMenu from "../../components/ExportDataMenu.svelte";
-    import ShareResetBar from "../../components/ShareResetBar.svelte";
+    import TieringControlsPanel from "../../components/TieringControlsPanel.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
-    import SelectionModal from "../../components/SelectionModal.svelte";
-    import type {
-        SelectionId,
-        SelectionModalItem,
-    } from "$lib/selection/types";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
     import { base } from "$app/paths";
-    import type { API, Options } from "nouislider";
-    import { Chart, registerables, type ChartConfiguration } from "chart.js";
-    Chart.register(...registerables);
-    import { onMount, onDestroy, tick } from "svelte";
+    import { page } from "$app/stores";
+    import { onMount, onDestroy } from "svelte";
     import {
-        buildCoalitionAllianceItems,
-        decompressBson,
         formatTurnsToDate,
-        type GraphData,
-        type TierMetric,
-        arrayEquals,
-        setQueryParam,
-        bootstrapIdRouteLifecycle,
-        getSelectedAllianceIdsForCoalition,
-        mergeCoalitionAllianceSelection,
-        validateAtLeastOneSelection,
-        getConflictDataUrl,
-        getConflictGraphDataUrl,
         formatDaysToDate,
-        saveCurrentQueryParams,
-        queueUrlPrefetch,
+    } from "$lib/formatting";
+    import type { GraphData, TierMetric } from "$lib/types";
+    import {
+        getCurrentQueryParams,
         resetQueryParams,
-        formatDatasetProvenance,
-        formatAllianceName,
-        yieldToMain,
-        incrementPerfCounter,
-        startPerfSpan,
+        setQueryParam,
+        setQueryParams,
+    } from "$lib/queryState";
+    import { bootstrapIdRouteLifecycle } from "$lib/routeBootstrap";
+    import { arrayEquals } from "$lib/misc";
+    import { saveCurrentQueryParams } from "$lib/queryStorage";
+    import { formatDatasetProvenance } from "$lib/runtime";
+    import { incrementPerfCounter, startPerfSpan } from "$lib/perf";
+    import {
         exportBundleData,
         buildSettingsRows,
         type ExportBundle,
         type ExportDatasetOption,
-    } from "$lib";
+    } from "$lib/dataExport";
+    import {
+        resolveInitialAllowedAllianceIds,
+        type GraphRouteInfo,
+    } from "$lib/graphRouteInfo";
+    import {
+        acquireTieringArtifactHandle,
+        type TieringArtifactHandle,
+    } from "$lib/conflictArtifactRegistry";
     import { appConfig as config } from "$lib/appConfig";
     import {
         getDataSetsByTime as getDataSetsByTimeShared,
     } from "$lib/tieringDatasetCompute";
-    import { requestWorkerRpc } from "$lib/workerRpc";
-    import { beginJourneySpan, endJourneySpan } from "$lib/perf";
-    import type {
-        WorkerDatasetComputeRequest,
-        WorkerDatasetComputeResult,
-        WorkerDatasetInitRequest,
-        WorkerDatasetInitResult,
-    } from "$lib/workerDatasetProtocol";
     import {
-        createModuleWorker,
-        releaseWorkerDataset,
-        terminateWorker,
-    } from "$lib/workerDatasetLifecycle";
-    import Select from "svelte-select";
-    import noUiSlider from "nouislider";
+        buildTieringLegendItems,
+        clearTieringCanvas,
+        findTieringCanvasHoverBar,
+        renderTieringCanvas,
+        type TieringCanvasDataset,
+        type TieringCanvasHoverBar,
+        type TieringCanvasModel,
+        type TieringCanvasRenderResult,
+        type TieringLegendItem,
+    } from "$lib/tieringCanvas";
+    import {
+        buildDefaultTieringAllianceIds,
+        buildTieringDatasetCacheKey,
+    } from "$lib/graphArtifactKeys";
+    import { isCumulativeMetricName } from "$lib/metrics";
+    import { beginJourneySpan, endJourneySpan } from "$lib/perf";
+    import { normalizeTieringSliderValues } from "$lib/tieringSelection";
+
+    type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
+
+    type MetricOption = {
+        value: string;
+        label: string;
+    };
+
+    type TieringQuickLayout = {
+        name: string;
+        metrics: MetricOption[];
+        normalize: boolean;
+        href: string | null;
+    };
+
+    type TieringTooltipAnchor = {
+        x: number;
+        y: number;
+        flipX: boolean;
+        flipY: boolean;
+    };
+
+    let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
+
+    function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
+        if (!prefetchArtifactsPromise) {
+            prefetchArtifactsPromise = import("$lib/prefetchArtifactsClient");
+        }
+
+        return prefetchArtifactsPromise;
+    }
+
+    function warmTieringSecondaryArtifacts(conflictId: string): void {
+        void loadPrefetchArtifacts()
+            .then(({ warmConflictTableArtifact }) => {
+                warmConflictTableArtifact(conflictId, {
+                    priority: "idle",
+                    reason: "route-tiering-idle-conflict-grid",
+                    routeTarget: "/conflict",
+                    intentStrength: "idle",
+                });
+            })
+            .catch((error) => {
+                console.warn("Failed to load tiering prefetch helpers", error);
+            });
+    }
 
     let _loaded = false;
     let _loadError: string | null = null;
@@ -82,29 +127,63 @@
     let cityBandSize: number = 0;
     let previous_cityBandSize: number = 0;
 
-    let sliderElement: HTMLDivElement;
-    let turnValues: number[];
+    function selectedMetricValues(): string[] {
+        return selected_metrics.map((metric) => metric.value);
+    }
 
-    function getSliderApi(): any {
-        return (sliderElement as any)?.noUiSlider;
+    function formatTieringNumber(value: number): string {
+        if (!Number.isFinite(value)) return "0";
+        const abs = Math.abs(value);
+        const maximumFractionDigits = abs < 10 ? 2 : abs < 100 ? 1 : 0;
+        return value.toLocaleString(undefined, {
+            maximumFractionDigits,
+        });
+    }
+
+    function tieringSliderValuesToIndices(
+        values: number[],
+        timeRange: [number, number],
+        maxIndex: number,
+        usesRangeSelection: boolean,
+    ): number[] {
+        return normalizeTieringSliderValues(
+            values,
+            timeRange,
+            usesRangeSelection,
+        ).map((value) =>
+            Math.max(0, Math.min(maxIndex, Math.round(value - timeRange[0]))),
+        );
     }
 
     let _allowedAllianceIds: Set<number> = new Set();
-    let showAllianceModal = false;
-    let allianceModalItems: SelectionModalItem[] = [];
-    let allianceModalSelectedIds: number[] = [];
-    let activeAllianceCoalitionIndex: 0 | 1 = 0;
 
-    let dataSets: DataSet[];
-    let chartInstanceRef: Chart | null = null;
-    let dataSetByConfigCache = new Map<string, DataSetResponse>();
-    let tieringWorker: Worker | null = null;
-    let tieringWorkerDatasetKey: string | null = null;
-    let tieringWorkerDatasetReady: Promise<void> | null = null;
+    let dataSets: DataSet[] = [];
+    let tieringCanvasElement: HTMLCanvasElement | null = null;
+    let tieringCanvasContainer: HTMLDivElement | null = null;
+    let tieringChartModel: TieringCanvasModel | null = null;
+    let tieringCanvasRenderResult: TieringCanvasRenderResult | null = null;
+    let tieringChartLabels: (string | number)[] = [];
+    let tieringLegendItems: TieringLegendItem[] = [];
+    let tieringChartTitle = "";
+    let tieringHoverBar: TieringCanvasHoverBar | null = null;
+    let tieringTooltipAnchor: TieringTooltipAnchor | null = null;
+    let tieringResizeObserver: ResizeObserver | null = null;
+    let pendingTieringCanvasFrame: number | null = null;
+    let pendingTieringRefreshFrame: number | null = null;
+    let tieringArtifacts: TieringArtifactHandle | null = null;
     let hasCompletedFirstTieringMount = false;
     let latestSetupRunId = 0;
     let lastTieringRenderKey: string | null = null;
+    let requestedAllianceIdsFromQuery: number[] | null = null;
+    let tieringTimeRange: [number, number] | null = null;
+    let tieringUsesRangeSelection = false;
+    let tieringSliderValues: number[] = [];
+    let tieringCurrentSliderValues: number[] = [0];
+    let tieringCurrentSelectionLabel = "";
+    let formatTieringTimeValue: (value: number) => string = formatDaysToDate;
     let selectedTieringExportDataset = "snapshot";
+    let hasBootstrappedUrlState = false;
+    let lastParsedUrlSearch = "";
 
     const tieringExportDatasets: ExportDatasetOption[] = [
         {
@@ -121,17 +200,154 @@
         },
     ];
 
-    /**
-     * The raw data for the conflict, uninitialized until setupChartData is called
-     */
-    let _rawData: GraphData;
-    const defaultMetricSelection = ["nation"];
-    let selected_metrics: { value: string; label: string }[] =
-        defaultMetricSelection.map((name) => {
-            return { value: name, label: name };
+    function cancelPendingTieringCanvasRender(): void {
+        if (pendingTieringCanvasFrame == null) return;
+        cancelAnimationFrame(pendingTieringCanvasFrame);
+        pendingTieringCanvasFrame = null;
+    }
+
+    function cancelPendingTieringRefresh(): void {
+        if (pendingTieringRefreshFrame == null) return;
+        cancelAnimationFrame(pendingTieringRefreshFrame);
+        pendingTieringRefreshFrame = null;
+    }
+
+    function clearTieringInspector(): void {
+        tieringHoverBar = null;
+        tieringTooltipAnchor = null;
+    }
+
+    function resolveTieringTooltipAnchor(
+        rect: DOMRect,
+        clientX: number,
+        clientY: number,
+    ): TieringTooltipAnchor {
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+        return {
+            x,
+            y,
+            flipX: x > rect.width - 220,
+            flipY: y < 84,
+        };
+    }
+
+    function isTieringPointSelection(indices: number[]): boolean {
+        return indices.length === 1;
+    }
+
+    function buildTieringSelectionLabel(
+        sliderValues: number[],
+        timeRange: [number, number] | null,
+        usesRangeSelection: boolean,
+        maxIndex: number,
+        labelFormatter: (value: number) => string,
+    ): string {
+        if (!timeRange) return "";
+        const sliderIndices = tieringSliderValuesToIndices(
+            sliderValues,
+            timeRange,
+            maxIndex,
+            usesRangeSelection,
+        );
+        if (isTieringPointSelection(sliderIndices)) {
+            return labelFormatter(
+                sliderValues[sliderValues.length - 1] ?? sliderValues[0] ?? timeRange[0],
+            );
+        }
+        if (sliderValues.length >= 2) {
+            return `${labelFormatter(sliderValues[0])} - ${labelFormatter(sliderValues[1])}`;
+        }
+        return labelFormatter(sliderValues[0] ?? timeRange[0]);
+    }
+
+    function clearTieringChartState(): void {
+        cancelPendingTieringRefresh();
+        cancelPendingTieringCanvasRender();
+        tieringChartModel = null;
+        tieringCanvasRenderResult = null;
+        tieringChartLabels = [];
+        tieringLegendItems = [];
+        tieringChartTitle = "";
+        dataSets = [];
+        tieringTimeRange = null;
+        tieringUsesRangeSelection = false;
+        tieringSliderValues = [];
+        clearTieringInspector();
+        clearTieringCanvas(tieringCanvasElement);
+    }
+
+    function scheduleTieringRefresh(): void {
+        cancelPendingTieringRefresh();
+        clearTieringInspector();
+        pendingTieringRefreshFrame = requestAnimationFrame(() => {
+            pendingTieringRefreshFrame = null;
+            if (_rawData) {
+                void setupCharts();
+            }
         });
-    // svelte-select can transiently emit undefined when the last chip is removed.
-    $: if (!Array.isArray(selected_metrics)) selected_metrics = [];
+    }
+
+    function renderTieringChart(options?: {
+        measurePerf?: boolean;
+        reason?: string;
+    }): void {
+        if (!tieringChartModel || !tieringCanvasElement) {
+            tieringCanvasRenderResult = null;
+            return;
+        }
+        const finishSpan = options?.measurePerf
+            ? startPerfSpan("graph.tiering.setupCharts.canvas", {
+                  datasetCount: tieringChartModel.datasets.length,
+                  labelCount: tieringChartModel.labels.length,
+                  reason: options.reason ?? "render",
+              })
+            : null;
+        tieringCanvasRenderResult = renderTieringCanvas({
+            canvas: tieringCanvasElement,
+            model: tieringChartModel,
+        });
+        finishSpan?.();
+    }
+
+    function updateTieringChartModel(
+        model: TieringCanvasModel,
+        options?: {
+            measurePerf?: boolean;
+            reason?: string;
+        },
+    ): void {
+        tieringChartModel = model;
+        tieringChartLabels = model.labels;
+        tieringChartTitle = model.title;
+        tieringLegendItems =
+            model.datasets.length <= 24
+                ? buildTieringLegendItems(model.datasets)
+                : [];
+        renderTieringChart(options);
+    }
+
+    function scheduleTieringChartRender(reason = "resize"): void {
+        cancelPendingTieringCanvasRender();
+        clearTieringInspector();
+        pendingTieringCanvasFrame = requestAnimationFrame(() => {
+            pendingTieringCanvasFrame = null;
+            renderTieringChart({ reason });
+        });
+    }
+
+    /**
+     * Compact route metadata for the conflict, uninitialized until setupChartData is called
+     */
+    let _rawData: GraphRouteInfo | null = null;
+    let fallbackGraphData: GraphData | null = null;
+
+    const defaultMetricSelection = ["nation"];
+    let selected_metrics: MetricOption[] = defaultMetricSelection.map((name) => {
+        return { value: name, label: name };
+    });
+    let tieringQuickLayouts: TieringQuickLayout[] = [];
+
     $: isResetDirty = (() => {
         const selectedValues = selected_metrics.map((metric) => metric.value);
         const sameSelected =
@@ -154,155 +370,297 @@
         );
     })();
 
-    $: maxItems = selected_metrics?.length === 4;
     $: items =
-        maxItems || !_rawData
+        !_rawData
             ? []
             : [
                   ...(_rawData.metric_names ?? []).map((name) => {
                       return { value: name, label: name };
                   }),
               ];
-    $: {
-        if (selected_metrics) {
-            handleMetricsChange();
-        }
-    }
-    let previous_selected: { value: string; label: string }[] = [];
-    function handleMetricsChange() {
-        if (arrayEquals(previous_selected, selected_metrics)) return;
-        maxItems = selected_metrics?.length === 4;
-        previous_selected = selected_metrics.slice();
-        if (_rawData && selected_metrics.length > 0) {
-            setQueryParam(
-                "selected",
-                selected_metrics.map((metric) => metric.value).join("."),
-            );
-            saveCurrentQueryParams();
-            setupCharts(_rawData);
-        }
-    }
+    $: tieringQuickLayouts = Object.entries(_chartLayouts).map(
+        ([name, layout]) => ({
+            name,
+            metrics: layout.metrics.map((metricName) => ({
+                value: metricName,
+                label: metricName,
+            })),
+            normalize: layout.normalize,
+            href: conflictId
+                ? `${base}/tiering?id=${conflictId}&selected=${layout.metrics.join(".")}${layout.normalize ? "&normalize=1" : ""}`
+                : null,
+        }),
+    );
 
-    async function handlePercentCheck(): Promise<boolean> {
-        await tick();
-        if (previous_normalize == normalize) return false;
+    let previous_selected: string[] = [];
+
+    function commitNormalizeChange(nextNormalize: boolean): void {
+        normalize = nextNormalize;
+        if (previous_normalize === normalize) return;
         previous_normalize = normalize;
         if (_rawData) {
             setQueryParam("normalize", normalize ? 1 : null, { replace: true });
             saveCurrentQueryParams();
-            setupCharts(_rawData);
+            scheduleTieringRefresh();
         }
-        return true;
     }
 
-    async function handleColorCheck(): Promise<boolean> {
-        await tick();
-        if (previous_useSingleColor == useSingleColor) return false;
+    function commitUseSingleColorChange(nextUseSingleColor: boolean): void {
+        useSingleColor = nextUseSingleColor;
+        if (previous_useSingleColor === useSingleColor) return;
         previous_useSingleColor = useSingleColor;
         if (_rawData) {
             setQueryParam("unicolor", useSingleColor ? 1 : null, {
                 replace: true,
             });
             saveCurrentQueryParams();
-            setupCharts(_rawData);
+            scheduleTieringRefresh();
         }
-        return true;
     }
 
-    async function handleCityBandChange(): Promise<boolean> {
-        await tick();
-        cityBandSize = Math.max(0, Math.floor(Number(cityBandSize) || 0));
-        if (previous_cityBandSize === cityBandSize) return false;
+    function commitCityBandSizeChange(nextCityBandSize: number): void {
+        cityBandSize = Math.max(0, Math.floor(Number(nextCityBandSize) || 0));
+        if (previous_cityBandSize === cityBandSize) return;
         previous_cityBandSize = cityBandSize;
         if (_rawData) {
             setQueryParam("cityband", cityBandSize > 1 ? cityBandSize : null, {
                 replace: true,
             });
             saveCurrentQueryParams();
-            setupCharts(_rawData);
+            scheduleTieringRefresh();
         }
-        return true;
     }
 
-    $: allianceModalItems = (() => {
-        if (!_rawData) return [];
-        const coalition = _rawData.coalitions[activeAllianceCoalitionIndex];
-        if (!coalition) return [];
-        return buildCoalitionAllianceItems([coalition], formatAllianceName);
-    })();
-    $: allianceModalSelectedIds = (() => {
-        if (!_rawData) return [];
-        return _rawData.coalitions[
-            activeAllianceCoalitionIndex
-        ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
-    })();
-
-    function validateAllianceSelection(ids: SelectionId[]): string | null {
-        return validateAtLeastOneSelection(ids);
-    }
-
-    function openAllianceModal(coalitionIndex: 0 | 1) {
-        activeAllianceCoalitionIndex = coalitionIndex;
-        allianceModalSelectedIds = getSelectedAllianceIdsForCoalition(
-            _rawData?.coalitions,
-            coalitionIndex,
-            _allowedAllianceIds,
+    function commitAllowedAllianceIdsChange(nextAllowedAllianceIds: number[]): void {
+        _allowedAllianceIds = new Set(nextAllowedAllianceIds);
+        requestedAllianceIdsFromQuery =
+            nextAllowedAllianceIds.length > 0 ? [...nextAllowedAllianceIds] : null;
+        setQueryParam(
+            "ids",
+            nextAllowedAllianceIds.length > 0
+                ? nextAllowedAllianceIds.join(".")
+                : null,
+            {
+                replace: true,
+            },
         );
-        showAllianceModal = true;
-    }
-
-    function closeAllianceModal() {
-        showAllianceModal = false;
-    }
-
-    function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
-        if (!_rawData) return;
-        _allowedAllianceIds = mergeCoalitionAllianceSelection(
-            _rawData.coalitions,
-            activeAllianceCoalitionIndex,
-            _allowedAllianceIds,
-            event.detail.ids,
-        );
-        showAllianceModal = false;
-        setQueryParam("ids", Array.from(_allowedAllianceIds).join("."), {
-            replace: true,
-        });
         saveCurrentQueryParams();
-        setupCharts(_rawData);
+        scheduleTieringRefresh();
+    }
+
+    function commitTieringSliderValuesChange(nextSliderValues: number[]): void {
+        if (!tieringTimeRange) return;
+        const nextValues = normalizeTieringSliderValues(
+            nextSliderValues,
+            tieringTimeRange,
+            tieringUsesRangeSelection,
+        );
+        if (arrayEquals(tieringSliderValues, nextValues)) {
+            return;
+        }
+        tieringSliderValues = nextValues;
+        const maxIndex = Math.max(0, (dataSets[0]?.data.length ?? 1) - 1);
+        const trace = getGraphDataAtTime(
+            dataSets,
+            tieringSliderValuesToIndices(
+                nextValues,
+                tieringTimeRange,
+                maxIndex,
+                tieringUsesRangeSelection,
+            ),
+        );
+        if (!tieringChartModel) return;
+        clearTieringInspector();
+        updateTieringChartModel(
+            {
+                ...tieringChartModel,
+                datasets: trace,
+            },
+            {
+                reason: "slider",
+            },
+        );
+    }
+
+    function handleTieringMetricsCommit(nextSelectedMetrics: MetricOption[]): void {
+        const nextMetrics = Array.isArray(nextSelectedMetrics)
+            ? nextSelectedMetrics.map((metric) => ({ ...metric }))
+            : [];
+        const nextSelected = nextMetrics.map((metric) => metric.value);
+        if (nextSelected.length === 0 || arrayEquals(previous_selected, nextSelected)) {
+            return;
+        }
+        selected_metrics = nextMetrics;
+        previous_selected = nextSelected;
+        if (_rawData) {
+            setQueryParam("selected", nextSelected.join("."));
+            saveCurrentQueryParams();
+            scheduleTieringRefresh();
+        }
+    }
+
+    function handleTieringExportDatasetKeyChange(datasetKey: string): void {
+        selectedTieringExportDataset = datasetKey;
+    }
+
+    function handleTieringQuickLayoutCommit(layout: TieringQuickLayout): void {
+        selected_metrics = layout.metrics.map((metric) => ({ ...metric }));
+        previous_selected = selectedMetricValues();
+        normalize = layout.normalize;
+        previous_normalize = normalize;
+        setQueryParams(
+            {
+                selected: previous_selected.join("."),
+                normalize: normalize ? 1 : null,
+            },
+            {
+                replace: false,
+            },
+        );
+        saveCurrentQueryParams();
+        scheduleTieringRefresh();
+    }
+
+    type TieringQueryState = {
+        conflictId: string | null;
+        selected: string[];
+        normalize: boolean;
+        useSingleColor: boolean;
+        cityBandSize: number;
+        requestedAllianceIds: number[];
+    };
+
+    function normalizeAllianceIdList(
+        ids: Iterable<number> | null | undefined,
+    ): number[] {
+        if (!ids) return [];
+
+        return Array.from(
+            new Set(
+                Array.from(ids)
+                    .map((id) => Math.trunc(Number(id)))
+                    .filter((id) => id > 0),
+            ),
+        ).sort((left, right) => left - right);
+    }
+
+    function buildTieringQueryState(): TieringQueryState {
+        return {
+            conflictId,
+            selected: selectedMetricValues(),
+            normalize,
+            useSingleColor,
+            cityBandSize,
+            requestedAllianceIds: normalizeAllianceIdList(
+                requestedAllianceIdsFromQuery ?? Array.from(_allowedAllianceIds),
+            ),
+        };
+    }
+
+    function syncTieringStateFromUrl(): void {
+        const nextConflictId = ($page.url.searchParams.get("id") ?? "").trim();
+        const previousState = buildTieringQueryState();
+
+        loadQueryParams($page.url.searchParams);
+
+        if (
+            nextConflictId.length > 0 &&
+            nextConflictId !== previousState.conflictId
+        ) {
+            conflictId = nextConflictId;
+            _loaded = false;
+            _loadError = null;
+            setupChartData(nextConflictId);
+            return;
+        }
+
+        if (!_rawData) return;
+
+        const nextState = buildTieringQueryState();
+        const idsChanged = !arrayEquals(
+            previousState.requestedAllianceIds,
+            nextState.requestedAllianceIds,
+        );
+
+        if (idsChanged) {
+            _allowedAllianceIds = new Set();
+        }
+
+        if (
+            idsChanged ||
+            !arrayEquals(previousState.selected, nextState.selected) ||
+            previousState.normalize !== nextState.normalize ||
+            previousState.useSingleColor !== nextState.useSingleColor ||
+            previousState.cityBandSize !== nextState.cityBandSize
+        ) {
+            scheduleTieringRefresh();
+        }
     }
 
     function loadQueryParams(params: URLSearchParams) {
-        let selected = params.get("selected");
+        selected_metrics = defaultMetricSelection.map((name) => {
+            return { value: name, label: name };
+        });
+        normalize = false;
+        useSingleColor = false;
+        cityBandSize = 0;
+        requestedAllianceIdsFromQuery = null;
+
+        const selected = params.get("selected");
         if (selected) {
             selected_metrics = selected.split(".").map((name) => {
                 return { value: name, label: name };
             });
         }
-        previous_selected = selected_metrics.slice();
-        maxItems = selected_metrics?.length === 4;
-        let normalizeStr = params.get("normalize");
+        previous_selected = selectedMetricValues();
+
+        const normalizeStr = params.get("normalize");
         if (normalizeStr && !isNaN(+normalizeStr)) {
-            normalize = +normalizeStr == 1;
+            normalize = +normalizeStr === 1;
         }
-        let unicolorStr = params.get("unicolor");
+        previous_normalize = normalize;
+
+        const unicolorStr = params.get("unicolor");
         if (unicolorStr && !isNaN(+unicolorStr)) {
-            useSingleColor = +unicolorStr == 1;
+            useSingleColor = +unicolorStr === 1;
         }
-        let cityBandStr = params.get("cityband");
+        previous_useSingleColor = useSingleColor;
+
+        const cityBandStr = params.get("cityband");
         if (cityBandStr && !isNaN(+cityBandStr)) {
             const parsed = Math.max(0, Math.floor(+cityBandStr));
             cityBandSize = parsed > 1 ? parsed : 0;
         }
         previous_cityBandSize = cityBandSize;
+
+        const idStr = params.get("ids");
+        if (idStr) {
+            const parsedIds = idStr
+                .split(".")
+                .map((id) => Math.trunc(Number(id)))
+                .filter((id) => Number.isFinite(id) && id > 0);
+            requestedAllianceIdsFromQuery =
+                parsedIds.length > 0 ? parsedIds : null;
+        }
     }
 
-    // onMount runs when this component (i.e. the page) is loaded
-    // This gets the conflict id from the url query string, fetches the data from s3 and creates the charts
+    $: {
+        if (browser && hasBootstrappedUrlState) {
+            const nextSearch = $page.url.search;
+            if (nextSearch !== lastParsedUrlSearch) {
+                lastParsedUrlSearch = nextSearch;
+                syncTieringStateFromUrl();
+            }
+        }
+    }
+
     onMount(() => {
-        tieringWorker = createModuleWorker(
-            new URL("../../workers/tieringDataWorker.ts", import.meta.url),
-            "Tiering worker unavailable, using main-thread fallback",
-        );
+        if (typeof ResizeObserver !== "undefined" && tieringCanvasContainer) {
+            tieringResizeObserver = new ResizeObserver(() => {
+                scheduleTieringChartRender("resize");
+            });
+            tieringResizeObserver.observe(tieringCanvasContainer);
+        }
 
         bootstrapIdRouteLifecycle({
             restoreParams: ["selected", "normalize", "unicolor", "cityband", "ids"],
@@ -315,7 +673,7 @@
             onResolvedId: (id) => {
                 conflictId = id;
                 beginJourneySpan("journey.conflict_to_tiering.routeTransition", {
-                    mode: "spa",
+                    mode: "route-entry",
                     conflictId: id,
                 });
                 beginJourneySpan("journey.conflict_to_tiering.firstMount", {
@@ -324,79 +682,106 @@
                 setupChartData(id);
             },
         });
+        lastParsedUrlSearch = window.location.search;
+        hasBootstrappedUrlState = true;
     });
 
     onDestroy(() => {
         latestSetupRunId++;
         lastTieringRenderKey = null;
-        releaseWorkerDataset(
-            tieringWorker,
-            tieringWorkerDatasetKey,
-            "tiering dataset release",
-        );
-        terminateWorker(tieringWorker);
-        tieringWorker = null;
-        tieringWorkerDatasetKey = null;
-        tieringWorkerDatasetReady = null;
-        if (chartInstanceRef) {
-            chartInstanceRef.destroy();
-            chartInstanceRef = null;
-        }
+        cancelPendingTieringRefresh();
+        cancelPendingTieringCanvasRender();
+        tieringResizeObserver?.disconnect();
+        tieringResizeObserver = null;
+        clearTieringChartState();
+        tieringArtifacts?.destroy();
+        tieringArtifacts = null;
     });
 
-    /**
-     * Fetches data for a conflict
-     * Sets the conflict name
-     * Add the charts to the container div and set their data/settings
-     * @param conflictId The id of the conflict
-     */
+    function ensureTieringArtifacts(nextConflictId: string): TieringArtifactHandle {
+        if (
+            tieringArtifacts &&
+            tieringArtifacts.conflictId === nextConflictId &&
+            tieringArtifacts.version === config.version.graph_data
+        ) {
+            return tieringArtifacts;
+        }
+
+        tieringArtifacts?.destroy();
+        tieringArtifacts = acquireTieringArtifactHandle({
+            conflictId: nextConflictId,
+            version: config.version.graph_data,
+        });
+        return tieringArtifacts;
+    }
+
     function setupChartData(conflictId: string) {
         hasCompletedFirstTieringMount = false;
+        _allowedAllianceIds = new Set();
+        clearTieringChartState();
         beginJourneySpan("journey.conflict_to_tiering.dataFetch", {
             conflictId,
         });
         _loadError = null;
         _loaded = false;
-        dataSetByConfigCache.clear();
-        let url = getConflictGraphDataUrl(
-            conflictId,
-            config.version.graph_data,
-        );
-        decompressBson(url)
-            .then(async (data) => {
-                _rawData = data;
-                tieringWorkerDatasetKey = `tiering:${conflictId}:${config.version.graph_data}`;
-                tieringWorkerDatasetReady = null;
-                if (tieringWorker && tieringWorkerDatasetKey) {
-                    tieringWorkerDatasetReady = initializeTieringWorkerDataset(
-                        tieringWorkerDatasetKey,
-                        data,
-                    );
+
+        const artifacts = ensureTieringArtifacts(conflictId);
+        const metricSetup = buildSelectedTieringMetrics();
+        if (!metricSetup) {
+            _loadError = "Select at least one metric to render tiering.";
+            _loaded = true;
+            endJourneySpan("journey.conflict_to_tiering.dataFetch");
+            return;
+        }
+
+        const { metrics, isAnyCumulative } = metricSetup;
+        _rawData = null;
+        fallbackGraphData = null;
+        const runId = ++latestSetupRunId;
+
+        artifacts
+            .bootstrapVisibleDataset({
+                metrics,
+                requestedAllianceIds: requestedAllianceIdsFromQuery,
+                useSingleColor,
+                cityBandSize,
+                contextKey: `tiering:${conflictId}`,
+                requestId: runId,
+            })
+            .then((data) => {
+                if (runId !== latestSetupRunId) return;
+                if (!data) {
+                    clearTieringChartState();
+                    _loadError =
+                        "Could not initialize the tiering view. Please retry.";
+                    _loaded = true;
+                    return;
                 }
-                conflictName = _rawData.name;
+
+                _rawData = data.info;
+                fallbackGraphData = data.graphData ?? null;
+                conflictName = data.info.name;
+                _allowedAllianceIds = new Set(data.selectedAllianceIds);
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
-                    (data as any).update_ms,
+                    data.info.update_ms,
                 );
-                lastTieringRenderKey = null;
-                await yieldToMain();
-                setupCharts(_rawData);
+
+                if (data.dataset) {
+                    lastTieringRenderKey = `${data.cacheKey}|metricLabels:${selected_metrics
+                        .map((metric) => metric.label)
+                        .join("|")}`;
+                    renderTieringDataResponse(data.dataset, isAnyCumulative);
+                }
+
                 _loaded = true;
                 endJourneySpan("journey.conflict_to_tiering.routeTransition");
                 saveCurrentQueryParams();
-
-                // Warm conflict detail cache so switching back to table pages is faster.
-                const detailUrl = getConflictDataUrl(
-                    conflictId,
-                    config.version.conflict_data,
-                );
-                queueUrlPrefetch(detailUrl, {
-                    priority: "idle",
-                    crossRoute: true,
-                });
+                warmTieringSecondaryArtifacts(conflictId);
             })
             .catch((error) => {
                 console.error("Failed to load tiering graph data", error);
+                clearTieringChartState();
                 _loadError =
                     "Could not load conflict graph data. Please try again later.";
                 _loaded = true;
@@ -408,7 +793,32 @@
 
     function retryLoad() {
         if (!conflictId) return;
+        loadQueryParams(getCurrentQueryParams());
         setupChartData(conflictId);
+    }
+
+    function buildSelectedTieringMetrics(): {
+        metrics: TierMetric[];
+        isAnyCumulative: boolean;
+    } | null {
+        if (selected_metrics.length === 0) {
+            return null;
+        }
+
+        const metrics: TierMetric[] = selected_metrics.map((metric) => {
+            return {
+                name: metric.value,
+                normalize,
+                cumulative: isCumulativeMetricName(metric.value),
+            };
+        });
+
+        return {
+            metrics,
+            isAnyCumulative: metrics.reduce((hasCumulative, metric) => {
+                return hasCumulative || metric.cumulative;
+            }, false),
+        };
     }
 
     // The layout of the charts (the key is id of the html element that'll be created)
@@ -447,24 +857,6 @@
         },
     };
 
-    function setLayout(name: string) {
-        let layout = _chartLayouts[name];
-        if (layout && _rawData) {
-            selected_metrics = layout.metrics.map((name) => {
-                return { value: name, label: name };
-            });
-            normalize = layout.normalize;
-            previous_normalize = normalize;
-            setQueryParam(
-                "selected",
-                selected_metrics.map((metric) => metric.value).join("."),
-            );
-            setQueryParam("normalize", normalize ? 1 : null);
-            saveCurrentQueryParams();
-            setupCharts(_rawData);
-        }
-    }
-
     function resetFilters() {
         normalize = false;
         previous_normalize = false;
@@ -476,29 +868,25 @@
             value: name,
             label: name,
         }));
-        previous_selected = selected_metrics.slice();
+        previous_selected = selectedMetricValues();
         _allowedAllianceIds = new Set();
+        requestedAllianceIdsFromQuery = null;
         resetQueryParams(
             ["selected", "normalize", "unicolor", "cityband", "ids"],
             ["id"],
         );
         saveCurrentQueryParams();
         if (_rawData) {
-            setupCharts(_rawData);
+            scheduleTieringRefresh();
         }
     }
+
 
     function getGraphDataAtTime(
         data: DataSet[],
         slider: number[],
-    ): {
-        label: string;
-        data: number[];
-        backgroundColor: string;
-        stack: string;
-    }[] {
-        const isPointSelection =
-            slider.length === 1 || (slider.length === 2 && slider[0] === 0);
+    ): TieringCanvasDataset[] {
+        const isPointSelection = slider.length === 1;
         const pointIndex = slider.length > 1 ? slider[1] : slider[0];
         const startIndex = slider[0] ?? 0;
         const endIndex = slider[1] ?? slider[0] ?? 0;
@@ -530,35 +918,27 @@
     }
 
     function getTieringSliderIndices(): number[] {
-        const sliderApi: API | null = getSliderApi();
-        if (!sliderApi || !turnValues || !dataSets || dataSets.length === 0) {
+        if (!tieringTimeRange || dataSets.length === 0) {
             return [0];
         }
-        const raw = sliderApi.get();
-        const values = Array.isArray(raw) ? raw : [raw];
-        const timeMin = turnValues[0];
         const maxIndex = Math.max(0, (dataSets[0]?.data.length ?? 1) - 1);
-        const indices = values.map((value) =>
-            Math.max(
-                0,
-                Math.min(maxIndex, Math.round(Number(value) - timeMin)),
-            ),
+        return tieringSliderValuesToIndices(
+            tieringCurrentSliderValues,
+            tieringTimeRange,
+            maxIndex,
+            tieringUsesRangeSelection,
         );
-        return indices;
     }
 
     function buildTieringExportBundle(): ExportBundle | null {
-        if (!_rawData || !dataSets || !turnValues || dataSets.length === 0) {
+        if (!_rawData || !tieringTimeRange || dataSets.length === 0) {
             return null;
         }
 
-        const cityLabels =
-            (chartInstanceRef?.data.labels as (string | number)[]) ?? [];
+        const cityLabels = tieringChartLabels;
         const sliderIndices = getTieringSliderIndices();
+        const sliderTimeValues = tieringCurrentSliderValues;
         const sliderSnapshot = getGraphDataAtTime(dataSets, sliderIndices);
-        const sliderTimeLabels = sliderIndices.map(
-            (index) => turnValues[0] + index,
-        );
 
         const snapshotRows = sliderSnapshot.flatMap((trace) =>
             (trace.data ?? []).map((value, cityIndex) => [
@@ -576,7 +956,7 @@
                 timeIndex < dataSet.data.length;
                 timeIndex++
             ) {
-                const timeValue = turnValues[0] + timeIndex;
+                const timeValue = tieringTimeRange[0] + timeIndex;
                 const cityRow = dataSet.data[timeIndex] ?? [];
                 for (
                     let cityIndex = 0;
@@ -602,7 +982,7 @@
             ["single_color", useSingleColor ? 1 : 0],
             ["city_band_size", cityBandSize],
             ["selected_alliance_count", _allowedAllianceIds.size],
-            ["slider_selection", sliderTimeLabels],
+            ["slider_selection", sliderTimeValues],
         ]);
 
         return {
@@ -616,7 +996,7 @@
                 cityBandSize,
                 selectedAllianceIds: Array.from(_allowedAllianceIds),
                 sliderIndices,
-                sliderTimeLabels,
+                sliderTimeValues,
             },
             tables: [
                 {
@@ -658,78 +1038,102 @@
         });
     }
 
-    async function setupCharts(data: GraphData) {
-        if (!data) return;
+    async function setupCharts() {
+        if (!_rawData) return;
         const runId = ++latestSetupRunId;
         // if selected_metrics is empty, set to default
         if (selected_metrics.length == 0) {
-            selected_metrics = ["dealt:loss_value"].map((name) => {
+            selected_metrics = defaultMetricSelection.map((name) => {
                 return { value: name, label: name };
             });
+            previous_selected = selectedMetricValues();
         }
-        let metrics: TierMetric[] = selected_metrics.map((metric) => {
-            return {
-                name: metric.value,
-                normalize: normalize,
-                cumulative: metric.value.includes(":"),
-            };
-        });
-        let isAnyCumulative = metrics.reduce(
-            (a, b) => a || b.cumulative,
-            false,
-        );
+        const metricSetup = buildSelectedTieringMetrics();
+        if (!metricSetup) return;
+        const metrics = metricSetup.metrics;
+        let isAnyCumulative = metricSetup.isAnyCumulative;
         if (_allowedAllianceIds.size == 0) {
-            _allowedAllianceIds = new Set(
-                data.coalitions[0].alliance_ids.concat(
-                    data.coalitions[1].alliance_ids,
-                ),
+            _allowedAllianceIds = resolveInitialAllowedAllianceIds(
+                _rawData,
+                requestedAllianceIdsFromQuery,
             );
         }
-        let alliance_ids = data.coalitions.map((coalition) =>
+        let alliance_ids = _rawData.coalitions.map((coalition) =>
             coalition.alliance_ids.filter((id) => _allowedAllianceIds.has(id)),
         );
 
-        const cacheKey = getDataSetCacheKey(metrics, alliance_ids);
+        const cacheKey = getDataSetCacheKey(_rawData, metrics, alliance_ids);
         const renderKey = `${cacheKey}|metricLabels:${selected_metrics
             .map((m) => m.label)
             .join("|")}`;
-        if (renderKey === lastTieringRenderKey && chartInstanceRef) {
+        if (renderKey === lastTieringRenderKey && tieringChartModel) {
             incrementPerfCounter("graph.tiering.renderSkipped", 1, {
                 reason: "unchanged-render-key",
             });
             return;
         }
-        let response = dataSetByConfigCache.get(cacheKey);
-        if (!response) {
-            const computed = await computeDataSetsByTime(
-                _rawData,
+        const artifacts = tieringArtifacts;
+        const finishComputeSpan = startPerfSpan(
+            "journey.conflict_to_tiering.graphCompute",
+            { workerAvailable: !!artifacts?.hasWorker() },
+        );
+        const response = await (artifacts
+            ? artifacts.getDataset({
+                cacheKey,
                 metrics,
-                alliance_ids,
+                allianceIds: alliance_ids,
+                useSingleColor,
                 cityBandSize,
-            );
-            if (runId !== latestSetupRunId) return;
-            if (!computed) return;
-            response = computed;
-            dataSetByConfigCache.set(cacheKey, response);
-        }
+                graphData: fallbackGraphData ?? undefined,
+                contextKey: `tiering:${conflictId ?? "unknown"}`,
+                requestId: runId,
+            })
+            : fallbackGraphData
+              ? Promise.resolve(
+                getDataSetsByTime(
+                    fallbackGraphData,
+                    metrics,
+                    alliance_ids,
+                    cityBandSize,
+                ),
+            )
+              : Promise.resolve(null)).finally(() => {
+                finishComputeSpan();
+            });
+        if (runId !== latestSetupRunId) return;
         if (!response) return;
 
+        renderTieringDataResponse(response, isAnyCumulative);
+        lastTieringRenderKey = renderKey;
+    }
+
+    function renderTieringDataResponse(
+        response: DataSetResponse,
+        isAnyCumulative: boolean,
+    ): void {
         const finishSpan = startPerfSpan("graph.tiering.setupCharts", {
             datasetCount: response.data.length,
             metricCount: selected_metrics.length,
         });
 
-        turnValues = isAnyCumulative ? response.time : [response.time[0]];
+        tieringTimeRange = response.time;
+        tieringUsesRangeSelection = isAnyCumulative;
         dataSets = response.data;
+        tieringSliderValues = normalizeTieringSliderValues(
+            [],
+            response.time,
+            isAnyCumulative,
+        );
 
-        let trace: {
-            label: string;
-            data: number[];
-            backgroundColor: string;
-            stack: string;
-        }[] = getGraphDataAtTime(
+        const maxIndex = Math.max(0, (dataSets[0]?.data.length ?? 1) - 1);
+        let trace = getGraphDataAtTime(
             dataSets,
-            isAnyCumulative ? [0, response.time[1] - response.time[0]] : [0],
+            tieringSliderValuesToIndices(
+                tieringSliderValues,
+                response.time,
+                maxIndex,
+                isAnyCumulative,
+            ),
         );
 
         let labels = response.city_labels;
@@ -741,111 +1145,67 @@
                 (_, i) => i + minCity,
             );
         }
-        const chartData = {
-            labels: labels,
-            datasets: trace,
-        };
-
-        let title =
+        const title =
             selected_metrics.map((metric) => metric.label).join(" / ") +
             " by City";
-        const chartConfig: ChartConfiguration = {
-            type: "bar",
-            data: chartData,
-            options: {
-                maintainAspectRatio: false,
-                animation: {
-                    duration: 0,
-                },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: title,
-                    },
-                },
-                responsive: true,
-                interaction: {
-                    intersect: false,
-                },
-                scales: {
-                    x: {
-                        stacked: true,
-                    },
-                    y: {
-                        stacked: true,
-                    },
-                },
+        updateTieringChartModel(
+            {
+                labels,
+                datasets: trace,
+                title,
             },
-        };
-        const chartElem = document.getElementById(
-            "myChart",
-        ) as HTMLCanvasElement;
-        if (chartInstanceRef) {
-            chartInstanceRef.data.labels = labels;
-            chartInstanceRef.data.datasets = trace as any;
-            if (chartInstanceRef.options?.plugins?.title) {
-                chartInstanceRef.options.plugins.title.text = title;
-            }
-            chartInstanceRef.update("none");
-        } else {
-            chartInstanceRef = new Chart(chartElem, chartConfig);
-        }
-
-        let format = response.is_turn ? formatTurnsToDate : formatDaysToDate;
-        let density = response.is_turn ? 60 : 5;
-        let sliderConfig: Options = {
-            start: turnValues,
-            connect: true,
-            step: 1,
-            tooltips: isAnyCumulative
-                ? [
-                      { to: (value) => format(value) },
-                      { to: (value) => format(value) },
-                  ]
-                : [{ to: (value) => format(value) }],
-            range: {
-                min: response.time[0],
-                max: response.time[1],
+            {
+                measurePerf: true,
+                reason: "setup",
             },
-            pips: {
-                mode: "steps" as any,
-                density: density,
-                format: {
-                    to: (value) => format(value),
-                },
-                filter: (value, _type) => {
-                    return value % density ? 0 : 2;
-                },
-            },
-        };
-        let sliderOrNull: API = getSliderApi();
-        if (sliderOrNull) {
-            sliderOrNull.destroy();
-        }
-        noUiSlider.create(sliderElement, sliderConfig);
+        );
 
-        getSliderApi()?.on("set", (values: string[]) => {
-            let myChart = chartInstanceRef ?? Chart.getChart(chartElem);
-            if (!myChart) return;
-            const sliderApi = getSliderApi();
-            let stepSize = sliderApi.options.step || 1;
-            let minValue = Number(sliderApi.options.range.min);
-            let indices = values.map((value) =>
-                Math.round((Number(value) - minValue) / stepSize),
-            );
-            let trace = getGraphDataAtTime(dataSets, indices);
-            myChart.data.datasets.forEach((dataset, i) => {
-                dataset.data = trace[i].data;
-            });
-            myChart.update();
-        });
-
+        formatTieringTimeValue = response.is_turn
+            ? formatTurnsToDate
+            : formatDaysToDate;
         finishSpan();
         if (!hasCompletedFirstTieringMount) {
             hasCompletedFirstTieringMount = true;
             endJourneySpan("journey.conflict_to_tiering.firstMount");
         }
-        lastTieringRenderKey = renderKey;
+    }
+
+    $: tieringCurrentSliderValues = normalizeTieringSliderValues(
+        tieringSliderValues,
+        tieringTimeRange,
+        tieringUsesRangeSelection,
+    );
+    $: tieringCurrentSelectionLabel = buildTieringSelectionLabel(
+        tieringCurrentSliderValues,
+        tieringTimeRange,
+        tieringUsesRangeSelection,
+        Math.max(0, (dataSets[0]?.data.length ?? 1) - 1),
+        formatTieringTimeValue,
+    );
+
+    function handleTieringCanvasPointerMove(event: PointerEvent): void {
+        const target = event.currentTarget as HTMLCanvasElement | null;
+        if (!target) {
+            tieringHoverBar = null;
+            tieringTooltipAnchor = null;
+            return;
+        }
+
+        const rect = target.getBoundingClientRect();
+        const nextHoverBar = findTieringCanvasHoverBar(
+            tieringCanvasRenderResult,
+            event.clientX - rect.left,
+            event.clientY - rect.top,
+        );
+        tieringHoverBar = nextHoverBar;
+        tieringTooltipAnchor = nextHoverBar
+            ? resolveTieringTooltipAnchor(rect, event.clientX, event.clientY)
+            : null;
+    }
+
+    function handleTieringCanvasPointerLeave(): void {
+        tieringHoverBar = null;
+        tieringTooltipAnchor = null;
     }
 
     interface DataSet {
@@ -863,158 +1223,25 @@
         is_turn: boolean;
     }
 
-    type TieringWorkerParams = {
-        metrics: TierMetric[];
-        alliance_ids: number[][];
-        useSingleColor: boolean;
-        cityBandSize: number;
-    };
-
-    type TieringWorkerRequest = WorkerDatasetComputeRequest<TieringWorkerParams>;
-
-    async function initializeTieringWorkerDataset(
-        datasetKey: string,
-        data: GraphData,
-    ): Promise<void> {
-        const worker = tieringWorker;
-        if (!worker) return;
-        await requestWorkerRpc<
-            WorkerDatasetInitRequest<GraphData>,
-            WorkerDatasetInitResult
-        >(
-            worker,
-            {
-                action: "init",
-                datasetKey,
-                data,
-            },
-            {
-                timeoutMs: 30_000,
-                operation: "tiering dataset init",
-            },
-        );
-    }
-
-    function computeDataSetsByTime(
-        data: GraphData,
-        metrics: TierMetric[],
-        alliance_ids: number[][],
-        cityBandSize: number,
-    ): Promise<DataSetResponse | null> {
-        const finishComputeSpan = startPerfSpan(
-            "journey.conflict_to_tiering.workerCompute",
-            { mode: tieringWorker ? "worker" : "main" },
-        );
-        const worker = tieringWorker;
-        if (!worker) {
-            return Promise.resolve(
-                getDataSetsByTime(
-                    data,
-                    metrics,
-                    alliance_ids,
-                    cityBandSize,
-                ),
-            ).finally(() => {
-                finishComputeSpan();
-            });
-        }
-
-        if (!tieringWorkerDatasetKey) {
-            return Promise.resolve(
-                getDataSetsByTime(
-                    data,
-                    metrics,
-                    alliance_ids,
-                    cityBandSize,
-                ),
-            );
-        }
-
-        const roundTripStart =
-            typeof performance !== "undefined"
-                ? performance.now()
-                : Date.now();
-
-        const ready =
-            tieringWorkerDatasetReady ??
-            initializeTieringWorkerDataset(tieringWorkerDatasetKey, data);
-        tieringWorkerDatasetReady = ready;
-
-        return ready
-            .then(() =>
-                requestWorkerRpc<
-                    TieringWorkerRequest,
-                    WorkerDatasetComputeResult<DataSetResponse | null>
-                >(
-                    worker,
-                    {
-                        action: "compute",
-                        datasetKey: tieringWorkerDatasetKey as string,
-                        params: {
-                            metrics,
-                            alliance_ids,
-                            useSingleColor,
-                            cityBandSize,
-                        },
-                    },
-                    {
-                        timeoutMs: 30_000,
-                        operation: "tiering dataset compute",
-                    },
-                ),
-            )
-            .then((workerResult) => {
-                const roundTripEnd =
-                    typeof performance !== "undefined"
-                        ? performance.now()
-                        : Date.now();
-                const roundTripMs = Math.max(0, roundTripEnd - roundTripStart);
-                const workerMs = workerResult.timings.totalMs;
-                const cloneMs = Math.max(0, roundTripMs - workerMs);
-                incrementPerfCounter(
-                    "worker.tiering.receive.ms",
-                    workerResult.timings.receiveMs,
-                );
-                incrementPerfCounter(
-                    "worker.tiering.compute.ms",
-                    workerResult.timings.computeMs,
-                );
-                incrementPerfCounter(
-                    "worker.tiering.respond.ms",
-                    workerResult.timings.respondMs,
-                );
-                incrementPerfCounter("worker.tiering.total.ms", workerMs);
-                incrementPerfCounter("worker.tiering.clone.ms", cloneMs);
-                return workerResult.value;
-            })
-            .catch((error) => {
-                console.warn(
-                    "Tiering worker compute failed, falling back to main thread",
-                    error,
-                );
-                return getDataSetsByTime(data, metrics, alliance_ids, cityBandSize);
-            })
-            .finally(() => {
-                finishComputeSpan();
-            });
-    }
-
     function getDataSetCacheKey(
+        data: { coalitions: Array<{ alliance_ids: number[] }> },
         metrics: TierMetric[],
         alliance_ids: number[][],
     ): string {
-        const metricKey = metrics
-            .map(
-                (m) =>
-                    `${m.name}:${m.normalize ? 1 : 0}:${m.cumulative ? 1 : 0}`,
-            )
-            .join("|");
-        const allianceKey = alliance_ids.map((ids) => ids.join(".")).join("|");
-        return `${conflictId ?? "-"}|${metricKey}|${allianceKey}|${useSingleColor ? 1 : 0}|band:${cityBandSize > 1 ? cityBandSize : 0}`;
+        return buildTieringDatasetCacheKey({
+            conflictId: conflictId ?? "-",
+            graphVersion: config.version.graph_data,
+            metrics,
+            allianceIds: alliance_ids,
+            defaultAllianceIds: buildDefaultTieringAllianceIds(data),
+            useSingleColor,
+            cityBandSize,
+        });
     }
 
-    // Convert the raw json data from S3 to a Chart.js dataset (for the specific metrics and turn/day range)
-    // Normalization will divide by the number of units per city (see UNITS_PER_CITY)
+    // Convert the raw json data from S3 to tiering datasets (for the specific metrics and turn/day range)
+    // Normalization uses backend capacity series when available and falls back
+    // to the legacy per-city caps for older payloads.
     function getDataSetsByTime(
         data: GraphData,
         metrics: TierMetric[],
@@ -1032,11 +1259,14 @@
 </script>
 
 <svelte:head>
-    <title>Graphs</title>
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.css"
+    <link rel="preconnect" href={config.data_origin} crossorigin="anonymous" />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin="anonymous" />
+    <meta name="lc-data-origin" content={config.data_origin} />
+    <meta
+        name="lc-graph-data-version"
+        content={String(config.version.graph_data)}
     />
+    <title>Graphs</title>
 </svelte:head>
 <div class="container-fluid p-2 ux-page-body">
     <h1 class="m-0 mb-2 p-2 ux-surface ux-page-title">
@@ -1062,7 +1292,7 @@
     <ConflictRouteTabs {conflictId} active="tiering" routeKind="single" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
-        style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"
+        style="min-height: 116px; position: relative; overflow: visible;"
     >
         {#if !_loaded}
             <Progress />
@@ -1078,153 +1308,98 @@
                 >
             </div>
         {/if}
-        <div class="col-12">
-            <div
-                class="p-1 fw-bold border-bottom border-3 pb-0"
-                style="min-height: 71px;"
-            >
+        <div class="col-12 ux-compact-controls p-2 border-bottom border-3">
+            <div class="ux-graph-control-launcher">
                 {#if _rawData}
-                    <div
-                        class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red"
-                    >
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <span class="fw-bold">
-                                {_rawData?.coalitions[0].name} selected: {_rawData.coalitions[0].alliance_ids.filter(
-                                    (id) => _allowedAllianceIds.has(id),
-                                ).length}/{_rawData.coalitions[0].alliance_ids
-                                    .length}
-                            </span>
-                        </div>
-                        <div class="mt-2">
-                            <button
-                                class="btn ux-btn btn-sm fw-bold"
-                                on:click={() => openAllianceModal(0)}
-                            >
-                                Edit alliances
-                            </button>
-                        </div>
-                    </div>
-                    <div
-                        class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--blue"
-                    >
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <span class="fw-bold">
-                                {_rawData?.coalitions[1].name} selected: {_rawData.coalitions[1].alliance_ids.filter(
-                                    (id) => _allowedAllianceIds.has(id),
-                                ).length}/{_rawData.coalitions[1].alliance_ids
-                                    .length}
-                            </span>
-                        </div>
-                        <div class="mt-2">
-                            <button
-                                class="btn ux-btn btn-sm fw-bold"
-                                on:click={() => openAllianceModal(1)}
-                            >
-                                Edit alliances
-                            </button>
-                        </div>
-                    </div>
-                {/if}
-            </div>
-            <div
-                style="width: calc(100% - 30px);margin-left:15px;position: relative; z-index: 1;"
-            >
-                <div class="mt-3 mb-5" bind:this={sliderElement}></div>
-            </div>
-            <div
-                class="select-compact mb-1"
-                style="position: relative; z-index: 3;"
-            >
-                <Select
-                    multiple
-                    {items}
-                    bind:value={selected_metrics}
-                    showChevron={true}
-                >
-                    <div class="empty" slot="empty">
-                        {maxItems ? "Max 4 items" : "No options"}
-                    </div>
-                </Select>
-            </div>
-            <div
-                class="ux-control-strip mb-1"
-                style="position: relative; z-index: 2;"
-            >
-                <ExportDataMenu
-                    datasets={tieringExportDatasets}
-                    bind:selectedDatasetKey={selectedTieringExportDataset}
-                    onExport={handleTieringExport}
-                />
-                <ShareResetBar
-                    onReset={resetFilters}
-                    resetDirty={isResetDirty}
-                />
-                <label for="inlineCheckbox1" class="ux-toggle-chip">
-                    <span>Use Percent</span>
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="inlineCheckbox1"
-                        value="option1"
-                        bind:checked={normalize}
-                        on:change={handlePercentCheck}
+                    <TieringControlsPanel
+                        rawData={_rawData}
+                        {items}
+                        selectedMetrics={selected_metrics}
+                        {normalize}
+                        {useSingleColor}
+                        {cityBandSize}
+                        allowedAllianceIds={Array.from(_allowedAllianceIds)}
+                        timeRange={tieringTimeRange}
+                        usesRangeSelection={tieringUsesRangeSelection}
+                        sliderValues={tieringCurrentSliderValues}
+                        isTurn={formatTieringTimeValue === formatTurnsToDate}
+                        selectedExportDatasetKey={selectedTieringExportDataset}
+                        exportDatasets={tieringExportDatasets}
+                        quickLayouts={tieringQuickLayouts}
+                        {isResetDirty}
+                        onSelectedMetricsCommit={handleTieringMetricsCommit}
+                        onNormalizeCommit={commitNormalizeChange}
+                        onUseSingleColorCommit={commitUseSingleColorChange}
+                        onCityBandSizeCommit={commitCityBandSizeChange}
+                        onAllowedAllianceIdsCommit={commitAllowedAllianceIdsChange}
+                        onSliderValuesCommit={commitTieringSliderValuesChange}
+                        onQuickLayoutCommit={handleTieringQuickLayoutCommit}
+                        onSelectedExportDatasetKeyChange={handleTieringExportDatasetKeyChange}
+                        onExport={handleTieringExport}
+                        onReset={resetFilters}
                     />
-                </label>
-                <label for="inlineCheckbox2" class="ux-toggle-chip">
-                    <span>Single Color</span>
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="inlineCheckbox2"
-                        value="option1"
-                        bind:checked={useSingleColor}
-                        on:change={handleColorCheck}
-                    />
-                </label>
-                <label for="cityBandSelect" class="ux-toggle-chip">
-                    <span>City Bands</span>
-                    <select
-                        id="cityBandSelect"
-                        class="form-select form-select-sm"
-                        bind:value={cityBandSize}
-                        on:change={handleCityBandChange}
-                    >
-                        <option value={0}>Off (per city)</option>
-                        <option value={5}>5-city bands</option>
-                        <option value={10}>10-city bands</option>
-                        <option value={20}>20-city bands</option>
-                    </select>
-                </label>
-                <button
-                    type="button"
-                    class="btn btn-link btn-sm p-0 align-baseline"
-                    title="Metrics with ':' are cumulative sums across time ranges. Without ':', values represent the selected point in time."
-                    aria-label="Metric behavior help"
-                >
-                    <i class="bi bi-info-circle"></i>
-                </button>
-                {#if _rawData}
-                    <div class="ux-quick-layouts">
-                        <span class="fw-bold">Quick Layouts:</span>
-                        {#each Object.entries(_chartLayouts) as [name, _layout]}
-                            <button
-                                on:click={() => setLayout(name)}
-                                class="btn ux-btn btn-sm fw-bold"
-                            >
-                                {name}
-                            </button>
-                        {/each}
-                    </div>
+                {:else}
+                    <div class="ux-graph-controls-loading small ux-muted">Loading chart controls...</div>
                 {/if}
             </div>
         </div>
     </div>
     <div class="container-fluid m-0 p-0 mt-2 ux-surface p-2">
+        {#if tieringChartTitle}
+            <div class="fw-semibold mb-2">{tieringChartTitle}</div>
+        {/if}
+        {#if tieringLegendItems.length > 0}
+            <div class="d-flex flex-wrap gap-2 mb-3 small">
+                {#each tieringLegendItems as item}
+                    <span class="ux-tiering-legend-item">
+                        <span
+                            class="ux-tiering-legend-swatch"
+                            style={`background:${item.color};`}
+                        ></span>
+                        <span>{item.label}</span>
+                    </span>
+                {/each}
+            </div>
+        {/if}
         <div
             class="chart-container"
+            bind:this={tieringCanvasContainer}
             style="position: relative; height:80vh; width:100%;"
         >
-            <canvas id="myChart"></canvas>
+            <canvas
+                id="myChart"
+                bind:this={tieringCanvasElement}
+                class="ux-tiering-chart-canvas"
+                on:pointermove={handleTieringCanvasPointerMove}
+                on:pointerleave={handleTieringCanvasPointerLeave}
+            ></canvas>
+            {#if tieringHoverBar && tieringTooltipAnchor}
+                <div
+                    class="ux-tiering-tooltip"
+                    class:is-flip-x={tieringTooltipAnchor.flipX}
+                    class:is-flip-y={tieringTooltipAnchor.flipY}
+                    style={`left:${tieringTooltipAnchor.x}px;top:${tieringTooltipAnchor.y}px;--tiering-tooltip-accent:${tieringHoverBar.color};`}
+                >
+                    <div class="ux-tiering-tooltip__title">
+                        <span
+                            class="ux-tiering-tooltip__swatch"
+                            style={`background:${tieringHoverBar.color};`}
+                        ></span>
+                        <span>{tieringHoverBar.datasetLabel}</span>
+                    </div>
+                    <div class="ux-tiering-tooltip__subtitle">
+                        City {tieringHoverBar.label} • {tieringCurrentSelectionLabel}
+                    </div>
+                    <div class="ux-tiering-tooltip__row">
+                        <span>Segment</span>
+                        <strong>{formatTieringNumber(tieringHoverBar.segmentValue)}</strong>
+                    </div>
+                    <div class="ux-tiering-tooltip__row">
+                        <span>Total</span>
+                        <strong>{formatTieringNumber(tieringHoverBar.stackTotal)}</strong>
+                    </div>
+                </div>
+            {/if}
         </div>
         <!-- <canvas id="myChart" width="400" height="400"></canvas> -->
     </div>
@@ -1232,15 +1407,117 @@
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
 
-    <SelectionModal
-        open={showAllianceModal}
-        title={`Filter Alliances: ${_rawData?.coalitions[activeAllianceCoalitionIndex]?.name ?? "Coalition"}`}
-        description="Select alliances for the coalition associated with the button you clicked."
-        items={allianceModalItems}
-        selectedIds={allianceModalSelectedIds}
-        searchPlaceholder="Search alliances..."
-        on:close={closeAllianceModal}
-        on:apply={applyAllianceModal}
-        validateSelection={validateAllianceSelection}
-    />
 </div>
+
+<style>
+    .ux-graph-control-launcher {
+        min-height: 3rem;
+    }
+
+    .ux-graph-controls-loading {
+        min-height: 5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .ux-tiering-chart-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+        color: var(--bs-body-color);
+        --tiering-axis-color: rgba(100, 116, 139, 0.9);
+        --tiering-grid-color: rgba(148, 163, 184, 0.22);
+        --tiering-text-color: var(--bs-body-color);
+    }
+
+    .ux-tiering-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.32rem;
+        padding: 0.12rem 0.4rem;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 4px;
+        background: rgba(148, 163, 184, 0.08);
+    }
+
+    .ux-tiering-legend-swatch {
+        display: inline-block;
+        width: 0.8rem;
+        height: 0.8rem;
+        border-radius: 999px;
+        flex: 0 0 auto;
+    }
+
+    .ux-tiering-tooltip {
+        position: absolute;
+        transform: translate(12px, calc(-100% - 12px));
+        max-width: min(16rem, calc(100vw - 1.5rem));
+        padding: 0.42rem 0.52rem;
+        border-radius: 6px;
+        border: 1px solid var(--tiering-tooltip-accent, rgba(148, 163, 184, 0.5));
+        background: rgba(15, 23, 42, 0.96);
+        color: rgb(248, 250, 252);
+        pointer-events: none;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+        z-index: 2;
+    }
+
+    .ux-tiering-tooltip.is-flip-x {
+        transform: translate(calc(-100% - 12px), calc(-100% - 12px));
+    }
+
+    .ux-tiering-tooltip.is-flip-y {
+        transform: translate(12px, 12px);
+    }
+
+    .ux-tiering-tooltip.is-flip-x.is-flip-y {
+        transform: translate(calc(-100% - 12px), 12px);
+    }
+
+    .ux-tiering-tooltip__title {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-weight: 600;
+        font-size: 0.76rem;
+    }
+
+    .ux-tiering-tooltip__swatch {
+        width: 0.72rem;
+        height: 0.72rem;
+        border-radius: 999px;
+        flex: 0 0 auto;
+    }
+
+    .ux-tiering-tooltip__subtitle {
+        color: rgba(226, 232, 240, 0.84);
+        font-size: 0.67rem;
+        margin-top: 0.08rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .ux-tiering-tooltip__row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.7rem;
+        font-size: 0.71rem;
+    }
+
+    .ux-tiering-tooltip__row + .ux-tiering-tooltip__row {
+        margin-top: 0.14rem;
+    }
+
+    :global([data-bs-theme="dark"]) .ux-tiering-chart-canvas {
+        --tiering-axis-color: rgba(203, 213, 225, 0.9);
+        --tiering-grid-color: rgba(148, 163, 184, 0.18);
+    }
+
+    :global([data-bs-theme="dark"]) .ux-tiering-legend-item {
+        border-color: rgba(148, 163, 184, 0.2);
+        background: rgba(30, 41, 59, 0.45);
+    }
+
+</style>

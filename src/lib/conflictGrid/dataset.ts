@@ -19,7 +19,9 @@ import type {
 import type { MetricCard, RankingCard, ScopeSnapshot, WidgetScope } from "../kpi";
 import { buildSelectionSnapshot } from "../kpiSnapshot";
 import { formatAllianceName, formatNationName } from "../formatting";
+import { encodeGridSelectionFilterValue, parseGridSelectionFilterValue } from "../grid/filterValue";
 import { formatMoneyValue, formatNumberValue } from "../numberFormatting";
+import { buildCoalitionAllianceItems } from "../selectionModalHelpers";
 import type { Conflict } from "../types";
 import {
     buildConflictGridColumnSpecs,
@@ -37,6 +39,7 @@ import type {
     ConflictKpiRankingRow,
 } from "./protocol";
 import {
+    ALL_CONFLICT_GRID_LAYOUTS,
     ConflictGridLayout,
     allianceRowId,
     coalitionRowId,
@@ -82,14 +85,24 @@ const ROW_CLASS_BY_COALITION: Record<0 | 1, string> = {
     1: "ux-conflict-row-c2",
 };
 
-const ALL_CONFLICT_LAYOUTS: ConflictGridLayoutValue[] = [
-    ConflictGridLayout.COALITION,
-    ConflictGridLayout.ALLIANCE,
-    ConflictGridLayout.NATION,
-];
+function nowMs(): number {
+    return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function roundElapsedMs(startedAt: number): number {
+    return Math.round((nowMs() - startedAt) * 100) / 100;
+}
 
 function normalizeText(value: string): string {
     return value.trim().toLowerCase();
+}
+
+function normalizeFilterCacheValue(value: string): string {
+    const selectedIds = parseGridSelectionFilterValue(value);
+    if (selectedIds == null) {
+        return normalizeText(value);
+    }
+    return encodeGridSelectionFilterValue(selectedIds);
 }
 
 function numericValue(value: unknown): number {
@@ -162,6 +175,7 @@ export function createConflictGridDataset(options: {
     conflictId: string;
     data: Conflict;
 }) {
+    const datasetCreateStartedAt = nowMs();
     const { data, conflictId, datasetKey } = options;
     const columnSpecs = buildConflictGridColumnSpecs(data);
     const columnSpecByKey = new Map<string, ConflictGridColumnSpec>(
@@ -175,8 +189,26 @@ export function createConflictGridDataset(options: {
             .map((column) => [column.key, column]),
     );
     const namesByAllianceId: Record<number, string> = {};
+    const allianceFilterItems = buildCoalitionAllianceItems(
+        data.coalitions,
+        formatAllianceName,
+    );
+    const allianceSelectionFilterUi = allianceFilterItems.length > 0
+        ? {
+              kind: "selection" as const,
+              title: "Filter Alliances",
+              description:
+                  "Select one or more alliances to include for this column filter.",
+              searchPlaceholder: "Search alliances",
+              selectedCountLabel: "Alliances selected",
+              applyLabel: "Apply filter",
+              items: allianceFilterItems,
+          }
+        : null;
     const filteredRowsCache = new Map<string, ConflictRowMeta[]>();
     const filteredRowIdsCache = new Map<string, GridRowId[]>();
+    const filteredRowSequenceKeyCache = new Map<string, string>();
+    const pageResultCache = new Map<string, GridPageResult>();
     const summaryCache = new Map<string, GridSummaryByColumnKey>();
     const metricVectorCache = new Map<string, Float64Array>();
     const rankingCache = new Map<string, ConflictKpiRankingRow[]>();
@@ -198,6 +230,8 @@ export function createConflictGridDataset(options: {
         return {
             key: column.key,
             title: column.title,
+            toneClass: column.toneClass,
+            widthHint: column.widthHint,
             sortable: column.sortable,
             filterable: column.filterable,
             summary: column.summary ?? null,
@@ -230,6 +264,7 @@ export function createConflictGridDataset(options: {
                 toBootstrapColumn(nameColumn, {
                     title: "Alliance",
                     alwaysVisible: true,
+                    filterUi: allianceSelectionFilterUi,
                 }),
                 ...metricColumns,
             ];
@@ -239,6 +274,7 @@ export function createConflictGridDataset(options: {
             toBootstrapColumn(allianceColumn, {
                 title: "Alliance",
                 alwaysVisible: true,
+                filterUi: allianceSelectionFilterUi,
             }),
             toBootstrapColumn(nameColumn, {
                 title: "Nation",
@@ -278,8 +314,20 @@ export function createConflictGridDataset(options: {
         row: ConflictRowMeta,
         column: ConflictGridMetricColumnSpec,
     ): number {
-        const taken = numericValue(row.damageTaken[column.headerIndex]);
-        const dealt = numericValue(row.damageDealt[column.headerIndex]);
+        return computeMetricValueFromArrays(
+            row.damageTaken,
+            row.damageDealt,
+            column,
+        );
+    }
+
+    function computeMetricValueFromArrays(
+        damageTaken: number[] | null | undefined,
+        damageDealt: number[] | null | undefined,
+        column: ConflictGridMetricColumnSpec,
+    ): number {
+        const taken = numericValue(damageTaken?.[column.headerIndex]);
+        const dealt = numericValue(damageDealt?.[column.headerIndex]);
 
         switch (column.metricKind) {
             case "loss":
@@ -303,7 +351,7 @@ export function createConflictGridDataset(options: {
         const cached = metricVectorCache.get(cacheKey);
         if (cached) return cached;
 
-        const rows = layoutDatasets[layout].rows;
+        const rows = getLayoutDataset(layout).rows;
         const vector = new Float64Array(rows.length);
         rows.forEach((row) => {
             vector[row.index] = computeMetricValue(row, column);
@@ -488,43 +536,120 @@ export function createConflictGridDataset(options: {
         };
     }
 
-    const layoutDatasets: Record<ConflictGridLayoutValue, ConflictLayoutDataset> = {
-        [ConflictGridLayout.COALITION]: buildLayoutDataset(
-            ConflictGridLayout.COALITION,
-            buildCoalitionRows(),
-        ),
-        [ConflictGridLayout.ALLIANCE]: buildLayoutDataset(
-            ConflictGridLayout.ALLIANCE,
-            buildAllianceRows(),
-        ),
-        [ConflictGridLayout.NATION]: buildLayoutDataset(
-            ConflictGridLayout.NATION,
-            buildNationRows(),
-        ),
-    };
+    const layoutDatasetByLayout = new Map<
+        ConflictGridLayoutValue,
+        ConflictLayoutDataset
+    >();
+
+    function buildLayoutDatasetFor(
+        layout: ConflictGridLayoutValue,
+    ): ConflictLayoutDataset {
+        switch (layout) {
+            case ConflictGridLayout.COALITION:
+                return buildLayoutDataset(layout, buildCoalitionRows());
+            case ConflictGridLayout.ALLIANCE:
+                return buildLayoutDataset(layout, buildAllianceRows());
+            case ConflictGridLayout.NATION:
+                return buildLayoutDataset(layout, buildNationRows());
+        }
+
+        throw new Error(`Unsupported conflict layout: ${String(layout)}`);
+    }
+
+    function getLayoutDataset(
+        layout: ConflictGridLayoutValue,
+    ): ConflictLayoutDataset {
+        const cached = layoutDatasetByLayout.get(layout);
+        if (cached) return cached;
+
+        const created = buildLayoutDatasetFor(layout);
+        layoutDatasetByLayout.set(layout, created);
+        return created;
+    }
 
     function normalizeState(
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
     ): GridQueryState {
         return toGridQueryState(
-            normalizeGridControllerState(layoutDatasets[layout].bootstrap, state),
+            normalizeGridControllerState(getLayoutDataset(layout).bootstrap, state),
         );
     }
 
     function buildFilterSortCacheKey(state: GridQueryState): string {
         const filters = Object.entries(state.filters)
             .sort(([left], [right]) => left.localeCompare(right))
-            .map(([key, value]) => `${key}:${normalizeText(value)}`)
+            .map(([key, value]) => `${key}:${normalizeFilterCacheValue(value)}`)
             .join("|");
         const sort = state.sort ? `${state.sort.key}:${state.sort.dir}` : "none";
         return `${sort}::${filters}`;
     }
 
-    function buildSummaryCacheKey(state: GridQueryState): string {
-        const selected = [...state.selectedRowIds].map(String).sort().join("|");
+    function matchesAllianceSelectionFilter(
+        row: ConflictRowMeta,
+        rawTerm: string,
+    ): boolean | null {
+        const selectedAllianceIds = parseGridSelectionFilterValue(rawTerm);
+        if (selectedAllianceIds == null) {
+            return null;
+        }
+        if (selectedAllianceIds.length === 0) {
+            return true;
+        }
+        if (row.allianceId == null) {
+            return false;
+        }
+        return selectedAllianceIds.includes(String(row.allianceId));
+    }
+
+    function serializeRowId(rowId: GridRowId): string {
+        return `${typeof rowId === "number" ? "n" : "s"}:${String(rowId)}`;
+    }
+
+    function buildRowIdSequenceKey(rowIds: GridRowId[]): string {
+        return `${rowIds.length}:${rowIds.map(serializeRowId).join("|")}`;
+    }
+
+    function getFilteredRowSequenceKey(
+        layout: ConflictGridLayoutValue,
+        state: GridQueryState,
+        filteredRows: ConflictRowMeta[],
+    ): string {
+        const filterSortCacheKey = `${layout}::${buildFilterSortCacheKey(state)}`;
+        const cached = filteredRowSequenceKeyCache.get(filterSortCacheKey);
+        if (cached) return cached;
+
+        const rowIds = filteredRowIdsCache.get(filterSortCacheKey) ??
+            filteredRows.map((row) => row.id);
+        const rowSequenceKey = buildRowIdSequenceKey(rowIds);
+        filteredRowSequenceKeyCache.set(filterSortCacheKey, rowSequenceKey);
+        return rowSequenceKey;
+    }
+
+    function buildSummaryCacheKey(
+        filteredRowSequenceKey: string,
+        state: GridQueryState,
+    ): string {
+        const selected = [...state.selectedRowIds]
+            .map(serializeRowId)
+            .sort()
+            .join("|");
         const visible = [...state.visibleColumnKeys].join("|");
-        return `${buildFilterSortCacheKey(state)}::${visible}::${selected}`;
+        return `${filteredRowSequenceKey}::${visible}::${selected}`;
+    }
+
+    function buildPageResultCacheKey(options: {
+        layout: ConflictGridLayoutValue;
+        visibleRows: ConflictRowMeta[];
+        state: GridQueryState;
+        filteredRowCount: number;
+        allFilteredRowsSelected: boolean;
+    }): string {
+        const visibleColumns = options.state.visibleColumnKeys.join("|");
+        const visibleRowSequenceKey = buildRowIdSequenceKey(
+            options.visibleRows.map((row) => row.id),
+        );
+        return `${options.layout}::${options.filteredRowCount}::${options.allFilteredRowsSelected ? 1 : 0}::${visibleColumns}::${visibleRowSequenceKey}`;
     }
 
     function getFilteredSortedRows(
@@ -535,16 +660,31 @@ export function createConflictGridDataset(options: {
         const cacheKey = `${layout}::${buildFilterSortCacheKey(normalized)}`;
         const cached = filteredRowsCache.get(cacheKey);
         if (cached) return cached;
-        const dataset = layoutDatasets[layout];
+        const dataset = getLayoutDataset(layout);
         const filtered = dataset.rows.filter((row) => {
             for (const [columnKey, rawTerm] of Object.entries(normalized.filters)) {
-                const term = normalizeText(rawTerm);
-                if (!term) continue;
                 if (columnKey === "name") {
+                    const selectionMatch =
+                        layout === ConflictGridLayout.ALLIANCE
+                            ? matchesAllianceSelectionFilter(row, rawTerm)
+                            : null;
+                    if (selectionMatch != null) {
+                        if (!selectionMatch) return false;
+                        continue;
+                    }
+                    const term = normalizeText(rawTerm);
+                    if (!term) continue;
                     if (!row.nameFilterText.includes(term)) return false;
                     continue;
                 }
                 if (columnKey === "alliance") {
+                    const selectionMatch = matchesAllianceSelectionFilter(row, rawTerm);
+                    if (selectionMatch != null) {
+                        if (!selectionMatch) return false;
+                        continue;
+                    }
+                    const term = normalizeText(rawTerm);
+                    if (!term) continue;
                     if (!row.allianceFilterText.includes(term)) return false;
                     continue;
                 }
@@ -598,7 +738,7 @@ export function createConflictGridDataset(options: {
         state: GridQueryState,
     ): GridPageRow[] {
         const visibleColumns = getVisibleColumns(
-            layoutDatasets[layout].bootstrap,
+            getLayoutDataset(layout).bootstrap,
             state,
         );
         return rows.map((row) => {
@@ -619,11 +759,14 @@ export function createConflictGridDataset(options: {
         filteredRows: ConflictRowMeta[],
         state: GridQueryState,
     ): GridSummaryByColumnKey {
-        const cacheKey = `${layout}::${buildSummaryCacheKey(state)}`;
+        const cacheKey = `${layout}::${buildSummaryCacheKey(
+            getFilteredRowSequenceKey(layout, state, filteredRows),
+            state,
+        )}`;
         const cached = summaryCache.get(cacheKey);
         if (cached) return cached;
         const visibleColumns = getVisibleColumns(
-            layoutDatasets[layout].bootstrap,
+            getLayoutDataset(layout).bootstrap,
             state,
         );
         const selected = new Set(state.selectedRowIds);
@@ -691,7 +834,7 @@ export function createConflictGridDataset(options: {
             entity === "alliance"
                 ? ConflictGridLayout.ALLIANCE
                 : ConflictGridLayout.NATION;
-        const rows = layoutDatasets[layout].rows;
+        const rows = getLayoutDataset(layout).rows;
 
         if (scope === "all") return rows;
         if (scope === "coalition1") {
@@ -719,8 +862,6 @@ export function createConflictGridDataset(options: {
     }
 
     function buildPresetMetrics(): ConflictGridPresetMetrics {
-        const coalitionRows = layoutDatasets[ConflictGridLayout.COALITION].rows;
-        const nationRows = layoutDatasets[ConflictGridLayout.NATION].rows;
         const dealtColumn = metricColumnByKey.get("dealt:damage") ?? null;
         const lossColumn = metricColumnByKey.get("loss:damage") ?? null;
         const netColumn = metricColumnByKey.get("net:damage") ?? null;
@@ -729,20 +870,40 @@ export function createConflictGridDataset(options: {
 
         const coalitionSummary =
             dealtColumn && lossColumn && netColumn && offWarsColumn && defWarsColumn
-                ? coalitionRows.slice(0, 2).map((row, idx) => ({
-                      idx,
-                      name:
-                          row.nameCell.kind === "text" ||
-                          row.nameCell.kind === "action"
-                              ? row.nameCell.text
-                              : `Coalition ${idx + 1}`,
-                      dealt: getMetricValue(row, dealtColumn),
-                      received: getMetricValue(row, lossColumn),
-                      net: getMetricValue(row, netColumn),
-                      wars:
-                          getMetricValue(row, offWarsColumn) +
-                          getMetricValue(row, defWarsColumn),
-                  }))
+                ? data.coalitions.slice(0, 2).map((coalition, idx) => {
+                      const damage = coalition.damage as unknown as number[][];
+                      const name = coalition.name || `Coalition ${idx + 1}`;
+                      return {
+                          idx,
+                          name,
+                          dealt: computeMetricValueFromArrays(
+                              damage[0] ?? [],
+                              damage[1] ?? [],
+                              dealtColumn,
+                          ),
+                          received: computeMetricValueFromArrays(
+                              damage[0] ?? [],
+                              damage[1] ?? [],
+                              lossColumn,
+                          ),
+                          net: computeMetricValueFromArrays(
+                              damage[0] ?? [],
+                              damage[1] ?? [],
+                              netColumn,
+                          ),
+                          wars:
+                              computeMetricValueFromArrays(
+                                  damage[0] ?? [],
+                                  damage[1] ?? [],
+                                  offWarsColumn,
+                              ) +
+                              computeMetricValueFromArrays(
+                                  damage[0] ?? [],
+                                  damage[1] ?? [],
+                                  defWarsColumn,
+                              ),
+                      };
+                  })
                 : null;
 
         const totalDamage = coalitionSummary
@@ -760,16 +921,31 @@ export function createConflictGridDataset(options: {
               )
             : null;
 
-        const offWarsPerNationStats = offWarsColumn && nationRows.length > 0
+        const offWarsPerNationStats = offWarsColumn
             ? (() => {
-                  const totalOffWars = nationRows.reduce(
-                      (sum, row) => sum + getMetricValue(row, offWarsColumn),
-                      0,
-                  );
+                  let totalOffWars = 0;
+                  let totalNations = 0;
+
+                  data.coalitions.forEach((coalition) => {
+                      const damage = coalition.damage as unknown as number[][];
+                      const offset = 2 + coalition.alliance_ids.length * 2;
+
+                      coalition.nation_ids.forEach((_nationId, nationIndex) => {
+                          totalOffWars += computeMetricValueFromArrays(
+                              damage[nationIndex * 2 + offset] ?? [],
+                              damage[nationIndex * 2 + offset + 1] ?? [],
+                              offWarsColumn,
+                          );
+                          totalNations += 1;
+                      });
+                  });
+
+                  if (totalNations === 0) return null;
+
                   return {
                       totalOffWars,
-                      totalNations: nationRows.length,
-                      perNation: totalOffWars / nationRows.length,
+                      totalNations,
+                      perNation: totalOffWars / totalNations,
                   };
               })()
             : null;
@@ -812,7 +988,8 @@ export function createConflictGridDataset(options: {
     function bootstrap(
         layout: ConflictGridLayoutValue,
     ): ConflictGridBootstrapPayload {
-        const dataset = layoutDatasets[layout];
+        const bootstrapStartedAt = nowMs();
+        const dataset = getLayoutDataset(layout);
         return {
             datasetKey,
             meta,
@@ -822,6 +999,10 @@ export function createConflictGridDataset(options: {
                 rowCount: dataset.bootstrap.rowCount,
             },
             presetMetrics,
+            timings: {
+                datasetCreateMs: creationMs,
+                layoutBootstrapMs: roundElapsedMs(bootstrapStartedAt),
+            },
         };
     }
 
@@ -832,16 +1013,29 @@ export function createConflictGridDataset(options: {
         const normalized = normalizeState(layout, state);
         const filteredRows = getFilteredSortedRows(layout, normalized);
         const visibleRows = sliceRows(filteredRows, normalized);
-        return {
-            totalRowCount: layoutDatasets[layout].rows.length,
+        const allFilteredRowsSelected = areAllFilteredRowsSelected(
+            filteredRows,
+            normalized.selectedRowIds,
+        );
+        const pageResultCacheKey = buildPageResultCacheKey({
+            layout,
+            visibleRows,
+            state: normalized,
             filteredRowCount: filteredRows.length,
-            allFilteredRowsSelected: areAllFilteredRowsSelected(
-                filteredRows,
-                normalized.selectedRowIds,
-            ),
+            allFilteredRowsSelected,
+        });
+        const cached = pageResultCache.get(pageResultCacheKey);
+        if (cached) return cached;
+
+        const result: GridPageResult = {
+            totalRowCount: getLayoutDataset(layout).rows.length,
+            filteredRowCount: filteredRows.length,
+            allFilteredRowsSelected,
             rows: buildPageRows(layout, visibleRows, normalized),
             summaryByColumnKey: {},
         };
+        pageResultCache.set(pageResultCacheKey, result);
+        return result;
     }
 
     function querySummary(
@@ -858,7 +1052,7 @@ export function createConflictGridDataset(options: {
         rowId: GridRowId,
         state: GridQueryState,
     ): GridPageRow | null {
-        const dataset = layoutDatasets[layout];
+        const dataset = getLayoutDataset(layout);
         const row = dataset.rowMetaById.get(rowId);
         if (!row) return null;
         const normalized = normalizeState(layout, state);
@@ -920,7 +1114,7 @@ export function createConflictGridDataset(options: {
     }
 
     function prewarm(
-        layouts: ConflictGridLayoutValue[] = ALL_CONFLICT_LAYOUTS,
+        layouts: ConflictGridLayoutValue[] = ALL_CONFLICT_GRID_LAYOUTS,
         aggressive = false,
     ): ConflictGridPrewarmResult {
         const startedAt = typeof performance !== "undefined"
@@ -928,7 +1122,7 @@ export function createConflictGridDataset(options: {
             : Date.now();
         const warmedLayouts = Array.from(new Set(layouts)).filter(
             (layout): layout is ConflictGridLayoutValue =>
-                ALL_CONFLICT_LAYOUTS.includes(layout),
+                ALL_CONFLICT_GRID_LAYOUTS.includes(layout),
         );
         let metricVectorsWarmed = 0;
 
@@ -943,16 +1137,15 @@ export function createConflictGridDataset(options: {
 
             if (!aggressive) return;
 
+            const dataset = getLayoutDataset(layout);
+
             const warmState = normalizeState(layout, {
                 sort: null,
                 filters: {},
                 pageIndex: 0,
                 pageSize: 10,
-                visibleColumnKeys:
-                    layoutDatasets[layout].bootstrap.defaultVisibleColumnKeys,
-                columnOrderKeys: layoutDatasets[layout].bootstrap.columns.map(
-                    (column) => column.key,
-                ),
+                visibleColumnKeys: dataset.bootstrap.defaultVisibleColumnKeys,
+                columnOrderKeys: dataset.bootstrap.columns.map((column) => column.key),
                 expandedRowIds: [],
                 selectedRowIds: [],
             });
@@ -977,7 +1170,7 @@ export function createConflictGridDataset(options: {
     ): GridExportResult {
         const normalized = normalizeState(layout, state);
         const visibleColumns = getVisibleColumns(
-            layoutDatasets[layout].bootstrap,
+            getLayoutDataset(layout).bootstrap,
             normalized,
         );
         const filteredRows = getFilteredSortedRows(layout, normalized);
@@ -1025,7 +1218,7 @@ export function createConflictGridDataset(options: {
     ): ScopeSnapshot {
         const allianceIds = new Set<number>();
         const nationIds = new Set<number>();
-        const dataset = layoutDatasets[layout];
+        const dataset = getLayoutDataset(layout);
 
         selectedRowIds.forEach((rowId) => {
             const row = dataset.rowMetaById.get(rowId);
@@ -1183,8 +1376,11 @@ export function createConflictGridDataset(options: {
         return value;
     }
 
+    const creationMs = roundElapsedMs(datasetCreateStartedAt);
+
     return {
         datasetKey,
+        creationMs,
         bootstrap,
         prewarm,
         query,

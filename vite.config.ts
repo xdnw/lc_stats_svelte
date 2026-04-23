@@ -1,65 +1,60 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig, loadEnv } from 'vite';
-import babel from '@rollup/plugin-babel';
-// import legacy from '@vitejs/plugin-legacy';
+import { defineConfig } from 'vite';
+import legacy from '@vitejs/plugin-legacy';
+import { visualizer } from 'rollup-plugin-visualizer';
 
-const DEFAULT_PUBLIC_DATA_ORIGIN = 'https://data.locutus.link';
+const SUPPORTED_BROWSER_VERSIONS = {
+    chrome: '103',
+    edge: '111',
+    firefox: '114',
+    safari: '14',
+    ios: '14',
+} as const;
+const SUPPORTED_BROWSER_TARGETS = [
+    `chrome >= ${SUPPORTED_BROWSER_VERSIONS.chrome}`,
+    `edge >= ${SUPPORTED_BROWSER_VERSIONS.edge}`,
+    `firefox >= ${SUPPORTED_BROWSER_VERSIONS.firefox}`,
+    `safari >= ${SUPPORTED_BROWSER_VERSIONS.safari}`,
+    `iOS >= ${SUPPORTED_BROWSER_VERSIONS.ios}`,
+    'not IE 11',
+];
 
-function normalizePublicDataOrigin(value?: string): string {
-    const trimmed = value?.trim();
-    if (!trimmed) {
-        return DEFAULT_PUBLIC_DATA_ORIGIN;
-    }
+export default defineConfig({
+    plugins: [
+        sveltekit(),
 
-    return trimmed.replace(/\/+$/, '');
-}
+        // Keep a single modern bundle, but lower its browser floor and add
+        // usage-detected polyfills for the module-capable browsers we can actually support.
+        legacy({
+            modernTargets: SUPPORTED_BROWSER_TARGETS,
+            modernPolyfills: true,
+            renderLegacyChunks: false,
+        }),
+        visualizer({
+            emitFile: true,
+            filename: 'stats.html',
+            template: 'treemap',
+            gzipSize: true,
+            brotliSize: true,
+        }),
+    ],
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, process.cwd(), '');
+    build: {
+        minify: true,
+        rollupOptions: {
+            output: {
+                manualChunks(id) {
+                    if (id.includes('/node_modules/d3')) {
+                        return 'd3';
+                    }
 
-    // Keep app.html and client code aligned on one build-time public origin.
-    process.env.PUBLIC_DATA_ORIGIN = normalizePublicDataOrigin(
-        env.PUBLIC_DATA_ORIGIN || process.env.PUBLIC_DATA_ORIGIN,
-    );
-
-    return {
-        plugins: [
-            sveltekit(),
-            // legacy({
-            //     targets: ['defaults', 'not IE 11'],
-            //     polyfills: ['es/object/has-own'],
-            //     modernPolyfills: ['es/object/has-own'],
-            // })
-            babel({
-                babelHelpers: 'bundled',
-                // Do not transpile framework/runtime internals (breaks Svelte runes in Kit runtime).
-                include: ['src/**/*', 'workers/**/*'],
-                exclude: ['node_modules/**', '.svelte-kit/**'],
-                presets: [
-                    [
-                        '@babel/preset-env',
-                        {
-                            targets: '> 0.25%, not dead',
-                        },
-                    ],
-                ],
-                extensions: ['.js', '.ts', '.jsx', '.tsx', '.mjs'],
-            })
-        ],
-        optimizeDeps: {
-            esbuildOptions: {
-                target: 'es2016'
-            }
+                    return undefined;
+                },
+            },
         },
-        build: {
-            minify: true,
-            target: 'es2016'
-        },
-        esbuild: {
-            target: 'es2016'
-        },
-        server: {
-            hmr: true
-        },
-    };
+    },
+
+    server: {
+        hmr: true,
+    },
 });

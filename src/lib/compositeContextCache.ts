@@ -81,6 +81,12 @@ export function getOrLoadCompositeContext<T>(
     return promise;
 }
 
+export function hasCompositeContextCacheEntry(
+    key: CompositeContextCacheKey,
+): boolean {
+    return compositeContextByKey.has(key);
+}
+
 export function invalidateCompositeContexts(options?: {
     sourceSignature?: string;
     selectedAllianceId?: number;

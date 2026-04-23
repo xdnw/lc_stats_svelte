@@ -1,22 +1,28 @@
 <script lang="ts">
+    import "../../../styles/conflict-shell.css";
     import { browser } from "$app/environment";
     import { base } from "$app/paths";
     import { page } from "$app/stores";
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import Breadcrumbs from "../../../components/Breadcrumbs.svelte";
     import ColumnPresetManager from "../../../components/ColumnPresetManager.svelte";
     import ConflictRouteTabs from "../../../components/ConflictRouteTabs.svelte";
     import Progress from "../../../components/Progress.svelte";
     import ShareResetBar from "../../../components/ShareResetBar.svelte";
     import { appConfig as config } from "$lib/appConfig";
-    import { decompressBson } from "$lib/binary";
+    import { createCompositeConflictGridSession } from "$lib/compositeConflictGrid/session";
+    import type {
+        CompositeConflictGridClient,
+        CompositeConflictGridSession,
+    } from "$lib/compositeConflictGrid/types";
+    import { createConflictGridProvider } from "$lib/conflictGrid/conflictGridProvider";
     import DataGrid from "$lib/grid/DataGrid.svelte";
     import {
         parseGridPageSizeQueryState,
         serializeGridPageSizeQueryState,
     } from "$lib/grid/queryState";
-    import { formatAllianceName } from "$lib/formatting";
     import { modalWithCloseButton } from "$lib/modals";
+    import { recordPerfSpan } from "$lib/perf";
     import {
         decodeQueryParamValue,
         getCurrentQueryParams,
@@ -29,23 +35,18 @@
         saveCurrentQueryParams,
     } from "$lib/queryStorage";
     import { encodeCompositeSelectionIds } from "$lib/conflictIds";
-    import { getConflictDataUrl } from "$lib/runtime";
     import type { CompositeMergeDiagnostics } from "$lib/compositeMerge";
-    import { loadConflictContext } from "$lib/conflictContext";
     import {
         normalizeConflictLayoutColumns,
         parseConflictLayoutQuery,
         serializeConflictLayoutQuery,
     } from "$lib/conflictLayoutQueryState";
-    import type { ConflictRouteContext } from "$lib/routeBootstrap";
-    import { createConflictGridDataset } from "$lib/conflictGrid/dataset";
-    import { createConflictGridLocalProvider } from "$lib/conflictGrid/localProvider";
     import {
         layoutTabFromIndex,
     } from "$lib/conflictTabs";
     import type { ColumnPreset } from "$lib/columnPresets";
-    import type { Conflict } from "$lib/types";
     import type { GridPageSize, GridQueryState } from "$lib/grid/types";
+    import { yieldToMain } from "$lib/misc";
     import {
         CONFLICT_TABLE_LAYOUT_PRESETS,
         CONFLICT_TABLE_LAYOUT_PRESET_KEYS,
@@ -53,6 +54,7 @@
         DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY,
         createDefaultConflictTableLayoutState,
         detectConflictTableLayoutPresetKey,
+        isConflictTableDefaultPresetState,
         isConflictTableLayoutStateEqual,
     } from "$lib/conflictTablePresets";
 
@@ -85,13 +87,14 @@
     let allianceOptions: Array<{ id: number; name: string }> = [];
     let defaultAllianceId: number | null = null;
 
-    let mergedConflict: Conflict | null = null;
-    let compositeGridDataset: ReturnType<typeof createConflictGridDataset> | null = null;
+    let compositeGridSession: CompositeConflictGridSession | null = null;
+    let compositeGridClient: CompositeConflictGridClient | null = null;
     let compositeGridProvider = null;
     let compositeGridPageSizePreference: GridPageSize | null = null;
     let compositeGridInitialState: Partial<GridQueryState> | null = null;
     let compositeGridResetVersion = 0;
     let mergeDiagnostics: CompositeMergeDiagnostics | null = null;
+    let mergeRequestId = 0;
 
     let layoutState = createDefaultConflictTableLayoutState();
     let selectedLayoutPresetKey: string | null = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
@@ -124,10 +127,10 @@
     }
 
     $: compositeGridProvider =
-        compositeGridDataset == null
+        compositeGridClient == null
             ? null
-            : createConflictGridLocalProvider({
-                  dataset: compositeGridDataset,
+            : createConflictGridProvider({
+                  client: compositeGridClient,
                   layout: layoutState.layout,
                   defaultSort: {
                       key: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
@@ -309,187 +312,6 @@
         syncQueryAndStorage(true);
     }
 
-    function collectAllianceCandidates(
-        conflicts: Array<{ id: string; data: Conflict }>,
-        orderedConflictIds: string[],
-    ): Array<{ id: number; name: string }> {
-        if (conflicts.length === 0) return [];
-
-        const idSets = conflicts.map((entry) => {
-            const ids = [
-                ...entry.data.coalitions[0].alliance_ids,
-                ...entry.data.coalitions[1].alliance_ids,
-            ].map((id) => Number(id));
-            return new Set<number>(ids);
-        });
-
-        const [first, ...rest] = idSets;
-        const commonIds = Array.from(first).filter((id) =>
-            rest.every((set) => set.has(id)),
-        );
-
-        const nameById = new Map<number, string>();
-        for (const entry of conflicts) {
-            for (const coalition of entry.data.coalitions) {
-                for (let i = 0; i < coalition.alliance_ids.length; i += 1) {
-                    const id = Number(coalition.alliance_ids[i]);
-                    if (!Number.isFinite(id)) continue;
-                    if (!nameById.has(id)) {
-                        nameById.set(id, String(coalition.alliance_names[i] ?? `Alliance ${id}`));
-                    }
-                }
-            }
-        }
-
-        const commonIdSet = new Set(commonIds);
-        const conflictById = new Map(conflicts.map((entry) => [entry.id, entry]));
-        const priorityById = new Map<number, number>();
-        let order = 0;
-        for (const conflictId of orderedConflictIds) {
-            const conflict = conflictById.get(conflictId);
-            if (!conflict) continue;
-            for (const coalition of conflict.data.coalitions) {
-                for (const allianceId of coalition.alliance_ids) {
-                    const id = Number(allianceId);
-                    if (!commonIdSet.has(id) || priorityById.has(id)) continue;
-                    priorityById.set(id, order);
-                    order += 1;
-                }
-            }
-        }
-
-        return commonIds
-            .map((id) => ({ id, name: formatAllianceName(nameById.get(id), id) }))
-            .sort((left, right) => {
-                const leftPriority = priorityById.get(left.id) ?? Number.MAX_SAFE_INTEGER;
-                const rightPriority = priorityById.get(right.id) ?? Number.MAX_SAFE_INTEGER;
-                if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-                return left.name.localeCompare(right.name);
-            });
-    }
-
-    function selectDefaultAllianceId(
-        options: Array<{ id: number; name: string }>,
-        conflicts: Array<{ id: string; data: Conflict }>,
-        orderedConflictIds: string[],
-    ): number | null {
-        if (options.length === 0) return null;
-        const optionIds = new Set(options.map((option) => option.id));
-        const conflictById = new Map(conflicts.map((entry) => [entry.id, entry]));
-
-        for (const conflictId of orderedConflictIds) {
-            const conflict = conflictById.get(conflictId);
-            if (!conflict) continue;
-            for (const coalition of conflict.data.coalitions) {
-                for (const allianceId of coalition.alliance_ids) {
-                    const id = Number(allianceId);
-                    if (optionIds.has(id)) {
-                        return id;
-                    }
-                }
-            }
-        }
-
-        return options[0]?.id ?? null;
-    }
-
-    function buildNoCommonAllianceDetails(conflicts: Array<{ id: string; data: Conflict }>): string[] {
-        if (conflicts.length === 0) return [];
-
-        const allianceNameById = new Map<number, string>();
-        const allianceConflictIds = new Map<number, Set<string>>();
-
-        for (const entry of conflicts) {
-            const allianceIds = new Set<number>();
-            for (const coalition of entry.data.coalitions) {
-                for (let i = 0; i < coalition.alliance_ids.length; i += 1) {
-                    const allianceId = Number(coalition.alliance_ids[i]);
-                    if (!Number.isFinite(allianceId)) continue;
-                    allianceIds.add(allianceId);
-                    if (!allianceNameById.has(allianceId)) {
-                        allianceNameById.set(
-                            allianceId,
-                            formatAllianceName(
-                                String(coalition.alliance_names[i] ?? `Alliance ${allianceId}`),
-                                allianceId,
-                            ),
-                        );
-                    }
-                }
-            }
-
-            for (const allianceId of allianceIds) {
-                if (!allianceConflictIds.has(allianceId)) {
-                    allianceConflictIds.set(allianceId, new Set<string>());
-                }
-                allianceConflictIds.get(allianceId)?.add(entry.id);
-            }
-        }
-
-        const details: string[] = [];
-        const conflictLabel = conflicts
-            .map((entry) => `${entry.id} (${entry.data.name || "Unnamed"})`)
-            .join(", ");
-        details.push(`Selected conflicts: ${conflictLabel}`);
-
-        const total = conflicts.length;
-        const nearMatches = Array.from(allianceConflictIds.entries())
-            .map(([allianceId, conflictIds]) => ({
-                allianceId,
-                name: allianceNameById.get(allianceId) ?? `Alliance ${allianceId}`,
-                presentIn: conflictIds,
-                count: conflictIds.size,
-            }))
-            .filter((entry) => entry.count > 1)
-            .sort((left, right) => {
-                if (left.count !== right.count) return right.count - left.count;
-                return left.name.localeCompare(right.name);
-            })
-            .slice(0, 6);
-
-        if (nearMatches.length === 0) {
-            details.push("No alliance appears in more than one loaded conflict.");
-            return details;
-        }
-
-        details.push(`Closest overlaps across ${total} conflicts:`);
-        for (const entry of nearMatches) {
-            const missing = conflicts
-                .map((conflict) => conflict.id)
-                .filter((id) => !entry.presentIn.has(id));
-            details.push(
-                `${entry.name} (${entry.allianceId}) appears in ${entry.count}/${total}; missing from: ${missing.join(", ")}`,
-            );
-        }
-
-        return details;
-    }
-
-    async function loadConflicts(ids: string[], maxConcurrency = 4): Promise<Array<{ id: string; data: Conflict }>> {
-        const loaded: Array<{ id: string; data: Conflict }> = [];
-        failedConflictIds = [];
-        let index = 0;
-
-        const workers = Array.from({ length: Math.min(maxConcurrency, ids.length) }, async () => {
-            while (index < ids.length) {
-                const current = index;
-                index += 1;
-
-                const id = ids[current];
-                const url = getConflictDataUrl(id, config.version.conflict_data);
-                try {
-                    const payload = (await decompressBson(url)) as Conflict;
-                    loaded.push({ id, data: payload });
-                } catch {
-                    failedConflictIds = [...failedConflictIds, id];
-                }
-            }
-        });
-
-        await Promise.all(workers);
-        return loaded;
-    }
-
     function openWarningsModal(): void {
         if (mergeWarnings.length === 0) return;
 
@@ -509,66 +331,114 @@
         modalWithCloseButton(`Composite merge warnings (${mergeWarnings.length})`, wrapper);
     }
 
-    function rebuildMerge(conflicts: Array<{ id: string; data: Conflict }>): void {
-        mergedConflict = null;
-        compositeGridDataset = null;
+    async function prewarmCompositeSecondaryLayouts(
+        client: NonNullable<typeof compositeGridClient>,
+        activeLayout: number,
+        requestId: number,
+    ): Promise<void> {
+        await yieldToMain();
+        if (requestId !== mergeRequestId) return;
+        if (compositeGridClient !== client) return;
+
+        const deferredLayouts = [Layout.COALITION, Layout.ALLIANCE, Layout.NATION].filter(
+            (layout) => layout !== activeLayout,
+        );
+        if (deferredLayouts.length === 0) return;
+
+        try {
+            await client.prewarmLayouts(deferredLayouts);
+        } catch {
+            // Prewarm is opportunistic; route bootstrap already succeeded.
+        }
+    }
+
+    function destroyCompositeClient(): void {
+        compositeGridClient?.destroy();
+        compositeGridClient = null;
+    }
+
+    function destroyCompositeSession(): void {
+        compositeGridSession?.destroy();
+        compositeGridSession = null;
+    }
+
+    async function beginCompositeBootstrap(syncQuery = true): Promise<void> {
+        destroyCompositeClient();
         mergeDiagnostics = null;
         mergeWarnings = [];
+        clearLoadError();
 
-        if (!selectedAllianceId) {
+        const selectedAid = selectedAllianceId;
+        const session = compositeGridSession;
+        if (!selectedAid || !session) {
             setLoadError("Select an alliance to build a composite conflict.");
             return;
         }
 
-        const payloadById = new Map(conflicts.map((entry) => [entry.id, entry.data]));
-        const context: ConflictRouteContext = {
-            mode: "composite",
-            conflictId: null,
-            conflictSignature: data.signature,
-            compositeIds: [...data.conflictIds],
-            selectedAllianceId,
-        };
-
         const requestId = ++mergeRequestId;
-        void loadConflictContext(context, config.version.conflict_data, {
-            loadConflict: async (id) => {
-                const payload = payloadById.get(id);
-                if (!payload) {
-                    throw new Error(`Conflict ${id} is missing from loaded payloads.`);
-                }
-                return payload;
-            },
-        })
-            .then((resolved) => {
-                if (requestId !== mergeRequestId) return;
-                mergedConflict = resolved.conflict;
-                compositeGridDataset = createConflictGridDataset({
-                    datasetKey: `composite:${data.signature}:aid:${selectedAllianceId ?? "none"}`,
+        const client = session.createClient(selectedAid);
+        compositeGridClient = client;
+        resetCompositeGridState();
+
+        try {
+            const payload = await client.bootstrap(layoutState.layout);
+            if (requestId !== mergeRequestId) {
+                client.destroy();
+                return;
+            }
+
+            if (payload.timings.datasetCreateMs > 0) {
+                recordPerfSpan("conflictGrid.dataset.create", payload.timings.datasetCreateMs, {
+                    routeTarget: "/conflicts/view",
+                    source: "worker",
                     conflictId: data.signature,
-                    data: resolved.conflict,
                 });
-                resetCompositeGridState();
-                mergeDiagnostics = resolved.diagnostics;
-                mergeWarnings = [...resolved.warnings, ...resolved.aavaIncompatibilities];
-                clearLoadError();
-            })
-            .catch((error: unknown) => {
-                if (requestId !== mergeRequestId) return;
-                const message = error instanceof Error
-                    ? error.message
-                    : "Failed to build composite conflict.";
-                const details = Array.isArray((error as any)?.details)
-                    ? ((error as any).details as string[])
-                    : [];
-                setLoadError(message, details);
-            });
+            }
+            if (payload.timings.layoutBootstrapMs > 0) {
+                recordPerfSpan(
+                    "conflictGrid.bootstrap.layout",
+                    payload.timings.layoutBootstrapMs,
+                    {
+                        routeTarget: "/conflicts/view",
+                        source: "worker",
+                        conflictId: data.signature,
+                        layout: layoutState.layout,
+                        datasetCreated: payload.timings.datasetCreateMs > 0,
+                    },
+                );
+            }
+
+            mergeDiagnostics = payload.composite.diagnostics;
+            mergeWarnings = [...payload.composite.warnings];
+            resolvedConflictIds = [...payload.composite.resolvedConflictIds];
+            failedConflictIds = [...payload.composite.failedConflictIds];
+            clearLoadError();
+            if (syncQuery) {
+                syncQueryAndStorage(true);
+            }
+            void prewarmCompositeSecondaryLayouts(
+                client,
+                layoutState.layout,
+                requestId,
+            );
+        } catch (error: unknown) {
+            if (requestId !== mergeRequestId) return;
+            destroyCompositeClient();
+            const message = error instanceof Error
+                ? error.message
+                : "Failed to build composite conflict.";
+            const details = Array.isArray((error as { details?: unknown })?.details)
+                ? ((error as { details?: string[] }).details as string[])
+                : [];
+            setLoadError(message, details);
+        }
     }
 
     function handleAllianceChange(): void {
         const value = Number(selectedAllianceIdValue);
         selectedAllianceId = Number.isFinite(value) && value > 0 ? value : null;
         if (selectedAllianceId == null) return;
-        rebuildResolvedMerge(true);
+        void beginCompositeBootstrap(true);
     }
 
     function resetCompositeView(): void {
@@ -579,30 +449,16 @@
         selectedAllianceIdValue = selectedAllianceId == null ? "" : String(selectedAllianceId);
         compositeGridPageSizePreference = null;
         resetCompositeGridState();
-        rebuildResolvedMerge(true);
+        void beginCompositeBootstrap(true);
     }
-
-    let resolvedPayloads: Array<{ id: string; data: Conflict }> = [];
-    let mergeRequestId = 0;
 
     const isResetDirty = () => {
         return (
-            layoutState.layout !== Layout.COALITION ||
-            layoutState.sort !== DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort ||
-            layoutState.order !== "desc" ||
-            layoutState.columns.join(".") !== DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns.join(".") ||
+            !isConflictTableDefaultPresetState(layoutState) ||
             selectedAllianceId !== defaultAllianceId ||
             compositeGridPageSizePreference != null
         );
     };
-
-    function rebuildResolvedMerge(syncQuery = true): void {
-        if (resolvedPayloads.length === 0) return;
-        rebuildMerge(resolvedPayloads);
-        if (!loadError && syncQuery) {
-            syncQueryAndStorage(true);
-        }
-    }
 
     function handleCompositeGridStateChange(
         event: CustomEvent<{ state: GridQueryState }>,
@@ -651,21 +507,33 @@
             decodeQueryParamValue("grid", query.get("grid")),
         );
 
-        void loadConflicts(data.conflictIds)
-            .then((loaded) => {
-                resolvedPayloads = loaded;
-                resolvedConflictIds = loaded.map((entry) => entry.id);
+        const session = createCompositeConflictGridSession({
+            signature: data.signature,
+            conflictIds: data.conflictIds,
+            version: String(config.version.conflict_data),
+        });
+        compositeGridSession = session;
 
-                if (loaded.length < 2) {
-                    setLoadError("At least two conflicts must load successfully to build a composite conflict.");
+        void session
+            .resolve()
+            .then((resolved) => {
+                if (compositeGridSession !== session) return;
+
+                resolvedConflictIds = [...resolved.resolvedConflictIds];
+                failedConflictIds = [...resolved.failedConflictIds];
+
+                if (resolved.resolvedConflictIds.length < 2) {
+                    setLoadError(
+                        "At least two conflicts must load successfully to build a composite conflict.",
+                    );
                     return;
                 }
 
-                allianceOptions = collectAllianceCandidates(loaded, data.conflictIds);
+                allianceOptions = [...resolved.allianceOptions];
                 if (allianceOptions.length === 0) {
                     setLoadError(
                         "No alliance appears across all selected conflicts, so a composite conflict cannot be built.",
-                        buildNoCommonAllianceDetails(loaded),
+                        resolved.noCommonAllianceDetails,
                     );
                     return;
                 }
@@ -674,24 +542,32 @@
                     selectedAllianceId == null ||
                     !allianceOptions.some((option) => option.id === selectedAllianceId)
                 ) {
-                    selectedAllianceId = selectDefaultAllianceId(allianceOptions, loaded, data.conflictIds);
+                    selectedAllianceId = resolved.defaultAllianceId;
                 }
                 selectedAllianceIdValue = selectedAllianceId == null ? "" : String(selectedAllianceId);
                 defaultAllianceId = selectedAllianceId;
 
-                rebuildResolvedMerge(true);
+                void beginCompositeBootstrap(true);
             })
             .catch((error) => {
                 console.error("Failed to initialize composite merge", error);
                 setLoadError("Failed to load selected conflicts for composite merge.");
             })
             .finally(() => {
-                loading = false;
+                if (compositeGridSession === session) {
+                    loading = false;
+                }
             });
+    });
+
+    onDestroy(() => {
+        destroyCompositeClient();
+        destroyCompositeSession();
     });
 </script>
 
 <svelte:head>
+    <link rel="preconnect" href={config.data_origin} crossorigin="anonymous" />
     <title>Composite Conflict View</title>
 </svelte:head>
 
@@ -760,7 +636,7 @@
                     </ul>
                 {/if}
             </div>
-        {:else if mergedConflict}
+        {:else if compositeGridProvider}
             <ConflictRouteTabs
                 conflictId={null}
                 active={layoutTabFromIndex(layoutState.layout)}
@@ -775,16 +651,15 @@
             />
 
             <ul
-                class="layout-picker-bar ux-floating-controls nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
+                class="layout-picker-bar ux-floating-controls nav nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
             >
                 <li class="d-flex align-items-center gap-2 me-1 flex-wrap">
                     <span>Layout Picker:</span>
                     <div class="d-flex flex-wrap gap-1">
                         {#each layoutPresetKeys as key}
                             <button
-                                class="btn btn-sm fw-bold"
-                                class:ux-btn={selectedLayoutPresetKey === key}
-                                class:btn-outline-secondary={selectedLayoutPresetKey !== key}
+                                class="btn btn-sm ux-layout-preset-button"
+                                class:is-active={selectedLayoutPresetKey === key}
                                 on:click={() => applyLayoutPresetKey(key)}>{key}</button
                             >
                         {/each}

@@ -1,10 +1,11 @@
+import type { AppIconName } from "./icons";
 import type { ExportFormat, ExportTarget } from "./dataExport";
 
 export type ExportActionDefinition = {
     label: string;
     format: ExportFormat;
     target: ExportTarget;
-    icon: string;
+    icon: AppIconName;
 };
 
 export type ExportActionCapabilities = {
@@ -16,37 +17,37 @@ export const EXPORT_ACTIONS: ExportActionDefinition[] = [
         label: "Download CSV",
         format: "CSV",
         target: "download",
-        icon: "bi-download",
+        icon: "download",
     },
     {
         label: "Copy CSV",
         format: "CSV",
         target: "clipboard",
-        icon: "bi-clipboard",
+        icon: "clipboard",
     },
     {
         label: "Download TSV",
         format: "TSV",
         target: "download",
-        icon: "bi-download",
+        icon: "download",
     },
     {
         label: "Copy TSV",
         format: "TSV",
         target: "clipboard",
-        icon: "bi-clipboard",
+        icon: "clipboard",
     },
     {
         label: "Download JSON",
         format: "JSON",
         target: "download",
-        icon: "bi-filetype-json",
+        icon: "fileJson",
     },
     {
         label: "Copy JSON",
         format: "JSON",
         target: "clipboard",
-        icon: "bi-clipboard",
+        icon: "clipboard",
     },
 ];
 

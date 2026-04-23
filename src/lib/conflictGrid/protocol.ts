@@ -51,12 +51,18 @@ export type ConflictGridLayoutBootstrap = {
     rowCount: number;
 };
 
+export type ConflictGridBootstrapTimings = {
+    datasetCreateMs: number;
+    layoutBootstrapMs: number;
+};
+
 export type ConflictGridBootstrapPayload = {
     datasetKey: string;
     meta: ConflictGridMeta;
     layout: ConflictGridLayoutValue;
     grid: ConflictGridLayoutBootstrap;
     presetMetrics: ConflictGridPresetMetrics;
+    timings: ConflictGridBootstrapTimings;
 };
 
 export type ConflictGridPrewarmResult = {

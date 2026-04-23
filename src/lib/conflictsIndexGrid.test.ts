@@ -19,7 +19,7 @@ const ROWS: ConflictsIndexRow[] = [
         pinned: [],
         c1Alliances: [],
         c2Alliances: [],
-        wikiUrl: null,
+        wikiUrl: "https://example.invalid/wiki/example-conflict",
         status: "Active",
         cb: "Example CB",
         posts: [],
@@ -57,11 +57,10 @@ function createState(overrides?: Partial<GridQueryState>): GridQueryState {
 }
 
 describe("conflictsIndexGrid provider", () => {
-    it("keeps the conflict name as an action with a real href for middle-click/new-tab", async () => {
+    it("keeps the conflict name as a compact modal action", async () => {
         const provider = createConflictsIndexGridProvider({
             rows: ROWS,
             showPinnedColumn: false,
-            conflictHref: (conflictId) => `/conflict?id=${conflictId}`,
         });
 
         const result = await provider.query(createState());
@@ -72,7 +71,6 @@ describe("conflictsIndexGrid provider", () => {
             actionId: "open-conflict-card",
             args: { conflictId: 42 },
             title: "Open conflict actions for Example Conflict",
-            href: "/conflict?id=42",
         });
         expect(result.rows[0].cells.c1_name).toEqual({
             kind: "action",
@@ -81,14 +79,47 @@ describe("conflictsIndexGrid provider", () => {
             args: { conflictId: 42, coalitionIndex: 0 },
             title: "Show coalition 1 for Example Conflict",
         });
+
+        const wikiResult = await provider.query(
+            createState({
+                visibleColumnKeys: ["wiki"],
+            }),
+        );
+        expect(wikiResult.rows[0].cells.wiki).toEqual({
+            kind: "link",
+            text: "Wiki",
+            href: "https://example.invalid/wiki/example-conflict",
+            external: true,
+        });
+
+        const fieldResult = await provider.query(
+            createState({
+                visibleColumnKeys: ["status", "cb"],
+            }),
+        );
+        expect(fieldResult.rows[0].cells.status).toEqual({
+            kind: "action",
+            text: "Status",
+            actionId: "open-field",
+            args: { conflictId: 42, field: "status" },
+            title: "Active",
+        });
+        expect(fieldResult.rows[0].cells.cb).toEqual({
+            kind: "action",
+            text: "CB",
+            actionId: "open-field",
+            args: { conflictId: 42, field: "cb" },
+            title: "Example CB",
+        });
     });
 
     it("preserves row styling and exports explicit structured rows", async () => {
         const provider = createConflictsIndexGridProvider({
             rows: ROWS,
             showPinnedColumn: false,
-            conflictHref: (conflictId) => `/conflict?id=${conflictId}`,
         });
+
+        const bootstrap = await provider.bootstrap();
 
         const query = createState({
             visibleColumnKeys: ["name", "total", "status"],
@@ -97,6 +128,10 @@ describe("conflictsIndexGrid provider", () => {
         const summary = await provider.querySummary(query);
         const exported = await provider.exportRows(query);
 
+        expect(bootstrap.columns.find((column) => column.key === "status")?.widthHint).toBe("text");
+        expect(bootstrap.columns.find((column) => column.key === "cb")?.widthHint).toBe("text");
+        expect(bootstrap.columns.find((column) => column.key === "wiki")?.widthHint).toBe("text");
+        expect(bootstrap.columns.find((column) => column.key === "pinned")?.widthHint).toBe("text");
         expect(result.rows[0]?.rowClass).toBe("ux-conflicts-row-active");
         expect(summary.total).toEqual({
             sum: 1750000,

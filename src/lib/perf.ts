@@ -38,16 +38,27 @@ function trim<T>(arr: T[], max: number): void {
 export function startPerfSpan(name: string, tags?: PerfTags): () => void {
     const startedAt = nowMs();
     return () => {
-        const endedAt = nowMs();
-        perfState.events.push({
-            name,
-            durationMs: endedAt - startedAt,
-            startedAt,
-            endedAt,
-            tags,
-        });
-        trim(perfState.events, MAX_EVENTS);
+        recordPerfSpan(name, nowMs() - startedAt, tags, startedAt);
     };
+}
+
+export function recordPerfSpan(
+    name: string,
+    durationMs: number,
+    tags?: PerfTags,
+    startedAtOverride?: number,
+): void {
+    const endedAt = nowMs();
+    const safeDurationMs = Math.max(0, durationMs);
+    const startedAt = startedAtOverride ?? (endedAt - safeDurationMs);
+    perfState.events.push({
+        name,
+        durationMs: safeDurationMs,
+        startedAt,
+        endedAt,
+        tags,
+    });
+    trim(perfState.events, MAX_EVENTS);
 }
 
 export function incrementPerfCounter(
@@ -83,6 +94,14 @@ export function beginJourneySpan(
     if (existing) {
         existing();
     }
+    activeJourneySpans.set(name, startPerfSpan(name, tags as any));
+}
+
+export function ensureJourneySpan(
+    name: string,
+    tags?: Record<string, unknown>,
+): void {
+    if (activeJourneySpans.has(name)) return;
     activeJourneySpans.set(name, startPerfSpan(name, tags as any));
 }
 

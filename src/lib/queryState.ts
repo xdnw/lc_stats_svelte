@@ -2,6 +2,47 @@ import { pushState, replaceState } from "$app/navigation";
 import LZString from "lz-string";
 import { saveCurrentQueryParams } from "./queryStorage";
 
+function isRouterNotInitializedError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes("before router is initialized");
+}
+
+function safePushState(url: string, pageState: App.PageState): void {
+    try {
+        pushState(url, pageState);
+    } catch (error) {
+        if (isRouterNotInitializedError(error)) {
+            setTimeout(() => {
+                try {
+                    pushState(url, pageState);
+                } catch {
+                    // Drop early-route updates instead of mutating history directly.
+                }
+            }, 0);
+            return;
+        }
+        throw error;
+    }
+}
+
+function safeReplaceState(url: string, pageState: App.PageState): void {
+    try {
+        replaceState(url, pageState);
+    } catch (error) {
+        if (isRouterNotInitializedError(error)) {
+            setTimeout(() => {
+                try {
+                    replaceState(url, pageState);
+                } catch {
+                    // Drop early-route updates instead of mutating history directly.
+                }
+            }, 0);
+            return;
+        }
+        throw error;
+    }
+}
+
 export type QueryParamValue = string | number | boolean | null | undefined;
 
 type QueryParamCodec = {
@@ -83,9 +124,9 @@ function commitQueryUrl(url: URL, replace = false): void {
             : {};
 
     if (replace) {
-        replaceState(newUrl, pageState);
+        safeReplaceState(newUrl, pageState);
     } else {
-        pushState(newUrl, pageState);
+        safePushState(newUrl, pageState);
     }
 }
 
@@ -173,7 +214,7 @@ export function resetQueryParams(
         window.history.state && typeof window.history.state === "object"
             ? (window.history.state as App.PageState)
             : {};
-    replaceState(url.toString(), pageState);
+    safeReplaceState(url.toString(), pageState);
     saveCurrentQueryParams();
 
     for (const required of requiredKeys) {

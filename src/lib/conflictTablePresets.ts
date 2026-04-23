@@ -159,3 +159,13 @@ export function detectConflictTableLayoutPresetKey(
         }) ?? null
     );
 }
+
+export function isConflictTableDefaultPresetState(
+    state: Pick<ConflictTableLayoutState, "layout" | "sort" | "order" | "columns">,
+): boolean {
+    return isConflictTableLayoutStateEqual(state, {
+        sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
+        order: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.order ?? "desc",
+        columns: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns,
+    });
+}

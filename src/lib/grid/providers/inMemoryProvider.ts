@@ -155,6 +155,8 @@ export function createInMemoryGridProvider<Row>(
     const filterCache = new Map<GridRowId, Map<string, string>>();
     const filteredRowsCache = new Map<string, InMemoryRowMeta<Row>[]>();
     const filteredRowIdsCache = new Map<string, GridRowId[]>();
+    const filteredRowSequenceKeyCache = new Map<string, string>();
+    const pageResultCache = new Map<string, GridPageResult>();
     const summaryCache = new Map<string, GridPageResult["summaryByColumnKey"]>();
 
     const bootstrap: GridBootstrapResult = {
@@ -162,6 +164,7 @@ export function createInMemoryGridProvider<Row>(
             key: column.key,
             title: column.title,
             toneClass: column.toneClass,
+            widthHint: column.widthHint,
             sortable: column.sortable,
             filterable: column.filterable,
             summary: column.summary ?? null,
@@ -187,10 +190,52 @@ export function createInMemoryGridProvider<Row>(
         return `${sort}::${filters}`;
     }
 
-    function buildSummaryCacheKey(state: GridQueryState): string {
-        const selected = [...state.selectedRowIds].map(String).sort().join("|");
+    function serializeRowId(rowId: GridRowId): string {
+        return `${typeof rowId === "number" ? "n" : "s"}:${String(rowId)}`;
+    }
+
+    function buildRowIdSequenceKey(rowIds: GridRowId[]): string {
+        return `${rowIds.length}:${rowIds.map(serializeRowId).join("|")}`;
+    }
+
+    function getFilteredRowSequenceKey(
+        state: GridQueryState,
+        filteredRows: InMemoryRowMeta<Row>[],
+    ): string {
+        const filterSortCacheKey = buildFilterSortCacheKey(state);
+        const cached = filteredRowSequenceKeyCache.get(filterSortCacheKey);
+        if (cached) return cached;
+
+        const rowIds = filteredRowIdsCache.get(filterSortCacheKey) ??
+            filteredRows.map((row) => row.id);
+        const rowSequenceKey = buildRowIdSequenceKey(rowIds);
+        filteredRowSequenceKeyCache.set(filterSortCacheKey, rowSequenceKey);
+        return rowSequenceKey;
+    }
+
+    function buildSummaryCacheKey(
+        filteredRowSequenceKey: string,
+        state: GridQueryState,
+    ): string {
+        const selected = [...state.selectedRowIds]
+            .map(serializeRowId)
+            .sort()
+            .join("|");
         const visible = [...state.visibleColumnKeys].join("|");
-        return `${buildFilterSortCacheKey(state)}::${visible}::${selected}`;
+        return `${filteredRowSequenceKey}::${visible}::${selected}`;
+    }
+
+    function buildPageResultCacheKey(options: {
+        visibleRows: InMemoryRowMeta<Row>[];
+        state: GridQueryState;
+        filteredRowCount: number;
+        allFilteredRowsSelected: boolean;
+    }): string {
+        const visibleColumns = options.state.visibleColumnKeys.join("|");
+        const visibleRowSequenceKey = buildRowIdSequenceKey(
+            options.visibleRows.map((row) => row.id),
+        );
+        return `${options.filteredRowCount}::${options.allFilteredRowsSelected ? 1 : 0}::${visibleColumns}::${visibleRowSequenceKey}`;
     }
 
     function getCell(row: InMemoryRowMeta<Row>, columnKey: string): GridCellView {
@@ -318,7 +363,10 @@ export function createInMemoryGridProvider<Row>(
         filteredRows: InMemoryRowMeta<Row>[],
         state: GridQueryState,
     ): GridSummaryByColumnKey {
-        const cacheKey = buildSummaryCacheKey(state);
+        const cacheKey = buildSummaryCacheKey(
+            getFilteredRowSequenceKey(state, filteredRows),
+            state,
+        );
         const cached = summaryCache.get(cacheKey);
         if (cached) return cached;
 
@@ -382,17 +430,29 @@ export function createInMemoryGridProvider<Row>(
             );
             const filteredRows = getFilteredSortedRows(normalized);
             const visibleRows = sliceRows(filteredRows, normalized);
+            const allFilteredRowsSelected = areAllFilteredRowsSelected(
+                filteredRows,
+                normalized.selectedRowIds,
+            );
+            const pageResultCacheKey = buildPageResultCacheKey({
+                visibleRows,
+                state: normalized,
+                filteredRowCount: filteredRows.length,
+                allFilteredRowsSelected,
+            });
+            const cached = pageResultCache.get(pageResultCacheKey);
+            if (cached) return cached;
 
-            return {
+            const result: GridPageResult = {
                 totalRowCount: rowMetas.length,
                 filteredRowCount: filteredRows.length,
-                allFilteredRowsSelected: areAllFilteredRowsSelected(
-                    filteredRows,
-                    normalized.selectedRowIds,
-                ),
+                allFilteredRowsSelected,
                 rows: buildPageRows(visibleRows, normalized),
                 summaryByColumnKey: {},
             };
+            pageResultCache.set(pageResultCacheKey, result);
+
+            return result;
         },
 
         async querySummary(state) {

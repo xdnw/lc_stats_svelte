@@ -1,8 +1,9 @@
 <script lang="ts">
     import { createEventDispatcher, tick } from "svelte";
-    import ModalShell from "../../components/ModalShell.svelte";
     import type { GridColumnDefinition } from "./types";
     import { getGridInitialViewport, getGridVirtualWindow } from "./virtualization";
+
+    type ModalShellComponent = typeof import("../../components/ModalShell.svelte").default;
 
     const GRID_COLUMN_MIN_ROWS = 48;
     const GRID_COLUMN_ROW_HEIGHT = 26;
@@ -38,6 +39,9 @@
     let listSyncFrame = 0;
     let listSignature = "";
     let lastListSignature = "";
+    let lastOpen = false;
+    let modalShellComponent: ModalShellComponent | null = null;
+    let modalShellLoadPromise: Promise<void> | null = null;
 
     $: orderIndexByKey = new Map(
         columnOrderKeys.map((key, index) => [key, index]),
@@ -72,19 +76,42 @@
         listViewportStart = 0;
         listViewportEnd = 0;
     }
-
-    async function openModal(): Promise<void> {
-        open = true;
-        await tick();
-        searchInput?.focus();
-        searchInput?.select();
-    }
-
-    function closeModal(): void {
-        open = false;
+    $: if (open && !lastOpen) {
+        lastOpen = true;
+        void tick().then(() => {
+            searchInput?.focus();
+            searchInput?.select();
+        });
+    } else if (!open && lastOpen) {
+        lastOpen = false;
         searchValue = "";
         dragKey = null;
         dragOverKey = null;
+    }
+
+    function closeMenu(): void {
+        open = false;
+    }
+
+    async function ensureModalShellLoaded(): Promise<void> {
+        if (modalShellComponent) return;
+        if (!modalShellLoadPromise) {
+            modalShellLoadPromise = import("../../components/ModalShell.svelte")
+                .then((module) => {
+                    modalShellComponent = module.default;
+                })
+                .finally(() => {
+                    modalShellLoadPromise = null;
+                });
+        }
+
+        await modalShellLoadPromise;
+    }
+
+    function openColumnManager(): void {
+        void ensureModalShellLoaded().then(() => {
+            open = true;
+        });
     }
 
     function startDrag(key: string): void {
@@ -170,106 +197,138 @@
     }
 </script>
 
-<button class="btn ux-btn btn-sm fw-bold" type="button" on:click={openModal}>
+<button
+    type="button"
+    class="btn ux-btn btn-sm"
+    aria-expanded={open}
+    aria-label={buttonLabel}
+    on:click={openColumnManager}
+>
     {buttonLabel}
 </button>
 
-<ModalShell open={open} title={buttonLabel} size="xl" on:close={closeModal}>
-    <div class="ux-grid-colmgr-toolbar">
-        <div class="small ux-muted">Search columns. Drag table headers or rows here to reorder.</div>
-        <input
-            bind:this={searchInput}
-            class="form-control form-control-sm"
-            type="search"
-            placeholder="Search columns"
-            bind:value={searchValue}
-            aria-label="Search columns"
-        />
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-            <button class="btn ux-btn btn-sm" type="button" on:click={() => dispatch("showAllColumns", undefined)}>
-                Show all
-            </button>
-            <button class="btn ux-btn btn-sm" type="button" on:click={() => dispatch("hideAllColumns", undefined)}>
-                Hide all
-            </button>
-        </div>
-    </div>
-    <div
-        class="ux-grid-colmgr-list"
-        role="list"
-        bind:this={listContainer}
-        on:scroll={requestListViewportSync}
+{#if open && modalShellComponent}
+    <svelte:component
+        this={modalShellComponent}
+        open={open}
+        title={buttonLabel}
+        size="lg"
+        scrollable={false}
+        on:close={closeMenu}
     >
-        {#if filteredColumns.length === 0}
-            <div class="small ux-muted">No columns match your search.</div>
-        {:else}
-            {#if listTopSpacerPx > 0}
+        <div class="ux-grid-colmgr-shell">
+        <div class="ux-grid-colmgr-toolbar">
+            <div class="small ux-muted">Search columns. Drag table headers or rows here to reorder.</div>
+            <input
+                bind:this={searchInput}
+                class="form-control form-control-sm"
+                type="search"
+                placeholder="Search columns"
+                bind:value={searchValue}
+                aria-label="Search columns"
+            />
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button class="btn ux-btn btn-sm" type="button" on:click={() => dispatch("showAllColumns", undefined)}>
+                    Show all
+                </button>
+                <button class="btn ux-btn btn-sm" type="button" on:click={() => dispatch("hideAllColumns", undefined)}>
+                    Hide all
+                </button>
+            </div>
+        </div>
+        <div
+            class="ux-grid-colmgr-list"
+            role="list"
+            bind:this={listContainer}
+            on:scroll={requestListViewportSync}
+        >
+            {#if filteredColumns.length === 0}
+                <div class="small ux-muted ux-grid-colmgr-empty">No columns match your search.</div>
+            {:else}
+                {#if listTopSpacerPx > 0}
+                    <div
+                        class="ux-grid-colmgr-spacer"
+                        aria-hidden="true"
+                        style={`height:${listTopSpacerPx}px;`}
+                    ></div>
+                {/if}
+            {/if}
+            {#each visibleFilteredColumns as column}
+                <div
+                    class="ux-grid-colmgr-row"
+                    role="listitem"
+                    class:ux-grid-colmgr-row-over={dragOverKey === column.key}
+                    draggable="true"
+                    on:dragstart={() => startDrag(column.key)}
+                    on:dragend={() => {
+                        dragKey = null;
+                        dragOverKey = null;
+                    }}
+                    on:dragover|preventDefault={() => {
+                        dragOverKey = column.key;
+                    }}
+                    on:drop|preventDefault={() => completeDrop(column.key)}
+                >
+                    <label class="ux-grid-colmgr-toggle">
+                        <input
+                            class="ux-grid-colmgr-checkbox"
+                            type="checkbox"
+                            checked={visibleKeySet.has(column.key)}
+                            disabled={column.alwaysVisible}
+                            on:change={() => dispatch("toggleColumn", { key: column.key })}
+                            on:pointerdown|stopPropagation
+                            on:click|stopPropagation
+                        />
+                        <span class="small fw-semibold ux-grid-colmgr-label">{column.title}</span>
+                    </label>
+                </div>
+            {/each}
+            {#if filteredColumns.length > 0 && listBottomSpacerPx > 0}
                 <div
                     class="ux-grid-colmgr-spacer"
                     aria-hidden="true"
-                    style={`height:${listTopSpacerPx}px;`}
+                    style={`height:${listBottomSpacerPx}px;`}
                 ></div>
             {/if}
-        {/if}
-        {#each visibleFilteredColumns as column}
-            <div
-                class="ux-grid-colmgr-row"
-                role="listitem"
-                class:ux-grid-colmgr-row-over={dragOverKey === column.key}
-                draggable="true"
-                on:dragstart={() => startDrag(column.key)}
-                on:dragend={() => {
-                    dragKey = null;
-                    dragOverKey = null;
-                }}
-                on:dragover|preventDefault={() => {
-                    dragOverKey = column.key;
-                }}
-                on:drop|preventDefault={() => completeDrop(column.key)}
-            >
-                <label class="ux-grid-colmgr-toggle">
-                    <input
-                        class="ux-grid-colmgr-checkbox"
-                        type="checkbox"
-                        checked={visibleKeySet.has(column.key)}
-                        disabled={column.alwaysVisible}
-                        on:change={() => dispatch("toggleColumn", { key: column.key })}
-                        on:pointerdown|stopPropagation
-                        on:click|stopPropagation
-                    />
-                    <span class="small fw-semibold ux-grid-colmgr-label">{column.title}</span>
-                </label>
-            </div>
-        {/each}
-        {#if filteredColumns.length > 0 && listBottomSpacerPx > 0}
-            <div
-                class="ux-grid-colmgr-spacer"
-                aria-hidden="true"
-                style={`height:${listBottomSpacerPx}px;`}
-            ></div>
-        {/if}
-    </div>
-
-    <div slot="footer">
-        <button class="btn btn-outline-secondary" type="button" on:click={closeModal}>
-            Close
-        </button>
-    </div>
-</ModalShell>
+        </div>
+        <div class="d-flex justify-content-end pt-2">
+            <button class="btn btn-outline-secondary btn-sm" type="button" on:click={closeMenu}>
+                Close
+            </button>
+        </div>
+        </div>
+    </svelte:component>
+{/if}
 
 <style>
+    .ux-grid-colmgr-shell {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 0.55rem;
+        min-height: min(62vh, 30rem);
+        height: min(72vh, 34rem);
+        max-height: calc(100vh - 7rem);
+        min-width: min(46rem, 100%);
+        max-width: 100%;
+    }
+
     .ux-grid-colmgr-toolbar {
         display: grid;
-        gap: 0.55rem;
+        gap: 0.5rem;
     }
 
     .ux-grid-colmgr-list {
         overflow: auto;
         display: grid;
         gap: 0;
-        max-height: min(65vh, 42rem);
-        padding-right: 0.1rem;
+        min-height: 0;
+        max-height: none;
+        padding-right: 0;
         border-top: 1px solid var(--ux-grid-divider);
+    }
+
+    .ux-grid-colmgr-empty {
+        padding: 0.38rem 0.16rem;
     }
 
     .ux-grid-colmgr-row {
@@ -299,7 +358,7 @@
         gap: 0.55rem;
         width: 100%;
         margin: 0;
-        padding: 0.18rem 0.2rem;
+        padding: 0.26rem 0.24rem;
         cursor: pointer;
         user-select: none;
     }
@@ -310,6 +369,50 @@
         width: 0.95rem;
         height: 0.95rem;
         cursor: pointer;
+        appearance: none;
+        border: 1px solid color-mix(in srgb, var(--ux-border) 88%, var(--ux-text-muted));
+        border-radius: 0.22rem;
+        background: color-mix(in srgb, var(--ux-surface) 96%, transparent);
+        display: inline-grid;
+        place-items: center;
+        transition:
+            background-color 120ms ease,
+            border-color 120ms ease,
+            box-shadow 120ms ease;
+    }
+
+    .ux-grid-colmgr-checkbox::after {
+        content: "";
+        width: 0.46rem;
+        height: 0.26rem;
+        border-inline-start: 0.12rem solid #ffffff;
+        border-block-end: 0.12rem solid #ffffff;
+        transform: rotate(-45deg) scale(0.7);
+        opacity: 0;
+        transition: opacity 120ms ease;
+    }
+
+    .ux-grid-colmgr-checkbox:hover {
+        border-color: color-mix(in srgb, var(--ux-brand) 48%, var(--ux-border));
+    }
+
+    .ux-grid-colmgr-checkbox:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--ux-brand) 22%, transparent);
+    }
+
+    .ux-grid-colmgr-checkbox:checked {
+        border-color: color-mix(in srgb, var(--ux-brand) 70%, var(--ux-border));
+        background: color-mix(in srgb, var(--ux-brand) 82%, #ffffff);
+    }
+
+    .ux-grid-colmgr-checkbox:checked::after {
+        opacity: 1;
+    }
+
+    .ux-grid-colmgr-checkbox:disabled {
+        cursor: not-allowed;
+        opacity: 0.72;
     }
 
     .ux-grid-colmgr-label {
@@ -321,5 +424,13 @@
 
     .ux-grid-colmgr-checkbox:disabled + .ux-grid-colmgr-label {
         opacity: 0.7;
+    }
+
+    @media (max-width: 640px) {
+        .ux-grid-colmgr-shell {
+            min-width: 0;
+            height: min(68vh, calc(100vh - 8rem));
+            min-height: 14rem;
+        }
     }
 </style>

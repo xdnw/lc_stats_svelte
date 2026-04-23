@@ -1,5 +1,7 @@
 <script lang="ts">
     import { resolveExportActions } from "$lib/exportActions";
+    import Icon from "./Icon.svelte";
+    import MenuDropdown from "./MenuDropdown.svelte";
     import type {
         ExportMenuDataset,
         ExportMenuHandler,
@@ -37,21 +39,19 @@
             {/each}
         </select>
     {/if}
-    <div class="dropdown">
-        <button
-            class="btn ux-btn btn-sm fw-bold dropdown-toggle"
-            type="button"
-            data-bs-toggle="dropdown"
-            aria-expanded="false"
-            disabled={!hasDatasets}
-        >
-            {buttonLabel}
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
+    <MenuDropdown
+        label={buttonLabel}
+        buttonClass="btn ux-btn btn-sm"
+        align="end"
+        closeOnContentClick={true}
+        disabled={!hasDatasets}
+        panelClass="ux-export-menu"
+    >
+        <ul class="ux-export-menu-list">
             {#each actions as action}
                 <li>
                     <button
-                        class="dropdown-item fw-bold"
+                        class="ux-export-menu-item"
                         type="button"
                         disabled={!hasDatasets}
                         on:click={() =>
@@ -61,18 +61,58 @@
                                 target: action.target,
                             })}
                     >
-                        <i class={`bi ${action.icon} me-1`}></i>{action.label}
+                        <Icon name={action.icon} className="ux-icon-leading" />
+                        {action.label}
                     </button>
                 </li>
             {/each}
         </ul>
-    </div>
+    </MenuDropdown>
 </div>
 
 <style>
+    :global(.ux-export-menu) {
+        padding: 0.12rem;
+        min-width: 8.8rem;
+        max-width: min(10.5rem, calc(100vw - 0.75rem));
+    }
+
+    .ux-export-menu-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .ux-export-menu-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        gap: 0.28rem;
+        padding: 0.22rem 0.34rem;
+        border: 0;
+        border-radius: var(--ux-radius-sm);
+        background: transparent;
+        color: var(--ux-text);
+        text-align: left;
+        font-size: 0.72rem;
+        font-weight: 500;
+        line-height: 1.15;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .ux-export-menu-item:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--ux-brand) 14%, transparent);
+    }
+
+    .ux-export-menu-item:disabled {
+        opacity: 0.6;
+    }
+
     .ux-export-select {
         width: auto;
         min-width: 0;
-        max-width: 14rem;
+        max-width: 8.1rem;
+        font-size: 0.72rem;
     }
 </style>

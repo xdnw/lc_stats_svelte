@@ -21,9 +21,11 @@
     }
 
     function columnClass(column: GridColumnDefinition): string {
-        const widthClass = column.filterable
-            ? "ux-grid-column-text"
-            : "ux-grid-column-compact";
+        const widthClass = column.widthHint === "wide"
+            ? "ux-grid-column-wide"
+            : column.widthHint === "text"
+              ? "ux-grid-column-text"
+              : "ux-grid-column-fit";
         return `${widthClass} ${column.toneClass ?? ""}`.trim();
     }
 </script>
@@ -43,8 +45,8 @@
                 </label>
             </div>
         </th>
-        {#each columns as column}
-            <th class={`ux-summary-cell ${columnClass(column)}`.trim()}>
+        {#each columns as column, index (column.key)}
+            <th class={`ux-summary-cell ${columnClass(column)}`.trim()} class:ux-grid-last-data-column={index === columns.length - 1}>
                 {#if column.summary === "sum-avg" && summaryByColumnKey[column.key]}
                     <div class="ux-summary-values">
                         <span>&Sigma; {formatSummaryValue(summaryByColumnKey[column.key].sum)}</span>
@@ -53,13 +55,15 @@
                 {/if}
             </th>
         {/each}
+        <th class="ux-grid-filler-column" aria-hidden="true"></th>
     </tr>
 </tfoot>
 
 <style>
     .ux-summary-actions {
-        min-width: 2.5rem;
-        width: 2.5rem;
+        min-width: 3.1rem;
+        width: 3.1rem;
+        max-width: 3.1rem;
     }
 
     .ux-summary-cell {
@@ -74,8 +78,8 @@
         gap: 0.06rem;
         font-size: 0.64rem;
         line-height: 1.08;
-        white-space: normal;
-        overflow-wrap: anywhere;
+        white-space: nowrap;
+        overflow-wrap: normal;
         font-weight: 400;
     }
 
@@ -88,16 +92,23 @@
         white-space: nowrap;
     }
 
-    :global(.ux-grid-shell tfoot th.ux-grid-column-text) {
-        width: 6.4rem;
-        min-width: 6.4rem;
-        max-width: 6.4rem;
+    :global(.ux-grid-shell tfoot th.ux-grid-column-wide) {
+        width: 13rem;
+        min-width: 8rem;
+        max-width: none;
     }
 
-    :global(.ux-grid-shell tfoot th.ux-grid-column-compact) {
-        width: 4.6rem;
-        min-width: 4.6rem;
-        max-width: 4.6rem;
+    :global(.ux-grid-shell tfoot th.ux-grid-column-text) {
+        width: 8.5rem;
+        min-width: 6rem;
+        max-width: none;
+    }
+
+    :global(.ux-grid-shell tfoot th.ux-grid-column-fit) {
+        width: auto;
+        min-width: 0;
+        max-width: none;
+        white-space: nowrap;
     }
 
     :global(.ux-grid-shell tfoot th) {
@@ -105,6 +116,8 @@
         border-top: 1px solid var(--ux-grid-divider);
         border-left: 0;
         border-bottom: 0;
+        background: var(--ux-grid-footer-surface);
+        box-shadow: inset 0 1px 0 var(--ux-grid-divider);
     }
 
     :global(.ux-grid-table-wrap-all .ux-grid-table tfoot th) {
@@ -112,7 +125,6 @@
         bottom: 0;
         z-index: 7;
         background: var(--ux-grid-sticky-surface);
-        box-shadow: inset 0 1px 0 var(--ux-grid-divider);
     }
 
     @media (max-width: 640px) {
@@ -120,16 +132,16 @@
             padding: 0.16rem 0.28rem;
         }
 
-        :global(.ux-grid-shell tfoot th.ux-grid-column-text) {
-            width: 5.2rem;
-            min-width: 5.2rem;
-            max-width: 5.2rem;
+        :global(.ux-grid-shell tfoot th.ux-grid-column-wide) {
+            min-width: 6.6rem;
         }
 
-        :global(.ux-grid-shell tfoot th.ux-grid-column-compact) {
-            width: 4rem;
-            min-width: 4rem;
-            max-width: 4rem;
+        :global(.ux-grid-shell tfoot th.ux-grid-column-text) {
+            min-width: 4.8rem;
+        }
+
+        :global(.ux-grid-shell tfoot th.ux-grid-column-fit) {
+            min-width: 0;
         }
     }
 </style>

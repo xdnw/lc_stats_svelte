@@ -66,18 +66,14 @@ export {
     getConflictDataUrl,
     getConflictGraphDataUrl,
     formatDatasetProvenance,
-    ensureScriptsLoaded,
-    ensureStylesLoaded,
-    prewarmRuntimeGroup,
     rafDelay,
 } from './runtime';
-export type { RuntimePrefetchGroup } from './runtime';
 export {
     UNITS_PER_CITY,
     toggleCoalitionAllianceSelection,
     resolveMetricAccessors,
 } from './graphMetrics';
-export type { MetricAccessors } from './graphMetrics';
+export type { MetricAccessors, MetricNormalization } from './graphMetrics';
 export { decompressBson } from './binary';
 export {
     uuidv4,
@@ -90,7 +86,6 @@ export {
     canPrefetchCrossRoute,
     queuePrefetch,
     queueUrlPrefetch,
-    queueRuntimePrefetch,
     queueArtifactPrefetch,
     promotePrefetchTarget,
     cancelPrefetch,
@@ -105,19 +100,21 @@ export type {
 export {
     warmConflictsIndexPayload,
     warmConflictPayload,
+    warmConflictTableArtifact,
     warmConflictGraphPayload,
+    warmBubbleRouteArtifacts,
     warmBubbleDefaultArtifact,
+    warmMetricTimeRouteArtifacts,
+    warmTieringRouteArtifacts,
     warmTieringDefaultArtifact,
     warmCompositeContextArtifact,
-    warmRuntimeArtifact,
     promoteArtifactTarget,
 } from './prefetchArtifacts';
 export {
-    ensureBubbleDatasetReady,
-    ensureTieringDatasetReady,
-    clearDatasetReadyHandle,
     getBubbleTrace,
+    getMetricTimeSeries,
     getTieringDataset,
+    warmMetricTimeSeries,
     warmBubbleDefaultTrace,
     warmTieringDefaultDataset,
     invalidateGraphDerived,
@@ -126,17 +123,53 @@ export type {
     Trace,
     Range,
     Timeframe,
+    MetricTimeSeriesResult,
     TraceBuildResult,
     TieringDataSet,
     TieringDataSetResponse,
 } from './graphDerivedCache';
 export {
+    acquireBubbleArtifactHandle,
+    acquireTieringArtifactHandle,
+    buildConflictGraphPayloadArtifactKey,
+    buildConflictPayloadArtifactKey,
+    createBubbleDefaultArtifactDescriptor,
+    createConflictGraphPayloadArtifactDescriptor,
+    createConflictGridArtifactDescriptor,
+    createConflictPayloadArtifactDescriptor,
+    createTieringDefaultArtifactDescriptor,
+    hasConflictPayloadArtifact,
+    loadConflictPayload,
+} from './conflictArtifactRegistry';
+export {
+    buildConflictArtifactRegistryKey,
+} from './conflictArtifactKeys';
+export {
+    acquireMetricTimeArtifactHandle,
+} from './metricTimeArtifactRegistry';
+export {
+    hasConflictGraphPayloadArtifact,
+    loadConflictGraphPayload,
+    primeConflictGraphPayloadBytes,
+} from './conflictGraphPayload';
+export type {
+    BubbleArtifactHandle,
+    TieringArtifactHandle,
+    ConflictArtifactDependencyEdge,
+    ConflictArtifactDescriptor,
+} from './conflictArtifactRegistry';
+export type {
+    ConflictArtifactSubject,
+} from './conflictArtifactKeys';
+export type {
+    MetricTimeArtifactHandle,
+} from './metricTimeArtifactRegistry';
+export {
     beginJourneySpan,
     endJourneySpan,
-} from './perf';
-export {
     startPerfSpan,
     incrementPerfCounter,
+    recordPerfSpan,
     getPerfSnapshot,
     clearPerfSnapshot,
 } from './perf';
@@ -204,6 +237,7 @@ export {
     firstSelectedString,
     validateSingleSelection,
     validateAtLeastOneSelection,
+    buildAllianceSelectionItems,
     buildStringSelectionItems,
     buildCoalitionAllianceItems,
     validateAtLeastOnePerCoalition,

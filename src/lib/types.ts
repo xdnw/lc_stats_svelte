@@ -96,16 +96,20 @@ export interface GraphCoalitionData {
     cities: number[],
     turn: {
         range: [number, number],
-        data: number[][][][]
+        data: number[][][][],
+        end_offsets?: number[],
     },
     day: {
         range: [number, number],
         data: number[][][][],
+        end_offsets?: number[],
     }
 }
 
 export interface GraphData {
     name: string,
+    wiki?: string,
+    update_ms?: number,
     start: number,
     end: number,
     turn_start: number,

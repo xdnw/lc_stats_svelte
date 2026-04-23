@@ -237,28 +237,28 @@
   <div class="d-flex flex-wrap justify-content-center">
     {#each _adTemplates as adTemplate (adTemplate.id)}
       {#if adTemplate.id !== "0"}
-        <div class="card m-2" style="width: 18rem;">
+        <div class="card m-2 ux-home-card">
           <img
             src={adTemplate.img}
             style="background:{adTemplate.bg}"
             class="card-img-top img-fluid object-fit-fill"
             alt={adTemplate.subtitle + " card"}
           />
-          <div class="card-body" style="height: 9rem;">
-            <h5 class="card-title">
+          <div class="card-body ux-home-card-body">
+            <h5 class="card-title ux-home-card-title">
               {#if adTemplate.ad}
                 <span class="badge text-bg-light fs-6 me-1">Ad</span>
               {/if}
               {adTemplate.subtitle}
             </h5>
-            <p class="card-text">{adTemplate.desc}</p>
+            <p class="card-text ux-home-card-text">{adTemplate.desc}</p>
           </div>
-          <div class="card-footer">
+          <div class="card-footer ux-home-card-footer">
             <a
               href={adTemplate.invite === "conflicts" && _guildId
                 ? "conflicts?guild=" + _guildId
                 : adTemplate.invite}
-              class="btn btn-lg btn-secondary btn-outline-info border-3"
+              class="btn ux-btn w-100 fw-semibold"
               >{adTemplate.label}</a
             >
           </div>
@@ -269,13 +269,45 @@
 </div>
 
 <style lang="postcss">
+  @import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap");
+
   .card-img-top {
     height: 9rem;
-    width: 18rem;
+    width: 100%;
     object-fit: contain;
     display: block;
     margin-left: auto;
     margin-right: auto;
+  }
+
+  .ux-home-card {
+    width: 18rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ux-home-card-body {
+    display: grid;
+    align-content: start;
+    gap: 0.24rem;
+    min-height: 7.4rem;
+    height: auto;
+  }
+
+  .ux-home-card-title {
+    font-size: 0.96rem;
+    line-height: 1.18;
+  }
+
+  .ux-home-card-text {
+    font-size: 0.7rem;
+    line-height: 1.2;
+    color: var(--ux-text-muted);
+    margin: 0;
+  }
+
+  .ux-home-card-footer {
+    margin-top: auto;
   }
   /* background canvas style */
   canvas {
@@ -299,6 +331,7 @@
 
   .welcome-text {
     font-weight: 700;
+    font-family: "Chakra Petch", var(--ux-font-sans);
     display: block;
     text-align: center;
     text-transform: uppercase;

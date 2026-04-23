@@ -16,11 +16,29 @@
     "files.watcherExclude": {
         "**/node_modules/**": true,
         "**/dist/**": true,
-        "**/.git/**": true
+        "**/.git/**": true,
+        "**/.github/**": true,
+        "**/.docs/**": true,
+        "**/build/**": true,
+        "**/static/**": true,
+        "**/.svelte-kit/**": true,
+        "**/.idea/**": true,
+        "**/.vscode/**": true,
+        "**/.tmp/**": true,
+        "**/target/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/.next/**": true,
+        "**/.turbo/**": true,
+        "**/.cache/**": true,
+        "**/.venv/**": true,
+        "**/venv/**": true
     },
     "search.exclude": {
         "**/node_modules": true,
-        "**/dist": true
+        "**/tmp": true,
+        "**/dist": true,
+        "**/build": true
     },
     "problems.exclude": {
         "**/node_modules/**": true

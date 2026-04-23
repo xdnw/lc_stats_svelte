@@ -9,8 +9,8 @@ import type {
     GridSort,
 } from "../grid/types";
 import { incrementPerfCounter, startPerfSpan } from "../perf";
+import type { ConflictGridProviderClient } from "./providerClient";
 import type { ConflictGridLayoutValue } from "./rowIds";
-import type { ConflictGridWorkerClient } from "./workerClient";
 
 function normalizeViewportValue(value: number): number {
     return Math.max(0, Math.floor(Number.isFinite(value) ? value : 0));
@@ -61,7 +61,7 @@ function buildQueryPerfTags(
 }
 
 export function createConflictGridProvider(options: {
-    client: ConflictGridWorkerClient;
+    client: ConflictGridProviderClient;
     layout: ConflictGridLayoutValue;
     defaultSort?: GridSort | null;
     defaultVisibleColumnKeys?: string[];

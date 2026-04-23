@@ -7,6 +7,7 @@ import {
     isGridRangeWithinWindow,
     resolveGridVirtualMinimumRows,
     resolveGridRowHeightEstimate,
+    resolveGridVirtualWindowChunkCount,
     resolveGridRowWindow,
 } from "./virtualization";
 
@@ -73,6 +74,62 @@ describe("grid virtualization", () => {
                 coarsePointer: true,
             }),
         ).toBe(104);
+    });
+
+    it("renders wider all-mode slabs for compact or coarse viewports", () => {
+        expect(resolveGridVirtualWindowChunkCount({})).toBe(2);
+        expect(
+            resolveGridVirtualWindowChunkCount({ compactViewport: true }),
+        ).toBe(3);
+        expect(
+            resolveGridVirtualWindowChunkCount({ coarsePointer: true }),
+        ).toBe(3);
+
+        const baseOptions = {
+            scrollTop: 22 * 140,
+            containerHeight: 560,
+            rowHeight: 22,
+            totalRows: 500,
+            minimumRows: 104,
+        };
+        const defaultWindow = getGridVirtualWindow(baseOptions);
+        const coarseWindow = getGridVirtualWindow({
+            ...baseOptions,
+            windowChunkCount: resolveGridVirtualWindowChunkCount({
+                coarsePointer: true,
+            }),
+        });
+
+        expect(defaultWindow.end - defaultWindow.start).toBe(208);
+        expect(coarseWindow.end - coarseWindow.start).toBe(312);
+        expect(coarseWindow.start).toBe(defaultWindow.start);
+    });
+
+    it("preserves decimal row heights in visible-range math", () => {
+        expect(
+            getGridVisibleRange({
+                scrollTop: 36000,
+                containerHeight: 560,
+                rowHeight: 19.82,
+                totalRows: 5000,
+            }),
+        ).toEqual({ start: 1816, end: 1845 });
+
+        expect(
+            getGridVirtualWindow({
+                scrollTop: 36000,
+                containerHeight: 560,
+                rowHeight: 19.82,
+                totalRows: 5000,
+                minimumRows: 116,
+                windowChunkCount: 3,
+            }),
+        ).toEqual({
+            start: 1740,
+            end: 2088,
+            paddingTop: 1740 * 19.82,
+            paddingBottom: (5000 - 2088) * 19.82,
+        });
     });
 
     it("builds a buffered window around the visible range", () => {

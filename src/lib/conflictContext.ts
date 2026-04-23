@@ -4,11 +4,15 @@ import { getConflictDataUrl } from "./runtime";
 import type { Conflict } from "./types";
 import type { ConflictRouteContext } from "./routeBootstrap";
 import { deriveAavaCapability } from "./aava";
+import {
+    resolveCompositeContextInWorker,
+} from "./compositeContextWorker";
 import { startPerfSpan } from "./perf";
 import {
     getOrLoadCompositeContext,
     makeCompositeContextCacheKey,
 } from "./compositeContextCache";
+import type { WorkerRpcError } from "./workerRpc";
 
 export type ResolvedConflictContext = {
     mode: "single" | "composite";
@@ -25,6 +29,11 @@ export type ResolvedConflictContext = {
 
 type LoadConflictContextOptions = {
     loadConflict?: (id: string, conflictDataVersion: string | number) => Promise<Conflict>;
+};
+
+type LoadedConflictPayload = {
+    id: string;
+    data: Conflict;
 };
 
 async function loadConflictById(
@@ -58,7 +67,7 @@ function resolveSingleConflictContext(
 
 function resolveCompositeConflictContext(
     context: Extract<ConflictRouteContext, { mode: "composite" }>,
-    loaded: Array<{ id: string; data: Conflict }>,
+    loaded: LoadedConflictPayload[],
 ): ResolvedConflictContext {
     const finishMergeSpan = startPerfSpan("mergeCompositeConflict", {
         conflictCount: loaded.length,
@@ -85,6 +94,35 @@ function resolveCompositeConflictContext(
     };
 }
 
+async function loadCompositePayloads(
+    context: Extract<ConflictRouteContext, { mode: "composite" }>,
+    conflictDataVersion: string | number,
+    loadConflict: (id: string, conflictDataVersion: string | number) => Promise<Conflict>,
+): Promise<LoadedConflictPayload[]> {
+    const finishCompositePayloadSpan = startPerfSpan(
+        "conflictContext.load.compositePayloads",
+        {
+            conflictCount: context.compositeIds.length,
+        },
+    );
+
+    try {
+        return await Promise.all(
+            context.compositeIds.map(async (id) => {
+                const data = await loadConflict(id, conflictDataVersion);
+                return { id, data };
+            }),
+        );
+    } finally {
+        finishCompositePayloadSpan();
+    }
+}
+
+function shouldFallbackCompositeWorker(error: unknown): boolean {
+    const kind = (error as WorkerRpcError | undefined)?.kind;
+    return kind === "worker-unavailable" || kind === "transport" || kind === "runtime";
+}
+
 export async function loadConflictContext(
     context: ConflictRouteContext,
     conflictDataVersion: string | number,
@@ -93,46 +131,63 @@ export async function loadConflictContext(
     const finishContextSpan = startPerfSpan("conflictContext.load", {
         mode: context.mode,
     });
-    const loadConflict = options?.loadConflict ?? loadConflictById;
+    try {
+        const loadConflict = options?.loadConflict ?? loadConflictById;
 
-    if (context.mode === "single") {
-        const finishSingleSpan = startPerfSpan("conflictContext.load.single", {
-            conflictId: context.conflictId,
-        });
-        const conflict = await loadConflict(context.conflictId, conflictDataVersion);
-        finishSingleSpan();
-        const resolved = resolveSingleConflictContext(context, conflict);
+        if (context.mode === "single") {
+            const finishSingleSpan = startPerfSpan("conflictContext.load.single", {
+                conflictId: context.conflictId,
+            });
+            try {
+                const conflict = await loadConflict(context.conflictId, conflictDataVersion);
+                return resolveSingleConflictContext(context, conflict);
+            } finally {
+                finishSingleSpan();
+            }
+        }
+
+        const cacheKey = makeCompositeContextCacheKey(
+            context.conflictSignature,
+            context.selectedAllianceId,
+            conflictDataVersion,
+        );
+
+        return await getOrLoadCompositeContext(
+            cacheKey,
+            context.conflictSignature,
+            context.selectedAllianceId,
+            async () => {
+                if (options?.loadConflict) {
+                    const loaded = await loadCompositePayloads(
+                        context,
+                        conflictDataVersion,
+                        loadConflict,
+                    );
+                    return resolveCompositeConflictContext(context, loaded);
+                }
+
+                try {
+                    return await resolveCompositeContextInWorker({
+                        signature: context.conflictSignature,
+                        conflictIds: context.compositeIds,
+                        conflictDataVersion,
+                        selectedAllianceId: context.selectedAllianceId,
+                    });
+                } catch (error) {
+                    if (!shouldFallbackCompositeWorker(error)) {
+                        throw error;
+                    }
+
+                    const loaded = await loadCompositePayloads(
+                        context,
+                        conflictDataVersion,
+                        loadConflict,
+                    );
+                    return resolveCompositeConflictContext(context, loaded);
+                }
+            },
+        );
+    } finally {
         finishContextSpan();
-        return resolved;
     }
-
-    const cacheKey = makeCompositeContextCacheKey(
-        context.conflictSignature,
-        context.selectedAllianceId,
-        conflictDataVersion,
-    );
-
-    const resolved = await getOrLoadCompositeContext(
-        cacheKey,
-        context.conflictSignature,
-        context.selectedAllianceId,
-        async () => {
-            const finishCompositePayloadSpan = startPerfSpan(
-                "conflictContext.load.compositePayloads",
-                {
-                    conflictCount: context.compositeIds.length,
-                },
-            );
-            const loaded = await Promise.all(
-                context.compositeIds.map(async (id) => {
-                    const data = await loadConflict(id, conflictDataVersion);
-                    return { id, data };
-                }),
-            );
-            finishCompositePayloadSpan();
-            return resolveCompositeConflictContext(context, loaded);
-        },
-    );
-    finishContextSpan();
-    return resolved;
 }

@@ -1,4 +1,5 @@
 import { modalWithCloseButton } from "./modals";
+import { renderAppIconSvg } from "./icons";
 
 export type ConflictCoalitionModalAlliance = {
     id: number;
@@ -45,26 +46,27 @@ export function openConflictCoalitionModal(options: {
 }): void {
     const idsText = options.alliances.map((alliance) => alliance.id).join(",");
     const body = document.createElement("div");
-    body.className = "position-relative";
 
     const idsBlock = document.createElement("div");
     idsBlock.className = "mb-2";
 
     const idsValue = document.createElement("kbd");
-    idsValue.className = "form-control m-0 pe-5";
+    idsValue.className = "form-control m-0";
     idsValue.textContent = idsText;
     idsBlock.appendChild(idsValue);
 
+    body.appendChild(idsBlock);
+
     const copyButton = document.createElement("button");
     copyButton.type = "button";
-    copyButton.className =
-        "btn btn-outline-info btn-sm position-absolute top-0 end-0 m-3";
+    copyButton.className = "btn ux-btn btn-sm ux-runtime-modal-header-action";
     copyButton.setAttribute("aria-label", "Copy alliance ids");
-    copyButton.innerHTML = "<i class='bi bi-clipboard'></i>";
+    copyButton.title = "Copy alliance ids";
+    copyButton.innerHTML = `${renderAppIconSvg("clipboard", {
+        className: "ux-runtime-modal-header-action-icon",
+        size: "0.9rem",
+    })}<span>Copy IDs</span>`;
     copyButton.addEventListener("click", () => copyTextToClipboard(idsText));
-    idsBlock.appendChild(copyButton);
-
-    body.appendChild(idsBlock);
 
     const list = document.createElement("ul");
     list.className = "mb-0";
@@ -81,5 +83,7 @@ export function openConflictCoalitionModal(options: {
     });
     body.appendChild(list);
 
-    modalWithCloseButton(options.titleHtml ?? escapeHtml(options.title), body);
+    modalWithCloseButton(options.titleHtml ?? escapeHtml(options.title), body, {
+        headerActions: copyButton,
+    });
 }

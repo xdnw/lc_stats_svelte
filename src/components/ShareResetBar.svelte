@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { copyShareLink } from "$lib";
+    import { copyShareLink } from "$lib/dataExport";
 
     export let onReset: (() => void) | null = null;
     export let onSharePrepare: (() => void | Promise<void>) | null = null;
@@ -12,16 +12,27 @@
     }
 </script>
 
-<div class="d-flex flex-wrap gap-1 align-items-center justify-content-end">
+<div class="ux-share-reset-bar">
     <slot />
-    <button class="btn ux-btn btn-sm fw-bold" on:click={handleShare}>
-        Copy share link
+    <button class="btn ux-btn btn-sm" type="button" on:click={handleShare}>
+        Copy Link
     </button>
     <button
-        class="btn ux-btn btn-sm fw-bold"
+        class="btn ux-btn btn-sm"
+        type="button"
         class:ux-btn-danger={resetDirty}
         on:click={() => onReset?.()}
     >
         Reset
     </button>
 </div>
+
+<style>
+    .ux-share-reset-bar {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+</style>

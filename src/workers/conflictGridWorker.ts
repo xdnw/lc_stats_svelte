@@ -1,19 +1,19 @@
-import { Unpackr } from "msgpackr";
 import { createConflictGridDataset } from "../lib/conflictGrid/dataset";
+import { createAppUnpackr } from "../lib/msgpack";
 import type {
     ConflictGridWorkerRequest,
     ConflictGridDatasetRef,
 } from "../lib/conflictGrid/protocol";
 import type { Conflict } from "../lib/types";
 
-const unpackr = new Unpackr({
-    largeBigIntToFloat: true,
-    mapsAsObjects: true,
-    bundleStrings: true,
-    int64AsType: "number",
-});
+const unpackr = createAppUnpackr();
 
 type ConflictGridDataset = ReturnType<typeof createConflictGridDataset>;
+
+type EnsuredDataset = {
+    dataset: ConflictGridDataset;
+    createdNow: boolean;
+};
 
 type WorkerSuccess<T> = {
     id: number;
@@ -28,7 +28,7 @@ type WorkerFailure = {
 };
 
 const datasetCache = new Map<string, ConflictGridDataset>();
-const pendingDatasetLoads = new Map<string, Promise<ConflictGridDataset>>();
+const pendingDatasetLoads = new Map<string, Promise<EnsuredDataset>>();
 
 async function fetchConflict(url: string): Promise<Conflict> {
     const response = await fetch(url);
@@ -42,9 +42,14 @@ async function fetchConflict(url: string): Promise<Conflict> {
 
 async function ensureDataset(
     datasetRef: ConflictGridDatasetRef,
-): Promise<ConflictGridDataset> {
+) : Promise<EnsuredDataset> {
     const cached = datasetCache.get(datasetRef.datasetKey);
-    if (cached) return cached;
+    if (cached) {
+        return {
+            dataset: cached,
+            createdNow: false,
+        };
+    }
 
     const pending = pendingDatasetLoads.get(datasetRef.datasetKey);
     if (pending) return pending;
@@ -58,7 +63,10 @@ async function ensureDataset(
             });
             datasetCache.set(datasetRef.datasetKey, dataset);
             pendingDatasetLoads.delete(datasetRef.datasetKey);
-            return dataset;
+            return {
+                dataset,
+                createdNow: true,
+            };
         })
         .catch((error) => {
             pendingDatasetLoads.delete(datasetRef.datasetKey);
@@ -77,11 +85,20 @@ async function handleRequest(request: ConflictGridWorkerRequest): Promise<unknow
         };
     }
 
-    const dataset = await ensureDataset(request.dataset);
+    const ensured = await ensureDataset(request.dataset);
+    const dataset = ensured.dataset;
 
     switch (request.action) {
-        case "bootstrap":
-            return dataset.bootstrap(request.layout);
+        case "bootstrap": {
+            const payload = dataset.bootstrap(request.layout);
+            return {
+                ...payload,
+                timings: {
+                    datasetCreateMs: ensured.createdNow ? dataset.creationMs : 0,
+                    layoutBootstrapMs: payload.timings.layoutBootstrapMs,
+                },
+            };
+        }
         case "tableQuery":
             return dataset.query(request.layout, request.state);
         case "summaryQuery":

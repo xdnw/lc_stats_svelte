@@ -1,5 +1,6 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
+    import ModalShell from "./ModalShell.svelte";
     import type {
         ConflictKPIWidget,
         PresetCardKey,
@@ -149,57 +150,23 @@
     }
 </script>
 
-{#if open}
-    <div
-        class="modal show d-block ux-kpi-builder-modal"
-        tabindex="-1"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        on:click|self={closeModal}
-        on:keydown={(event) => {
-            if (event.key === "Escape") closeModal();
-        }}
-    >
-        <div
-            class="modal-dialog modal-xl modal-dialog-scrollable"
-            role="document"
-        >
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title">{title}</h5>
-                        {#if description}
-                            <div class="small text-muted mt-1">
-                                {description}
-                            </div>
-                        {/if}
-                    </div>
-                    <button
-                        type="button"
-                        class="btn-close"
-                        aria-label="Close"
-                        on:click={closeModal}
-                    ></button>
-                </div>
+<ModalShell {open} {title} size="xl" bodyClass="kpi-builder-modal-body" on:close={closeModal}>
+    {#if description}
+        <div class="ux-modal-intro">{description}</div>
+    {/if}
 
-                <div class="modal-body">
-                    <div class="row g-3">
+    <div class="row g-3 kpi-builder-modal-grid">
                         <div class="col-12 col-lg-6">
-                            <h6 class="mb-2">Widget layout</h6>
-                            <div class="small text-muted mb-2">
-                                Reorder cards to control render order on the KPI
-                                dashboard.
-                            </div>
+                            <h6 class="ux-modal-section-title">Widget layout</h6>
                             {#if widgets.length === 0}
-                                <div class="small text-muted">
+                                <div class="ux-modal-pane-copy kpi-builder-empty-state">
                                     No KPI cards yet.
                                 </div>
                             {:else}
                                 <div class="d-flex flex-column gap-2">
                                     {#each widgets as widget, idx}
                                         <div
-                                            class="border rounded p-2 d-flex align-items-start justify-content-between gap-2"
+                                            class="ux-modal-pane d-flex align-items-start justify-content-between gap-2 kpi-builder-row"
                                         >
                                             <div class="small flex-grow-1">
                                                 <span class="text-muted me-1"
@@ -250,24 +217,21 @@
 
                         <div class="col-12 col-lg-6">
                             {#if showPresetSection && presetCardLabels}
-                                <h6 class="mb-2">Preset cards</h6>
-                                <div class="small text-muted mb-2">
-                                    Quick summaries with fixed definitions.
-                                </div>
+                                <h6 class="ux-modal-section-title">Preset cards</h6>
                                 <div class="d-flex flex-column gap-2 mb-3">
                                     {#each Object.keys(presetCardLabels) as key}
                                         {@const presetKey =
                                             key as PresetCardKey}
                                         <div
-                                            class="border rounded p-2 d-flex align-items-center justify-content-between gap-2"
+                                            class="ux-modal-pane d-flex align-items-center justify-content-between gap-2 kpi-builder-row"
                                         >
                                             <div>
-                                                <div class="small fw-semibold">
+                                                <div class="ux-modal-pane-title">
                                                     {presetCardLabels[
                                                         presetKey
                                                     ]}
                                                 </div>
-                                                <div class="small text-muted">
+                                                <div class="ux-modal-pane-copy">
                                                     {presetCardDescriptions[
                                                         presetKey
                                                     ] ??
@@ -293,7 +257,7 @@
                             {/if}
 
                             {#if showRankingSection}
-                                <h6 class="mb-2">Ranking card</h6>
+                                <h6 class="ux-modal-section-title">Ranking card</h6>
                                 <div class="row g-2 mb-2">
                                     <div class="col-4">
                                         <label
@@ -367,7 +331,7 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div class="kpi-preview mb-2">
+                                <div class="ux-modal-preview mb-2">
                                     <div class="small fw-semibold">Preview</div>
                                     <div class="small">
                                         {rankingPreviewLabel()}
@@ -392,7 +356,7 @@
                             {/if}
 
                             {#if showMetricSection}
-                                <h6 class="mb-2">Metric card</h6>
+                                <h6 class="ux-modal-section-title">Metric card</h6>
                                 <div class="row g-2 mb-2">
                                     <div class="col-4">
                                         <label
@@ -490,7 +454,7 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div class="kpi-preview mb-2">
+                                <div class="ux-modal-preview mb-2">
                                     <div class="small fw-semibold">Preview</div>
                                     <div class="small">
                                         {metricPreviewLabel()}
@@ -524,11 +488,11 @@
                                     </summary>
                                     <div class="mt-2 d-flex flex-column gap-2">
                                         {#each metricGlossary() as item}
-                                            <div class="border rounded p-2">
-                                                <div class="small fw-semibold">
+                                            <div class="ux-modal-pane">
+                                                <div class="ux-modal-pane-title">
                                                     {item.label}
                                                 </div>
-                                                <div class="small text-muted">
+                                                <div class="ux-modal-pane-copy">
                                                     {item.description}
                                                 </div>
                                             </div>
@@ -548,36 +512,60 @@
                             {/if}
                         </div>
                     </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button
-                        class="btn btn-outline-secondary"
-                        on:click={closeModal}>Close</button
-                    >
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop show ux-kpi-builder-backdrop"></div>
-{/if}
+</ModalShell>
 
 <style>
-    .ux-kpi-builder-modal,
-    .ux-kpi-builder-modal .modal-dialog,
-    .ux-kpi-builder-backdrop {
-        animation: none !important;
-        transition: none !important;
+    .kpi-builder-modal-grid {
+        --bs-gutter-x: 0.72rem;
+        --bs-gutter-y: 0.45rem;
     }
 
-    .ux-kpi-builder-modal .modal-dialog {
-        transform: none !important;
+    .kpi-builder-row {
+        min-width: 0;
     }
 
-    .kpi-preview {
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        border-radius: 0.4rem;
-        padding: 0.5rem;
-        background: rgba(0, 0, 0, 0.02);
+    .kpi-builder-empty-state {
+        margin: 0;
+        padding: 0.32rem 0;
+    }
+
+    :global(.kpi-builder-modal-body) {
+        padding-top: 0.4rem !important;
+        padding-bottom: 0.48rem !important;
+    }
+
+    :global(.kpi-builder-modal-body .ux-modal-pane) {
+        padding: 0.38rem 0.46rem;
+    }
+
+    :global(.kpi-builder-modal-body .ux-modal-preview) {
+        padding: 0.36rem 0.44rem;
+    }
+
+    :global(.kpi-builder-modal-body .btn.btn-sm) {
+        min-height: 1.42rem;
+        padding-top: 0.04rem !important;
+        padding-bottom: 0.04rem !important;
+    }
+
+    :global(.kpi-builder-modal-body .ux-modal-section-title) {
+        margin-bottom: 0.18rem;
+    }
+
+    :global(.kpi-builder-modal-body .row.g-2) {
+        --bs-gutter-x: 0.48rem;
+        --bs-gutter-y: 0.28rem;
+    }
+
+    :global(.kpi-builder-modal-body .mb-3) {
+        margin-bottom: 0.55rem !important;
+    }
+
+    :global(.kpi-builder-modal-body .mb-2) {
+        margin-bottom: 0.38rem !important;
+    }
+
+    :global(.kpi-builder-modal-body .mt-2) {
+        margin-top: 0.28rem !important;
     }
 </style>

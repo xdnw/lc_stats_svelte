@@ -1,3 +1,5 @@
+import type { SelectionModalItem } from "../selection/types";
+
 export type GridRowId = string | number;
 export type GridCellActionArgs = Record<string, string | number | boolean | null>;
 
@@ -14,8 +16,6 @@ export type GridCellView =
           args?: GridCellActionArgs;
           disabled?: boolean;
           title?: string;
-            href?: string;
-            external?: boolean;
       }
     | { kind: "stack"; items: GridCellView[] }
     | { kind: "empty" };
@@ -23,12 +23,33 @@ export type GridCellView =
 export type GridSortKind = false | "text" | "number" | "date";
 export type GridPageSize = 10 | 25 | 50 | 100 | "all";
 
+export type GridColumnTextFilterUi = {
+    kind: "text";
+    placeholder?: string;
+};
+
+export type GridColumnSelectionFilterUi = {
+    kind: "selection";
+    title?: string;
+    description?: string;
+    searchPlaceholder?: string;
+    selectedCountLabel?: string;
+    applyLabel?: string;
+    items: SelectionModalItem[];
+};
+
+export type GridColumnFilterUi =
+    | GridColumnTextFilterUi
+    | GridColumnSelectionFilterUi;
+
 export type GridColumnDefinition = {
     key: string;
     title: string;
     toneClass?: string;
+    widthHint?: "fit" | "text" | "wide";
     sortable: GridSortKind;
     filterable: boolean;
+    filterUi?: GridColumnFilterUi | null;
     summary?: null | "sum-avg";
     detailsEligible?: boolean;
     exportLabel?: string;

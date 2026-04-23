@@ -4,6 +4,8 @@ export const GRID_VIRTUAL_MIN_ROWS = 48;
 
 const GRID_VIRTUAL_VISIBLE_ROW_MULTIPLIER = 2;
 const GRID_VIRTUAL_COMPACT_VISIBLE_ROW_MULTIPLIER = 4;
+const GRID_VIRTUAL_WINDOW_CHUNK_COUNT = 2;
+const GRID_VIRTUAL_COMPACT_WINDOW_CHUNK_COUNT = 3;
 
 export type GridRowWindow = {
     start: number;
@@ -25,6 +27,10 @@ function clampInt(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, normalized));
 }
 
+function clampSize(value: number, minimum = 1): number {
+    return Math.max(minimum, Number.isFinite(value) ? value : minimum);
+}
+
 function getAllRowsFallbackEnd(totalRows: number, fallbackRowCount?: number): number {
     if (totalRows <= 0) return 0;
     return Math.min(
@@ -44,14 +50,23 @@ export function resolveGridVirtualMinimumRows(options: {
         1,
         Math.floor(options.baseMinimumRows ?? GRID_VIRTUAL_MIN_ROWS),
     );
-    const rowHeight = Math.max(1, Math.floor(options.rowHeight));
-    const containerHeight = Math.max(1, Math.floor(options.containerHeight));
+    const rowHeight = clampSize(options.rowHeight);
+    const containerHeight = clampSize(options.containerHeight);
     const visibleRows = Math.max(1, Math.ceil(containerHeight / rowHeight));
     const visibleRowMultiplier = options.compactViewport || options.coarsePointer
         ? GRID_VIRTUAL_COMPACT_VISIBLE_ROW_MULTIPLIER
         : GRID_VIRTUAL_VISIBLE_ROW_MULTIPLIER;
 
     return Math.max(baseMinimumRows, visibleRows * visibleRowMultiplier);
+}
+
+export function resolveGridVirtualWindowChunkCount(options: {
+    compactViewport?: boolean;
+    coarsePointer?: boolean;
+}): number {
+    return options.compactViewport || options.coarsePointer
+        ? GRID_VIRTUAL_COMPACT_WINDOW_CHUNK_COUNT
+        : GRID_VIRTUAL_WINDOW_CHUNK_COUNT;
 }
 
 export function resolveGridRowHeightEstimate(options: {
@@ -136,8 +151,8 @@ export function getGridInitialViewport(options: {
     const totalRows = Math.max(0, Math.floor(options.totalRows));
     if (totalRows === 0) return { start: 0, end: 0 };
 
-    const rowHeight = Math.max(1, Math.floor(options.rowHeight));
-    const containerHeight = Math.max(1, Math.floor(options.containerHeight));
+    const rowHeight = clampSize(options.rowHeight);
+    const containerHeight = clampSize(options.containerHeight);
     const visibleRows = Math.max(1, Math.ceil(containerHeight / rowHeight));
     const end = Math.min(
         totalRows,
@@ -155,8 +170,8 @@ export function getGridVisibleRange(options: {
     const totalRows = Math.max(0, Math.floor(options.totalRows));
     if (totalRows === 0) return { start: 0, end: 0 };
 
-    const rowHeight = Math.max(1, Math.floor(options.rowHeight));
-    const containerHeight = Math.max(1, Math.floor(options.containerHeight));
+    const rowHeight = clampSize(options.rowHeight);
+    const containerHeight = clampSize(options.containerHeight);
     const visibleRows = Math.max(1, Math.ceil(containerHeight / rowHeight));
     const start = clampInt(
         options.scrollTop / rowHeight,
@@ -178,8 +193,8 @@ export function getGridBufferedWindow(options: {
     const totalRows = Math.max(0, Math.floor(options.totalRows));
     if (totalRows === 0) return { start: 0, end: 0 };
 
-    const rowHeight = Math.max(1, Math.floor(options.rowHeight));
-    const containerHeight = Math.max(1, Math.floor(options.containerHeight));
+    const rowHeight = clampSize(options.rowHeight);
+    const containerHeight = clampSize(options.containerHeight);
     const visibleRows = Math.max(1, Math.ceil(containerHeight / rowHeight));
     const targetWindowRows = Math.min(
         totalRows,
@@ -215,18 +230,23 @@ export function getGridVirtualWindow(options: {
     rowHeight: number;
     totalRows: number;
     minimumRows?: number;
+    windowChunkCount?: number;
 }): GridVirtualWindow {
     const totalRows = Math.max(0, Math.floor(options.totalRows));
     if (totalRows === 0) {
         return { start: 0, end: 0, paddingTop: 0, paddingBottom: 0 };
     }
 
-    const rowHeight = Math.max(1, Math.floor(options.rowHeight));
-    const containerHeight = Math.max(1, Math.floor(options.containerHeight));
+    const rowHeight = clampSize(options.rowHeight);
+    const containerHeight = clampSize(options.containerHeight);
     const visibleRows = Math.max(1, Math.ceil(containerHeight / rowHeight));
     const chunkRows = Math.max(
         visibleRows * 2,
         Math.floor(options.minimumRows ?? GRID_VIRTUAL_MIN_ROWS),
+    );
+    const windowChunkCount = Math.max(
+        1,
+        Math.floor(options.windowChunkCount ?? GRID_VIRTUAL_WINDOW_CHUNK_COUNT),
     );
     const visibleStart = clampInt(
         options.scrollTop / rowHeight,
@@ -237,7 +257,10 @@ export function getGridVirtualWindow(options: {
         totalRows,
         Math.floor(visibleStart / chunkRows) * chunkRows,
     );
-    const end = Math.min(totalRows, Math.max(start + visibleRows, start + chunkRows * 2));
+    const end = Math.min(
+        totalRows,
+        Math.max(start + visibleRows, start + chunkRows * windowChunkCount),
+    );
 
     return {
         start,

@@ -37,28 +37,11 @@
         }
     }
 
-    function isPlainPrimaryClick(event: MouseEvent): boolean {
-        return event.button === 0 &&
-            !event.ctrlKey &&
-            !event.metaKey &&
-            !event.shiftKey &&
-            !event.altKey;
-    }
-
-    function triggerAction(view: Extract<GridCellView, { kind: "action" }>): void {
+    function dispatchAction(view: Extract<GridCellView, { kind: "action" }>): void {
         dispatch("action", {
             actionId: view.actionId,
             args: view.args,
         });
-    }
-
-    function handleActionLinkClick(
-        event: MouseEvent,
-        view: Extract<GridCellView, { kind: "action" }>,
-    ): void {
-        if (!isPlainPrimaryClick(event)) return;
-        event.preventDefault();
-        triggerAction(view);
     }
 </script>
 
@@ -81,32 +64,17 @@
         {cell.text}
     </a>
 {:else if cell.kind === "action"}
-    {#if cell.href && !cell.disabled}
-        <a
-            class="btn ux-btn btn-sm fw-bold ux-grid-cell-action"
-            href={cell.href}
-            target={cell.external ? "_blank" : undefined}
-            rel={cell.external ? "noreferrer" : undefined}
-            title={cellTitle(cell)}
-            data-grid-action-id={cell.actionId}
-            data-grid-action-args={JSON.stringify(cell.args ?? {})}
-            on:click|stopPropagation={(event) => handleActionLinkClick(event, cell)}
-        >
-            {cell.text}
-        </a>
-    {:else}
-        <button
-            class="btn ux-btn btn-sm fw-bold ux-grid-cell-action"
-            type="button"
-            disabled={cell.disabled}
-            title={cellTitle(cell)}
-            data-grid-action-id={cell.actionId}
-            data-grid-action-args={JSON.stringify(cell.args ?? {})}
-            on:click|stopPropagation={() => triggerAction(cell)}
-        >
-            {cell.text}
-        </button>
-    {/if}
+    <button
+        class="btn ux-btn btn-sm ux-grid-cell-action"
+        type="button"
+        disabled={cell.disabled}
+        title={cellTitle(cell)}
+        data-grid-action-id={cell.actionId}
+        data-grid-action-args={JSON.stringify(cell.args ?? {})}
+        on:click|stopPropagation={() => dispatchAction(cell)}
+    >
+        {cell.text}
+    </button>
 {:else if cell.kind === "stack"}
     <span class="ux-grid-stack">
         {#each cell.items as item}
@@ -125,16 +93,16 @@
         display: block;
         min-width: 0;
         white-space: normal;
-        overflow-wrap: anywhere;
-        word-break: break-word;
+        overflow-wrap: break-word;
+        word-break: normal;
     }
 
     .ux-grid-cell-metric,
     .ux-grid-cell-date {
         display: block;
         min-width: 0;
-        white-space: normal;
-        overflow-wrap: anywhere;
+        white-space: nowrap;
+        overflow-wrap: normal;
         font-variant-numeric: tabular-nums;
     }
 
@@ -157,12 +125,14 @@
         display: inline-flex;
         align-items: center;
         justify-content: flex-start;
+        width: auto;
         max-width: 100%;
-        padding: 0.14rem 0.45rem;
-        font-size: 0.68rem;
-        line-height: 1.2;
-        white-space: normal;
-        overflow-wrap: anywhere;
+        min-width: 0;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        overflow-wrap: normal;
         text-align: left;
     }
 

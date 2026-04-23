@@ -5,6 +5,15 @@ export type WorkerTimingBreakdown = {
     totalMs: number;
 };
 
+export type WorkerVisibleBootstrapTimingBreakdown = {
+    receiveMs: number;
+    inflateMs: number;
+    unpackMs: number;
+    computeMs: number;
+    respondMs: number;
+    totalMs: number;
+};
+
 export type WorkerDatasetInitRequest<TData> = {
     id: number;
     action: "init";

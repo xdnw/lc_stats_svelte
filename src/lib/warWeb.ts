@@ -1,3 +1,5 @@
+import type { Conflict } from "./types";
+
 export function trimHeader(header: string) {
     if (header.includes('_value')) {
         header = `~$${header.replace('_value', '')}`;
@@ -17,6 +19,61 @@ export function trimHeader(header: string) {
 export function getDefaultWarWebHeader(data: { war_web: { headers: string[] } }): string {
     if (data.war_web.headers.includes('wars')) return 'wars';
     return data.war_web.headers[0] ?? 'wars';
+}
+
+function normalizeWarWebMatrixValue(value: unknown): number {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
+}
+
+export function rankWarWebAllianceIdsByTotalMetric(
+    data: Pick<Conflict, "coalitions" | "war_web">,
+    header: string,
+): [number[], number[]] {
+    const coalition0Ids =
+        data.coalitions[0]?.alliance_ids.map((id) => Number(id)) ?? [];
+    const coalition1Ids =
+        data.coalitions[1]?.alliance_ids.map((id) => Number(id)) ?? [];
+    const headerIndex = data.war_web.headers.indexOf(header);
+
+    if (headerIndex < 0) {
+        return [coalition0Ids, coalition1Ids];
+    }
+
+    const matrix = data.war_web.data[headerIndex] as number[][];
+    const totalAllianceCount = coalition0Ids.length + coalition1Ids.length;
+    const scoreByMatrixIndex = Array.from(
+        { length: totalAllianceCount },
+        (_value, allianceIndex) => {
+            let total = 0;
+            for (let otherIndex = 0; otherIndex < totalAllianceCount; otherIndex += 1) {
+                total += normalizeWarWebMatrixValue(matrix[allianceIndex]?.[otherIndex]);
+                total += normalizeWarWebMatrixValue(matrix[otherIndex]?.[allianceIndex]);
+            }
+            return total;
+        },
+    );
+
+    function rankCoalition(allianceIds: number[], offset: number): number[] {
+        return allianceIds
+            .map((allianceId, localIndex) => ({
+                allianceId,
+                matrixIndex: offset + localIndex,
+                score: scoreByMatrixIndex[offset + localIndex] ?? 0,
+            }))
+            .sort(
+                (left, right) =>
+                    right.score - left.score ||
+                    left.matrixIndex - right.matrixIndex ||
+                    left.allianceId - right.allianceId,
+            )
+            .map((entry) => entry.allianceId);
+    }
+
+    return [
+        rankCoalition(coalition0Ids, 0),
+        rankCoalition(coalition1Ids, coalition0Ids.length),
+    ];
 }
 
 export type WarWebMetricMeta = {

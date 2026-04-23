@@ -7,6 +7,7 @@ import {
     setGridFilter,
     setGridPageIndex,
     setGridPageSize,
+    setGridViewport,
     showAllGridColumns,
     toggleGridColumnVisibility,
     toggleGridRowSelection,
@@ -120,5 +121,27 @@ describe("grid controller", () => {
         state = clearGridSelection(BOOTSTRAP, state);
         expect(state.selectedRowIds).toEqual([]);
         expect(state.selectionAnchorRowId).toBeNull();
+    });
+
+    it("treats equivalent filter and paging updates as no-ops", () => {
+        const filteredState = initializeGridController(BOOTSTRAP, {
+            filters: { name: "Rose" },
+            pageIndex: 2,
+        });
+
+        expect(setGridFilter(BOOTSTRAP, filteredState, "name", "  Rose  ")).toBe(
+            filteredState,
+        );
+        expect(setGridPageIndex(BOOTSTRAP, filteredState, 2)).toBe(filteredState);
+
+        const allRowsState = initializeGridController(BOOTSTRAP, {
+            pageSize: "all",
+            viewport: { start: 24, end: 48 },
+        });
+
+        expect(setGridPageSize(BOOTSTRAP, allRowsState, "all")).toBe(allRowsState);
+        expect(
+            setGridViewport(BOOTSTRAP, allRowsState, { start: 24, end: 48 }),
+        ).toBe(allRowsState);
     });
 });

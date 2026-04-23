@@ -1,71 +1,225 @@
 <script lang="ts">
-    import { onMount, onDestroy, tick } from "svelte";
-    import Select from "svelte-select";
-    import ExportDataMenu from "../../components/ExportDataMenu.svelte";
+    import "../../styles/conflict-shell.css";
+    import "../../styles/conflict-widgets.css";
+    import { browser } from "$app/environment";
+    import { onMount, onDestroy } from "svelte";
+    import { page } from "$app/stores";
+    import BubbleCanvas from "../../components/BubbleCanvas.svelte";
+    import Icon from "../../components/Icon.svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
-    import ShareResetBar from "../../components/ShareResetBar.svelte";
+    import GraphSlider from "../../components/GraphSlider.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import { base } from "$app/paths";
-    import noUiSlider from "nouislider";
-    import * as d3 from "d3";
     import {
-        decompressBson,
-        type GraphData,
         formatTurnsToDate,
         formatDaysToDate,
-        Palette,
-        generateColors,
-        setQueryParam,
-        bootstrapIdRouteLifecycle,
-        arrayEquals,
-        type TierMetric,
-        getConflictGraphDataUrl,
-        ensureScriptsLoaded,
-        saveCurrentQueryParams,
-        resetQueryParams,
-        formatDatasetProvenance,
-        yieldToMain,
-        incrementPerfCounter,
-        startPerfSpan,
+    } from "$lib/formatting";
+    import type { GraphData, TierMetric } from "$lib/types";
+    import { setQueryParam, resetQueryParams } from "$lib/queryState";
+    import { bootstrapIdRouteLifecycle } from "$lib/routeBootstrap";
+    import { arrayEquals } from "$lib/misc";
+    import { saveCurrentQueryParams } from "$lib/queryStorage";
+    import { formatDatasetProvenance } from "$lib/runtime";
+    import { incrementPerfCounter, startPerfSpan } from "$lib/perf";
+    import {
         buildSettingsRows,
         exportBundleData,
         type ExportBundle,
         type ExportDatasetOption,
-    } from "$lib";
-    import { warmBubbleDefaultArtifact } from "$lib/prefetchArtifacts";
-    import { requestWorkerRpc } from "$lib/workerRpc";
+    } from "$lib/dataExport";
+    import type { GraphRouteInfo } from "$lib/graphRouteInfo";
+    import { resolveInitialAllowedAllianceIds } from "$lib/graphRouteInfo";
+    import {
+        buildBubbleCanvasModel,
+        clampBubbleFrameIndex,
+        getBubbleCanvasTheme,
+        type BubbleCanvasHoverPoint,
+        type BubbleCanvasModel,
+        type BubbleCanvasPointMeta,
+        type BubbleCanvasRenderResult,
+    } from "$lib/bubbleCanvas";
+    import {
+        type BubbleChartPointerEventDetail,
+    } from "../../components/bubble";
+    import {
+        acquireBubbleArtifactHandle,
+        type BubbleArtifactHandle,
+    } from "$lib/conflictArtifactRegistry";
+    import {
+        buildBubbleTraceCacheKey,
+        buildDefaultAllianceIdsByCoalition,
+        buildSelectedAllianceIdsByCoalition,
+    } from "$lib/graphArtifactKeys";
+    import {
+        DEFAULT_BUBBLE_AGGREGATION_MODE,
+        parseBubbleAggregationMode,
+        type BubbleAggregationMode,
+    } from "$lib/bubbleAggregation";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
-    import { getPlotlyGlobal } from "$lib/globals";
     import { appConfig as config } from "$lib/appConfig";
     import { generateTraces } from "$lib/bubbleTraceCompute";
     import { beginJourneySpan, endJourneySpan } from "$lib/perf";
-    import type {
-        WorkerDatasetComputeRequest,
-        WorkerDatasetComputeResult,
-        WorkerDatasetInitRequest,
-        WorkerDatasetInitResult,
-    } from "$lib/workerDatasetProtocol";
     import {
-        createModuleWorker,
-        releaseWorkerDataset,
-        terminateWorker,
-    } from "$lib/workerDatasetLifecycle";
-    import {
-        clearDatasetReadyHandle,
-        ensureBubbleDatasetReady,
-        getBubbleTrace,
-        invalidateGraphDerived,
-        warmBubbleDefaultTrace,
-        type Trace as BubbleTrace,
         type TraceBuildResult,
     } from "$lib/graphDerivedCache";
+    import {
+        buildBubbleTimelineTicks,
+        type BubbleTimelineTickDescriptor,
+    } from "$lib/bubbleTimeline";
+    import {
+        buildCityRangeQuery,
+        DEFAULT_CITY_RANGE,
+        isDefaultCityRange,
+        normalizeCityRange,
+        parseCityRange,
+        type CityRange,
+    } from "$lib/cityRange";
+    import { isCumulativeMetricName } from "$lib/metrics";
 
-    function getPlotly(): any {
-        return getPlotlyGlobal();
+    type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
+
+    type MetricOption = {
+        value: string;
+        label: string;
+    };
+
+    type BubbleTooltipAnchor = {
+        x: number;
+        y: number;
+        flipX: boolean;
+        flipY: boolean;
+    };
+
+    type BubbleCanvasHandle = {
+        downloadPng: (fileName?: string) => Promise<boolean>;
+        resetView: () => void;
+    };
+
+    type BubbleControlsPanelComponent =
+        typeof import("../../components/BubbleControlsPanel.svelte").default;
+
+    let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
+    let bubbleControlsPanelPromise: Promise<BubbleControlsPanelComponent> | null =
+        null;
+
+    function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
+        if (!prefetchArtifactsPromise) {
+            prefetchArtifactsPromise = import("$lib/prefetchArtifactsClient");
+        }
+
+        return prefetchArtifactsPromise;
     }
 
-    let _rawData: GraphData;
+    function ensureBubbleControlsPanel(): Promise<BubbleControlsPanelComponent> {
+        if (bubbleControlsPanelPromise) {
+            return bubbleControlsPanelPromise;
+        }
+
+        bubbleControlsPanelPromise = import(
+            "../../components/BubbleControlsPanel.svelte"
+        ).then((module) => module.default);
+        return bubbleControlsPanelPromise;
+    }
+
+    function warmBubbleSecondaryArtifacts(conflictId: string): void {
+        void loadPrefetchArtifacts()
+            .then(({ warmConflictTableArtifact }) => {
+                warmConflictTableArtifact(conflictId, {
+                    priority: "idle",
+                    reason: "route-bubble-idle-conflict-grid",
+                    routeTarget: "/conflict",
+                    intentStrength: "idle",
+                });
+            })
+            .catch((error) => {
+                console.warn("Failed to load bubble prefetch helpers", error);
+            });
+    }
+
+    function syncBubbleThemeState(): void {
+        if (!browser) return;
+        bubbleIsDarkMode =
+            document.documentElement.getAttribute("data-bs-theme") === "dark";
+    }
+
+    function clearBubbleInteractionState(): void {
+        bubbleHoverPoint = null;
+        bubbleTooltipAnchor = null;
+    }
+
+    const MIN_BUBBLE_SIZE_SCALE = 0.5;
+    const MAX_BUBBLE_SIZE_SCALE = 2;
+
+    function clampBubbleSizeScale(value: number): number {
+        if (!Number.isFinite(value)) return 1;
+        return Math.min(MAX_BUBBLE_SIZE_SCALE, Math.max(MIN_BUBBLE_SIZE_SCALE, value));
+    }
+
+    function handleBubbleSizeScaleInput(event: Event): void {
+        const nextPercent = Number((event.currentTarget as HTMLInputElement).value);
+        bubbleSizeScale = clampBubbleSizeScale(nextPercent / 100);
+    }
+
+    function sanitizeFileNameSegment(value: string): string {
+        const trimmed = value.trim().toLowerCase();
+        if (!trimmed) return "bubble";
+        return trimmed.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bubble";
+    }
+
+    async function downloadBubblePng(): Promise<void> {
+        if (!bubbleCanvasRef) return;
+
+        const fileName = [
+            sanitizeFileNameSegment(conflictName || conflictId || "conflict"),
+            "bubble",
+            sanitizeFileNameSegment(
+                bubbleActiveTimeLabel || `frame-${Math.max(1, graphSliderIndex + 1)}`,
+            ),
+        ].join("-");
+
+        await bubbleCanvasRef.downloadPng(`${fileName}.png`);
+    }
+
+    function resetBubbleView(): void {
+        bubbleCanvasRef?.resetView();
+    }
+
+    function beginBubbleRenderMeasurement(reason: string): void {
+        bubblePendingRenderFinish?.();
+        const pointCount =
+            bubbleChartModel?.frames[graphSliderIndex]?.pointCount ?? 0;
+        bubblePendingRenderFinish = startPerfSpan("graph.bubble.render.canvas", {
+            frameIndex: graphSliderIndex,
+            pointCount,
+            reason,
+        });
+    }
+
+    function finishBubbleRenderMeasurement(): void {
+        bubblePendingRenderFinish?.();
+        bubblePendingRenderFinish = null;
+    }
+
+    function resolveBubbleTooltipAnchor(
+        pointer: BubbleChartPointerEventDetail["pointer"],
+        renderResult: BubbleCanvasRenderResult,
+    ): BubbleTooltipAnchor | null {
+        if (!pointer) return null;
+        const x = pointer.canvasX;
+        const y = pointer.canvasY;
+        return {
+            x,
+            y,
+            flipX: x > renderResult.cssWidth - 220,
+            flipY: y < 84,
+        };
+    }
+
+    let _rawData: GraphRouteInfo | null = null;
+    let fallbackGraphData: GraphData | null = null;
+    let _allowedAllianceIds: Set<number> = new Set();
+    let requestedAllianceIdsFromQuery: number[] | null = null;
     let conflictId: string | null = null;
     let conflictName: string;
     let _loaded = false;
@@ -76,23 +230,47 @@
     let normalize_y: boolean = false;
     let normalize_z: boolean = false;
     let previous_normalize: number = 0;
+    let bubbleAggregationMode: BubbleAggregationMode =
+        DEFAULT_BUBBLE_AGGREGATION_MODE;
 
-    let sliderElement: HTMLDivElement;
-    let cityValues: number[] = [0, 70];
+    let cityValues: CityRange = [...DEFAULT_CITY_RANGE];
     let graphSliderIndex: number = 0;
-    let sliderSetListener: ((values: string[]) => void) | null = null;
-    let plotlyAnimatedListener: (() => void) | null = null;
-    let plotlySliderChangeListener: ((sliderData: any) => void) | null = null;
     let graphUpdateQueued = false;
-    let bubbleWorker: Worker | null = null;
-    let bubbleWorkerDatasetKey: string | null = null;
+    let bubbleChartModel: BubbleCanvasModel | null = null;
+    let bubbleHoverPoint: BubbleCanvasHoverPoint | null = null;
+    let bubbleTooltipAnchor: BubbleTooltipAnchor | null = null;
+    let bubbleCanvasRenderResult: BubbleCanvasRenderResult | null = null;
+    let bubbleCanvasRef: BubbleCanvasHandle | null = null;
+    let bubblePlaybackFrame: number | null = null;
+    let bubblePlaybackLastTimestamp: number | null = null;
+    let bubbleActiveTimeLabel = "";
+    let isBubblePlaybackActive = false;
+    let bubbleArtifacts: BubbleArtifactHandle | null = null;
     let hasCompletedFirstBubbleMount = false;
     let latestGraphRunId = 0;
-    let lastBubbleRenderKey: string | null = null;
-    let lastPlotSchemaKey: string | null = null;
+    let lastBubbleModelKey: string | null = null;
     let latestTraceBuildResult: TraceBuildResult | null = null;
     let latestTraceMetrics: [TierMetric, TierMetric, TierMetric] | null = null;
+    let latestTraceAggregationMode: BubbleAggregationMode | null = null;
     let selectedBubbleExportDataset = "frame";
+    let bubbleTimelineTicks: BubbleTimelineTickDescriptor[] = [];
+    let bubbleTimelineSliderValues: number[] = [0];
+    let bubbleTimelineSliderTickDescriptors: {
+        value: number;
+        label: string;
+        percent: number;
+        anchor: "start" | "center" | "end";
+    }[] = [];
+    let bubbleIsDarkMode = false;
+    let bubbleThemeObserver: MutationObserver | null = null;
+    let bubblePendingRenderFinish: (() => void) | null = null;
+    let bubbleSizeScale = 1;
+    let hasBootstrappedUrlState = false;
+    let lastParsedUrlSearch = "";
+    const BUBBLE_PLAYBACK_STEP_MS = 240;
+    let bubbleCanvasConfig:
+        | BubbleCanvasModel["chartConfig"]
+        | null = null;
 
     const bubbleExportDatasets: ExportDatasetOption[] = [
         {
@@ -124,12 +302,15 @@
         "loss:loss_value",
         "off:wars",
     ];
-    let selected_metrics: { value: string; label: string }[] =
+    let selected_metrics: MetricOption[] =
         defaultMetricSelection.map((name) => {
             return { value: name, label: name };
         });
-    // svelte-select can transiently emit undefined when the last chip is removed.
-    $: if (!Array.isArray(selected_metrics)) selected_metrics = [];
+
+    function selectedMetricValues(): string[] {
+        return selected_metrics.map((metric) => metric.value);
+    }
+
     $: isResetDirty = (() => {
         const selectedValues = selected_metrics.map((metric) => metric.value);
         const sameSelected =
@@ -137,82 +318,273 @@
             selectedValues.every(
                 (value, idx) => value === defaultMetricSelection[idx],
             );
+        const allAllianceCount = _rawData
+            ? _rawData.coalitions[0].alliance_ids.length +
+              _rawData.coalitions[1].alliance_ids.length
+            : 0;
+        const allSelected =
+            !_rawData || _allowedAllianceIds.size === allAllianceCount;
         const normalizeBits =
             (normalize_x ? 1 : 0) +
             (normalize_y ? 2 : 0) +
             (normalize_z ? 4 : 0);
         return (
             graphSliderIndex !== 0 ||
-            cityValues[0] !== 0 ||
-            cityValues[1] !== 70 ||
+            !isDefaultCityRange(cityValues) ||
             normalizeBits !== 0 ||
-            !sameSelected
+            !sameSelected ||
+            !allSelected ||
+            bubbleSizeScale !== 1 ||
+            bubbleAggregationMode !== DEFAULT_BUBBLE_AGGREGATION_MODE
         );
     })();
-    $: maxItems = selected_metrics?.length === 3;
     $: items =
-        maxItems || !_rawData
+        !_rawData
             ? []
             : [
                   ...(_rawData.metric_names ?? []).map((name) => {
                       return { value: name, label: name };
                   }),
-              ];
+                ];
 
-    let previous_selected: { value: string; label: string }[] = [];
+    let previous_selected: string[] = [];
 
-    function getSliderApi(): any {
-        return (sliderElement as any)?.noUiSlider;
-    }
-
-    function handleMetricsChange() {
-        if (
-            selected_metrics.length != 3 ||
-            arrayEquals(previous_selected, selected_metrics)
-        )
-            return;
-        maxItems = selected_metrics?.length === 3;
-        previous_selected = selected_metrics.slice();
-        setQueryParam(
-            "selected",
-            selected_metrics.map((metric) => metric.value).join("."),
-        );
-        saveCurrentQueryParams();
-        scheduleGraphUpdate();
-    }
-
-    async function handleCheckbox(): Promise<boolean> {
-        await tick();
+    function commitNormalizeChange(nextNormalize: {
+        x: boolean;
+        y: boolean;
+        z: boolean;
+    }): void {
+        normalize_x = nextNormalize.x;
+        normalize_y = nextNormalize.y;
+        normalize_z = nextNormalize.z;
         let normalizeBits =
             (normalize_x ? 1 : 0) +
             (normalize_y ? 2 : 0) +
             (normalize_z ? 4 : 0);
-        if (previous_normalize == normalizeBits) return false;
+        if (previous_normalize == normalizeBits) return;
         previous_normalize = normalizeBits | 0;
         setQueryParam("normalize", normalizeBits == 0 ? null : normalizeBits, {
             replace: true,
         });
         saveCurrentQueryParams();
         scheduleGraphUpdate();
-        return true;
+    }
+
+    function handleBubbleMetricsCommit(nextSelectedMetrics: MetricOption[]): void {
+        const nextMetrics = Array.isArray(nextSelectedMetrics)
+            ? nextSelectedMetrics.map((metric) => ({ ...metric }))
+            : [];
+        const nextSelected = nextMetrics.map((metric) => metric.value);
+        if (nextMetrics.length !== 3 || arrayEquals(previous_selected, nextSelected)) {
+            return;
+        }
+        selected_metrics = nextMetrics;
+        previous_selected = nextSelected;
+        setQueryParam("selected", nextSelected.join("."));
+        saveCurrentQueryParams();
+        scheduleGraphUpdate();
+    }
+
+    function handleBubbleCityRangeCommit(nextCityRange: CityRange): void {
+        cityValues = normalizeCityRange(nextCityRange);
+        const query = buildCityRangeQuery(cityValues);
+        setQueryParam("city_min", query.min, { replace: true });
+        setQueryParam("city_max", query.max, { replace: true });
+        saveCurrentQueryParams();
+        scheduleGraphUpdate();
+    }
+
+    function normalizeAllianceIdList(
+        ids: Iterable<number> | null | undefined,
+    ): number[] {
+        if (!ids) return [];
+
+        return Array.from(
+            new Set(
+                Array.from(ids)
+                    .map((id) => Math.trunc(Number(id)))
+                    .filter((id) => id > 0),
+            ),
+        ).sort((left, right) => left - right);
+    }
+
+    function buildBubbleAllianceQueryValue(
+        graphInfo: GraphRouteInfo | null,
+        allianceIds: Iterable<number>,
+    ): string | null {
+        const normalizedIds = normalizeAllianceIdList(allianceIds);
+        if (normalizedIds.length === 0) return null;
+        if (!graphInfo) {
+            return normalizedIds.join(".");
+        }
+        const defaultAllianceIds = normalizeAllianceIdList(
+            buildDefaultAllianceIdsByCoalition(graphInfo).flat(),
+        );
+        return arrayEquals(normalizedIds, defaultAllianceIds)
+            ? null
+            : normalizedIds.join(".");
+    }
+
+    function handleBubbleAllianceIdsCommit(nextAllowedAllianceIds: number[]): void {
+        const normalizedAllianceIds = normalizeAllianceIdList(nextAllowedAllianceIds);
+        const queryValue = buildBubbleAllianceQueryValue(
+            _rawData,
+            normalizedAllianceIds,
+        );
+        _allowedAllianceIds = new Set(normalizedAllianceIds);
+        requestedAllianceIdsFromQuery = queryValue ? normalizedAllianceIds : null;
+        setQueryParam(
+            "ids",
+            queryValue,
+            {
+                replace: true,
+            },
+        );
+        saveCurrentQueryParams();
+        scheduleGraphUpdate();
+    }
+
+    function handleBubbleExportDatasetKeyChange(datasetKey: string): void {
+        selectedBubbleExportDataset = datasetKey;
+    }
+
+    function handleBubbleAggregationByCoalitionCommit(
+        enabled: boolean,
+    ): void {
+        const nextMode: BubbleAggregationMode = enabled
+            ? "coalition"
+            : DEFAULT_BUBBLE_AGGREGATION_MODE;
+        if (nextMode === bubbleAggregationMode) return;
+
+        bubbleAggregationMode = nextMode;
+        setQueryParam(
+            "aggregation",
+            bubbleAggregationMode === DEFAULT_BUBBLE_AGGREGATION_MODE
+                ? null
+                : bubbleAggregationMode,
+            { replace: true },
+        );
+        saveCurrentQueryParams();
+        scheduleGraphUpdate();
+    }
+
+    type BubbleQueryState = {
+        conflictId: string | null;
+        selected: string[];
+        requestedAllianceIds: number[];
+        time: number;
+        cityRange: CityRange;
+        normalizeBits: number;
+        aggregationMode: BubbleAggregationMode;
+    };
+
+    function buildBubbleQueryState(): BubbleQueryState {
+        return {
+            conflictId,
+            selected: selectedMetricValues(),
+            requestedAllianceIds: normalizeAllianceIdList(
+                requestedAllianceIdsFromQuery ?? Array.from(_allowedAllianceIds),
+            ),
+            time: graphSliderIndex,
+            cityRange: [cityValues[0], cityValues[1]],
+            normalizeBits:
+                (normalize_x ? 1 : 0) +
+                (normalize_y ? 2 : 0) +
+                (normalize_z ? 4 : 0),
+            aggregationMode: bubbleAggregationMode,
+        };
+    }
+
+    function syncBubbleStateFromUrl(): void {
+        const nextConflictId = ($page.url.searchParams.get("id") ?? "").trim();
+        const previousState = buildBubbleQueryState();
+
+        loadQueryParams($page.url.searchParams);
+
+        if (
+            nextConflictId.length > 0 &&
+            nextConflictId !== previousState.conflictId
+        ) {
+            conflictId = nextConflictId;
+            _loaded = false;
+            _loadError = null;
+            fetchConflictGraphData(nextConflictId);
+            return;
+        }
+
+        if (!_rawData) return;
+
+        const nextState = buildBubbleQueryState();
+        const metricsChanged = !arrayEquals(
+            previousState.selected,
+            nextState.selected,
+        );
+        const idsChanged = !arrayEquals(
+            previousState.requestedAllianceIds,
+            nextState.requestedAllianceIds,
+        );
+        const cityChanged =
+            previousState.cityRange[0] !== nextState.cityRange[0] ||
+            previousState.cityRange[1] !== nextState.cityRange[1];
+        const normalizeChanged =
+            previousState.normalizeBits !== nextState.normalizeBits;
+        const aggregationChanged =
+            previousState.aggregationMode !== nextState.aggregationMode;
+
+        if (idsChanged) {
+            _allowedAllianceIds = new Set();
+        }
+
+        if (
+            idsChanged ||
+            metricsChanged ||
+            cityChanged ||
+            normalizeChanged ||
+            aggregationChanged
+        ) {
+            scheduleGraphUpdate();
+            return;
+        }
+
+        if (previousState.time !== nextState.time) {
+            stopBubblePlayback();
+            clearBubbleInteractionState();
+            setActiveBubbleFrameIndex(nextState.time, {
+                persist: false,
+                reason: "url-sync",
+            });
+        }
     }
 
     function resetFilters() {
-        cityValues = [0, 70];
+        cityValues = [...DEFAULT_CITY_RANGE];
         graphSliderIndex = 0;
         normalize_x = false;
         normalize_y = false;
         normalize_z = false;
+        _allowedAllianceIds = new Set();
+        requestedAllianceIdsFromQuery = null;
         previous_normalize = 0;
+        bubbleAggregationMode = DEFAULT_BUBBLE_AGGREGATION_MODE;
         selected_metrics = [
             "dealt:loss_value",
             "loss:loss_value",
             "off:wars",
         ].map((name) => ({ value: name, label: name }));
-        previous_selected = selected_metrics.slice();
+        previous_selected = selectedMetricValues();
+        bubbleSizeScale = 1;
+        resetBubbleView();
 
         resetQueryParams(
-            ["city_min", "city_max", "time", "normalize", "selected"],
+            [
+                "city_min",
+                "city_max",
+                "time",
+                "normalize",
+                "selected",
+                "ids",
+                "aggregation",
+            ],
             ["id"],
         );
         setQueryParam(
@@ -222,37 +594,36 @@
         );
         saveCurrentQueryParams();
 
-        const sliderApi = getSliderApi();
-        if (sliderApi) {
-            sliderApi.set([cityValues[0], cityValues[1]]);
-        }
-
         if (_rawData) {
             scheduleGraphUpdate();
         }
     }
 
     function loadQueryParams(params: URLSearchParams) {
+        graphSliderIndex = 0;
+        cityValues = [...DEFAULT_CITY_RANGE];
+        selected_metrics = defaultMetricSelection.map((name) => {
+            return { value: name, label: name };
+        });
+        normalize_x = false;
+        normalize_y = false;
+        normalize_z = false;
+        requestedAllianceIdsFromQuery = null;
+        previous_normalize = 0;
+        bubbleAggregationMode = DEFAULT_BUBBLE_AGGREGATION_MODE;
+
         let time = params.get("time");
         if (time && !isNaN(+time) && Number.isInteger(+time)) {
             graphSliderIndex = +time;
         }
-        let cityMin = params.get("city_min");
-        let cityMax = params.get("city_max");
-        if (cityMin && !isNaN(+cityMin) && Number.isInteger(+cityMin)) {
-            cityValues[0] = +cityMin;
-        }
-        if (cityMax && !isNaN(+cityMax) && Number.isInteger(+cityMax)) {
-            cityValues[1] = +cityMax;
-        }
+        cityValues = parseCityRange(params);
         let selected = params.get("selected");
         if (selected) {
             selected_metrics = selected.split(".").map((name) => {
                 return { value: name, label: name };
             });
         }
-        previous_selected = selected_metrics.slice();
-        maxItems = selected_metrics?.length === 3;
+        previous_selected = selectedMetricValues();
         let normalizeBits = params.get("normalize");
         if (
             normalizeBits &&
@@ -265,16 +636,68 @@
             normalize_z = (bits & 4) != 0;
             previous_normalize = bits;
         }
-    }
-    let graphDiv: HTMLDivElement;
-    onMount(async () => {
-        bubbleWorker = createModuleWorker(
-            new URL("../../workers/bubbleTraceWorker.ts", import.meta.url),
-            "Bubble worker unavailable, using main-thread fallback",
+
+        let idStr = params.get("ids");
+        if (idStr) {
+            const parsedIds = idStr
+                .split(".")
+                .map((id) => Math.trunc(Number(id)))
+                .filter((id) => Number.isFinite(id) && id > 0);
+            requestedAllianceIdsFromQuery =
+                parsedIds.length > 0 ? parsedIds : null;
+        }
+
+        bubbleAggregationMode = parseBubbleAggregationMode(
+            params.get("aggregation"),
         );
+    }
+
+    $: bubbleTimelineSliderValues = [graphSliderIndex];
+    $: bubbleTimelineSliderTickDescriptors = bubbleTimelineTicks.map((tick) => ({
+        value: tick.index,
+        label: tick.label,
+        percent: tick.percent,
+        anchor: tick.anchor,
+    }));
+    $: bubbleCanvasConfig = bubbleChartModel
+        ? {
+              ...bubbleChartModel.chartConfig,
+              theme: getBubbleCanvasTheme(bubbleIsDarkMode),
+          }
+        : null;
+
+    $: {
+        if (browser && hasBootstrappedUrlState) {
+            const nextSearch = $page.url.search;
+            if (nextSearch !== lastParsedUrlSearch) {
+                lastParsedUrlSearch = nextSearch;
+                syncBubbleStateFromUrl();
+            }
+        }
+    }
+
+    onMount(async () => {
+        syncBubbleThemeState();
+        if (typeof MutationObserver !== "undefined") {
+            bubbleThemeObserver = new MutationObserver(() => {
+                syncBubbleThemeState();
+            });
+            bubbleThemeObserver.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ["data-bs-theme"],
+            });
+        }
 
         bootstrapIdRouteLifecycle({
-            restoreParams: ["city_min", "city_max", "time", "normalize", "selected"],
+            restoreParams: [
+                "city_min",
+                "city_max",
+                "time",
+                "normalize",
+                "selected",
+                "ids",
+                "aggregation",
+            ],
             preserveParams: ["id"],
             onBeforeResolve: loadQueryParams,
             onMissingId: () => {
@@ -284,7 +707,7 @@
             onResolvedId: (id) => {
                 conflictId = id;
                 beginJourneySpan("journey.conflict_to_bubble.routeTransition", {
-                    mode: "spa",
+                    mode: "route-entry",
                     conflictId: id,
                 });
                 beginJourneySpan("journey.conflict_to_bubble.firstMount", {
@@ -293,133 +716,127 @@
                 fetchConflictGraphData(id);
             },
         });
-        noUiSlider.create(sliderElement, {
-            start: cityValues,
-            connect: true,
-            step: 1,
-            tooltips: [
-                { to: (value) => `City ${Math.round(value)}` },
-                { to: (value) => `City ${Math.round(value)}` },
-            ],
-            range: {
-                min: 0,
-                max: 70,
-            },
-            pips: {
-                mode: "steps" as any,
-                density: 5,
-                filter: (value, _type) => {
-                    return value % 5 ? 0 : 2;
-                },
-            },
-        });
-
-        sliderSetListener = (values: string[]) => {
-            cityValues = values.map((value) => parseInt(value));
-            setQueryParam(
-                "city_min",
-                cityValues[0] == 0 ? null : cityValues[0],
-                { replace: true },
-            );
-            setQueryParam(
-                "city_max",
-                cityValues[1] == 70 ? null : cityValues[1],
-                { replace: true },
-            );
-            saveCurrentQueryParams();
-            scheduleGraphUpdate();
-        };
-        getSliderApi()?.on("set", sliderSetListener);
+        lastParsedUrlSearch = window.location.search;
+        hasBootstrappedUrlState = true;
     });
 
     onDestroy(() => {
         latestGraphRunId++;
-        lastBubbleRenderKey = null;
-        lastPlotSchemaKey = null;
-        releaseWorkerDataset(
-            bubbleWorker,
-            bubbleWorkerDatasetKey,
-            "bubble dataset release",
-        );
-        terminateWorker(bubbleWorker);
-        bubbleWorker = null;
-        bubbleWorkerDatasetKey = null;
-        clearDatasetReadyHandle({
-            family: "bubble",
-        });
-        const sliderApi = getSliderApi();
-        if (sliderApi) {
-            if (sliderSetListener) {
-                sliderApi.off("set", sliderSetListener);
-            }
-            sliderApi.destroy();
-        }
-        if (graphDiv) {
-            const graphDivAny = graphDiv as any;
-            if (plotlyAnimatedListener) {
-                graphDivAny.removeListener?.(
-                    "plotly_animated",
-                    plotlyAnimatedListener,
-                );
-            }
-            if (plotlySliderChangeListener) {
-                graphDivAny.removeListener?.(
-                    "plotly_sliderchange",
-                    plotlySliderChangeListener,
-                );
-            }
-            getPlotly()?.purge(graphDiv);
-        }
+        lastBubbleModelKey = null;
+        bubbleThemeObserver?.disconnect();
+        bubbleThemeObserver = null;
+        clearBubbleChartState();
+        bubbleArtifacts?.destroy();
+        bubbleArtifacts = null;
     });
+
+    function ensureBubbleArtifacts(nextConflictId: string): BubbleArtifactHandle {
+        if (
+            bubbleArtifacts &&
+            bubbleArtifacts.conflictId === nextConflictId &&
+            bubbleArtifacts.version === config.version.graph_data
+        ) {
+            return bubbleArtifacts;
+        }
+
+        bubbleArtifacts?.destroy();
+        bubbleArtifacts = acquireBubbleArtifactHandle({
+            conflictId: nextConflictId,
+            version: config.version.graph_data,
+        });
+        return bubbleArtifacts;
+    }
 
     function fetchConflictGraphData(conflictId: string) {
         hasCompletedFirstBubbleMount = false;
+        stopBubblePlayback();
+        clearBubbleChartState();
+        _rawData = null;
+        fallbackGraphData = null;
+        _allowedAllianceIds = new Set();
+        lastBubbleModelKey = null;
         beginJourneySpan("journey.conflict_to_bubble.dataFetch", {
             conflictId,
         });
-        let url = getConflictGraphDataUrl(
-            conflictId,
-            config.version.graph_data,
-        );
-        decompressBson(url)
-            .then(async (data) => {
-                conflictName = data.name;
-                _rawData = data;
-                bubbleWorkerDatasetKey = `bubble:${conflictId}:${config.version.graph_data}`;
-                if (bubbleWorker && bubbleWorkerDatasetKey) {
-                    void ensureBubbleDatasetReady(
-                        bubbleWorkerDatasetKey,
-                        () => initializeBubbleWorkerDataset(bubbleWorkerDatasetKey as string, data),
-                    );
+        const artifacts = ensureBubbleArtifacts(conflictId);
+        const metrics = buildSelectedBubbleMetrics();
+        const activeAggregationMode = bubbleAggregationMode;
+        if (!metrics) {
+            _loadError = "Select exactly three metrics to render the bubble chart.";
+            _loaded = true;
+            endJourneySpan("journey.conflict_to_bubble.dataFetch");
+            return;
+        }
+        const runId = ++latestGraphRunId;
+        artifacts.bootstrapVisibleTrace({
+            cacheKey: getTraceCacheKey(
+                metrics,
+                cityValues,
+                null,
+                requestedAllianceIdsFromQuery,
+                activeAggregationMode,
+            ),
+            metrics,
+            aggregationMode: activeAggregationMode,
+            requestedAllianceIds: requestedAllianceIdsFromQuery,
+            cityRange: cityValues,
+            contextKey: `bubble:${conflictId}`,
+            requestId: runId,
+        })
+            .then((data) => {
+                if (runId !== latestGraphRunId) return;
+                if (!data) {
+                    clearBubbleChartState();
+                    _loadError =
+                        "Could not initialize the bubble view. Please retry.";
+                    _loaded = true;
+                    return;
                 }
-                invalidateGraphDerived({
-                    family: "bubble",
-                    keyPrefix: `${conflictId}|`,
-                    reason: "bubble-conflict-change",
-                });
-                lastBubbleRenderKey = null;
+                conflictName = data.info.name;
+                const resolvedAllianceIds = normalizeAllianceIdList(
+                    data.selectedAllianceIds,
+                );
+                const allianceQueryValue = buildBubbleAllianceQueryValue(
+                    data.info,
+                    resolvedAllianceIds,
+                );
+                _rawData = data.info;
+                _allowedAllianceIds = new Set(resolvedAllianceIds);
+                requestedAllianceIdsFromQuery = allianceQueryValue
+                    ? resolvedAllianceIds
+                    : null;
+                fallbackGraphData = data.graphData ?? null;
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
-                    (data as any).update_ms,
+                    data.info.update_ms,
                 );
                 _loadError = null;
-                await yieldToMain();
-                setupGraphData(_rawData);
+                setQueryParam("ids", allianceQueryValue, {
+                    replace: true,
+                });
+                applyBubbleTraceResult(
+                    data.trace,
+                    data.info,
+                    metrics,
+                    getTraceCacheKey(
+                        metrics,
+                        cityValues,
+                        data.info,
+                        resolvedAllianceIds,
+                        activeAggregationMode,
+                    ),
+                    activeAggregationMode,
+                );
                 _loaded = true;
                 endJourneySpan("journey.conflict_to_bubble.routeTransition");
                 saveCurrentQueryParams();
-
-                warmBubbleDefaultArtifact(conflictId, {
-                    priority: "high",
-                    reason: "route-bubble-load-default-trace",
-                    routeTarget: "/bubble",
-                    intentStrength: "load",
-                });
+                warmBubbleSecondaryArtifacts(conflictId);
             })
             .catch((error) => {
                 console.error("Failed to load bubble graph data", error);
                 _loadError =
                     "Could not load conflict graph data. Please try again later.";
+                clearBubbleChartState();
                 _loaded = true;
             })
             .finally(() => {
@@ -434,657 +851,375 @@
         fetchConflictGraphData(conflictId);
     }
 
-    type BubbleTraceParams = {
-        metrics: [TierMetric, TierMetric, TierMetric];
-        minCity: number;
-        maxCity: number;
-    };
-
-    type BubbleWorkerRequest = WorkerDatasetComputeRequest<BubbleTraceParams>;
-
-    async function initializeBubbleWorkerDataset(
-        datasetKey: string,
-        data: GraphData,
-    ): Promise<void> {
-        const worker = bubbleWorker;
-        if (!worker) return;
-        await requestWorkerRpc<
-            WorkerDatasetInitRequest<GraphData>,
-            WorkerDatasetInitResult
-        >(
-            worker,
-            {
-                action: "init",
-                datasetKey,
-                data,
-            },
-            {
-                timeoutMs: 30_000,
-                operation: "bubble dataset init",
-            },
-        );
-    }
-
-    function computeTraces(
-        data: GraphData,
-        metrics: [TierMetric, TierMetric, TierMetric],
-        minCity: number,
-        maxCity: number,
-    ): Promise<TraceBuildResult | null> {
-        const finishComputeSpan = startPerfSpan(
-            "journey.conflict_to_bubble.workerCompute",
-            { mode: bubbleWorker ? "worker" : "main" },
-        );
-        const worker = bubbleWorker;
-        if (!worker) {
-            return Promise.resolve(
-                generateTraces(
-                    data,
-                    metrics[0],
-                    metrics[1],
-                    metrics[2],
-                    minCity,
-                    maxCity,
-                ),
-            ).finally(() => {
-                finishComputeSpan();
-            });
-        }
-
-        if (!bubbleWorkerDatasetKey) {
-            return Promise.resolve(
-                generateTraces(
-                    data,
-                    metrics[0],
-                    metrics[1],
-                    metrics[2],
-                    minCity,
-                    maxCity,
-                ),
-            );
-        }
-
-        const roundTripStart =
-            typeof performance !== "undefined"
-                ? performance.now()
-                : Date.now();
-
-        const ready = ensureBubbleDatasetReady(
-            bubbleWorkerDatasetKey,
-            () => initializeBubbleWorkerDataset(bubbleWorkerDatasetKey as string, data),
-        );
-
-        return ready
-            .then(() =>
-                requestWorkerRpc<
-                    BubbleWorkerRequest,
-                    WorkerDatasetComputeResult<TraceBuildResult | null>
-                >(
-                    worker,
-                    {
-                        action: "compute",
-                        datasetKey: bubbleWorkerDatasetKey as string,
-                        params: {
-                            metrics,
-                            minCity,
-                            maxCity,
-                        },
-                    },
-                    {
-                        timeoutMs: 30_000,
-                        operation: "bubble trace compute",
-                    },
-                ),
-            )
-            .then((workerResult) => {
-                const roundTripEnd =
-                    typeof performance !== "undefined"
-                        ? performance.now()
-                        : Date.now();
-                const roundTripMs = Math.max(0, roundTripEnd - roundTripStart);
-                const workerMs = workerResult.timings.totalMs;
-                const cloneMs = Math.max(0, roundTripMs - workerMs);
-                incrementPerfCounter(
-                    "worker.bubble.receive.ms",
-                    workerResult.timings.receiveMs,
-                );
-                incrementPerfCounter(
-                    "worker.bubble.compute.ms",
-                    workerResult.timings.computeMs,
-                );
-                incrementPerfCounter(
-                    "worker.bubble.respond.ms",
-                    workerResult.timings.respondMs,
-                );
-                incrementPerfCounter("worker.bubble.total.ms", workerMs);
-                incrementPerfCounter("worker.bubble.clone.ms", cloneMs);
-                return workerResult.value;
-            })
-            .catch((error) => {
-                console.warn(
-                    "Bubble worker compute failed, falling back to main thread",
-                    error,
-                );
-                return generateTraces(
-                    data,
-                    metrics[0],
-                    metrics[1],
-                    metrics[2],
-                    minCity,
-                    maxCity,
-                );
-            })
-            .finally(() => {
-                finishComputeSpan();
-            });
-    }
-
     function getTraceCacheKey(
         metrics: [TierMetric, TierMetric, TierMetric],
-        minCity: number,
-        maxCity: number,
+        cityRange: CityRange,
+        graphInfo: GraphRouteInfo | null = _rawData,
+        selectedAllianceIds: Iterable<number> | null = _allowedAllianceIds,
+        aggregationMode: BubbleAggregationMode = bubbleAggregationMode,
     ): string {
-        const metricKey = metrics
-            .map(
-                (m) =>
-                    `${m.name}:${m.normalize ? 1 : 0}:${m.cumulative ? 1 : 0}`,
+        const normalizedSelectedAllianceIds = normalizeAllianceIdList(selectedAllianceIds);
+        const allianceIds = graphInfo
+            ? buildSelectedAllianceIdsByCoalition(
+                graphInfo,
+                normalizedSelectedAllianceIds,
             )
-            .join("|");
-        return `${conflictId ?? "-"}|${metricKey}|${minCity}-${maxCity}`;
-    }
-
-    function scheduleGraphUpdate() {
-        if (graphUpdateQueued) return;
-        graphUpdateQueued = true;
-        requestAnimationFrame(() => {
-            graphUpdateQueued = false;
-            void setupGraphData(_rawData);
+            : undefined;
+        const defaultAllianceIds = graphInfo
+            ? buildDefaultAllianceIdsByCoalition(graphInfo)
+            : undefined;
+        const allianceKey =
+            !graphInfo && normalizedSelectedAllianceIds.length > 0
+                ? normalizedSelectedAllianceIds.join(".")
+                : !graphInfo
+                  ? "all"
+                  : undefined;
+        return buildBubbleTraceCacheKey({
+            conflictId: conflictId ?? "-",
+            graphVersion: config.version.graph_data,
+            metrics,
+            allianceIds,
+            defaultAllianceIds,
+            allianceKey,
+            aggregationMode,
+            cityRange,
         });
     }
 
-    function getFullName(metric: TierMetric): string {
-        let fullName = metric.name;
-        if (metric.cumulative) {
-            fullName += " (sum)";
-        }
-        if (metric.normalize) {
-            fullName += " (avg)";
-        }
-        return fullName;
-    }
-
-    async function setupGraphData(data: GraphData) {
-        if (!data) return;
-        const runId = ++latestGraphRunId;
+    function buildSelectedBubbleMetrics(): [TierMetric, TierMetric, TierMetric] | null {
         let metrics_copy = selected_metrics.map((metric) => metric.value);
-        if (metrics_copy.length != 3) return;
+        if (metrics_copy.length != 3) return null;
         let metric_x: TierMetric = {
             name: metrics_copy[0],
-            cumulative: metrics_copy[0].includes(":"),
+            cumulative: isCumulativeMetricName(metrics_copy[0]),
             normalize: normalize_x,
         };
         let metric_y: TierMetric = {
             name: metrics_copy[1],
-            cumulative: metrics_copy[1].includes(":"),
+            cumulative: isCumulativeMetricName(metrics_copy[1]),
             normalize: normalize_y,
         };
         let metric_size: TierMetric = {
             name: metrics_copy[2],
-            cumulative: metrics_copy[2].includes(":"),
+            cumulative: isCumulativeMetricName(metrics_copy[2]),
             normalize: normalize_z,
         };
-        const metrics: [TierMetric, TierMetric, TierMetric] = [
-            metric_x,
-            metric_y,
-            metric_size,
-        ];
-        const cacheKey = getTraceCacheKey(
-            metrics,
-            cityValues[0],
-            cityValues[1],
-        );
-        const renderKey = `${cacheKey}|slider:${graphSliderIndex}`;
-        if (
-            renderKey === lastBubbleRenderKey &&
-            (graphDiv as any)?.data?.length > 0
-        ) {
-            incrementPerfCounter("graph.bubble.renderSkipped", 1, {
-                reason: "unchanged-render-key",
-            });
-            return;
-        }
-        let tracesTime = getBubbleTrace(cacheKey);
-        if (!tracesTime) {
-            tracesTime = await warmBubbleDefaultTrace({
-                cacheKey,
-                contextKey: `bubble:${conflictId ?? "unknown"}`,
-                requestId: runId,
-                compute: () =>
-                    computeTraces(
-                        data,
-                        metrics,
-                        cityValues[0],
-                        cityValues[1],
-                    ),
-            });
-            if (runId !== latestGraphRunId) return;
-            if (!tracesTime) return;
-        }
-        if (!tracesTime) return;
-        latestTraceBuildResult = tracesTime;
-        latestTraceMetrics = metrics;
-        let coalition_names = data.coalitions.map(
-            (coalition) => coalition.name,
-        );
-        createGraph(
-            tracesTime.traces,
-            tracesTime.times,
-            tracesTime.ranges,
-            coalition_names,
-            metrics,
-        );
-        lastBubbleRenderKey = renderKey;
+        return [metric_x, metric_y, metric_size];
     }
 
-    function createGraph(
-        lookup: { [key: number]: { [key: number]: BubbleTrace } },
-        time: { start: number; end: number; is_turn: boolean },
-        _ranges: { x: number[]; y: number[]; z: number[] },
-        coalition_names: string[],
+    function applyBubbleTraceResult(
+        tracesTime: TraceBuildResult | null,
+        graphInfo: GraphRouteInfo,
         metrics: [TierMetric, TierMetric, TierMetric],
-    ) {
-        // Get the group names:
-        const years: number[] = Object.keys(lookup)
-            .map(Number)
-            .sort((a, b) => a - b);
-        if (years.length === 0) return;
-        // In this case, every year includes every continent, so we
-        // can just infer the continents from the *first* year:
-        graphSliderIndex = Math.min(
-            Math.max(graphSliderIndex, 0),
-            Math.max(years.length - 1, 0),
+        cacheKey: string,
+        aggregationMode: BubbleAggregationMode,
+    ): void {
+        if (!tracesTime) {
+            void ensureBubbleControlsPanel();
+            return;
+        }
+        latestTraceBuildResult = tracesTime;
+        latestTraceMetrics = metrics;
+        latestTraceAggregationMode = aggregationMode;
+        let coalition_names = graphInfo.coalitions.map(
+            (coalition) => coalition.name,
         );
-        const selectedYear = years[graphSliderIndex];
-        const firstYear = lookup[selectedYear];
-        if (!firstYear) return;
-        const coalitions: number[] = Object.keys(firstYear).map(Number);
-
-        let maxZbyTime: number[] = [];
-        for (const year of years) {
-            let lookupByTime = lookup[year];
-            if (!lookupByTime) {
-                continue;
-            }
-            let maxZ = 0;
-            for (let j = 0; j < coalition_names.length; j++) {
-                let data = lookupByTime[j];
-                if (!data) continue;
-                maxZ = Math.max(maxZ, Math.max(...data.customdata));
-            }
-            maxZbyTime.push(maxZ);
-            for (let j = 0; j < coalition_names.length; j++) {
-                let data = lookupByTime[j];
-                if (!data) continue;
-                data.marker = {
-                    size: data.customdata.map((size: number) => {
-                        return maxZ > 0 ? size / maxZ : 1;
-                    }),
-                };
-            }
-        }
-
-        // Create a lookup table to sort and regroup the columns of data,
-        // first by year, then by continent:
-        function getData(time: number, coalition: number) {
-            let lookupByTime = lookup[time];
-            if (!lookupByTime) {
-                lookupByTime = lookup[time] = {};
-            }
-            let trace = lookupByTime[coalition];
-            if (!trace) {
-                trace = lookupByTime[coalition] = {
-                    x: [],
-                    y: [],
-                    customdata: [],
-                    id: [],
-                    text: [],
-                    marker: { size: [] },
-                };
-            }
-            return trace;
-        }
-
-        // Create the main traces, one for each continent:
-        let previousPositions: {
-            [key: number]: {
-                x: { [key: number]: number[] };
-                y: { [key: number]: number[] };
-                z: { [key: number]: number[] };
-            };
-        } = {};
-        // Create a frame for each year. Frames are effectively just
-        // traces, except they don't need to contain the *full* trace
-        // definition (for example, appearance). The frames just need
-        // the parts the traces that change (here, the data).
-        var frames: any[] = [];
-        for (let i = 0; i < years.length; i++) {
-            let frameData = [];
-            for (let j = 0; j < coalitions.length; j++) {
-                let colId = coalitions[j];
-                let previousLines = previousPositions[colId];
-                if (!previousLines) {
-                    previousLines = previousPositions[colId] = {
-                        x: {},
-                        y: {},
-                        z: {},
-                    };
-                }
-                let data = getData(years[i], colId);
-                for (let k = 0; k < data.id.length; k++) {
-                    let id = data.id[k];
-                    let prevX = previousLines.x[id];
-                    let prevY = previousLines.y[id];
-                    let prevZ = previousLines.z[id];
-                    if (!prevX) {
-                        prevX = previousLines.x[id] = [];
-                        prevY = previousLines.y[id] = [];
-                        prevZ = previousLines.z[id] = [];
-                    }
-                    prevX.push(data.x[k]);
-                    prevY.push(data.y[k]);
-                    prevZ.push(data.customdata[k]);
-                    frameData.push({
-                        x: prevX.slice(),
-                        y: prevY.slice(),
-                        customdata: prevZ.slice(),
-                        mode: "lines",
-                    });
-                }
-                frameData.push(data);
-            }
-            frames.push({
-                name: years[i],
-                data: frameData,
-            });
-        }
-
-        var traces: any[] = [];
-        for (let i = 0; i < coalitions.length; i++) {
-            let colId = coalitions[i];
-            var data = firstYear[colId];
-
-            let palette: Palette = Object.keys(Palette)
-                .map(Number)
-                .indexOf(colId);
-            let colors = generateColors(d3, data.id.length, palette);
-
-            let previousLines = previousPositions[colId];
-            if (!previousLines) {
-                previousLines = previousPositions[colId] = {
-                    x: {},
-                    y: {},
-                    z: {},
-                };
-            }
-
-            // Update the previous positions of the bubbles by alliance id
-            for (let j = 0; j < data.id.length; j++) {
-                let id = data.id[j];
-                let prevX = previousLines.x[id];
-                let prevY = previousLines.y[id];
-                let prevZ = previousLines.z[id];
-                if (!prevX) {
-                    prevX = [];
-                    prevY = [];
-                    prevZ = [];
-                }
-                traces.push({
-                    x: prevX.slice(0, graphSliderIndex + 1),
-                    y: prevY.slice(0, graphSliderIndex + 1),
-                    customdata: prevZ.slice(0, graphSliderIndex + 1),
-                    mode: "lines",
-                    line: {
-                        width: 0.3,
-                        color: colors[j],
-                    },
-                    hoverinfo: "all",
-                    showlegend: false,
-                    hovertemplate: `${data.text[j]}<br>${metrics[0].name}: %{x}<br>${metrics[1].name}: %{y}<br>${metrics[2].name}: %{customdata}<extra></extra>`,
-                });
-            }
-
-            traces.push({
-                name: coalition_names[i],
-                x: data.x.slice(),
-                y: data.y.slice(),
-                customdata: data.customdata.slice(),
-                id: data.id.slice(),
-                text: data.text.slice(),
-                mode: "markers+text",
-                textposition: "middle center",
-                textfont: {
-                    size: 7,
-                    color: "rgba(0, 0, 0, 0.75)", // black with 50% opacity
-                },
-                marker: {
-                    size: data.marker.size,
-                    sizemode: "area",
-                    sizeref: 0.001,
-                    sizemin: 1,
-                    color: colors,
-                },
-                hovertemplate: `%{text}<br>${metrics[0].name}: %{x}<br>${metrics[1].name}: %{y}<br>${metrics[2].name}: %{customdata}<extra></extra>`,
-            });
-        }
-
-        let timeFormat = time.is_turn ? formatTurnsToDate : formatDaysToDate;
-
-        // Now create slider steps, one for each frame. The slider
-        // executes a plotly.js API command (here, Plotly.animate).
-        // In this example, we'll animate to one of the named frames
-        // created in the above loop.
-        var sliderSteps = [];
-        for (let i = 0; i < years.length; i++) {
-            sliderSteps.push({
-                method: "animate",
-                label: timeFormat(years[i]),
-                args: [
-                    [years[i]],
-                    {
-                        mode: "immediate",
-                        transition: { duration: 200 },
-                        frame: { duration: 200, redraw: true },
-                    },
-                ],
-            });
-        }
-
-        var layout: any = {
-            height: window.innerHeight * 0.8,
-            margin: { l: 0, r: 0, t: 30, b: 60 },
-            xaxis: {
-                title: getFullName(metrics[0]),
-            },
-            yaxis: {
-                title: getFullName(metrics[1]),
-            },
-            hovermode: "closest",
-            legend: {
-                x: 0.5,
-                y: 1.1,
-                itemsizing: "constant",
-                xanchor: "center",
-                yanchor: "top",
-            },
-            // We'll use updatemenus (whose functionality includes menus as
-            // well as buttons) to create a play button and a pause button.
-            // The play button works by passing `null`, which indicates that
-            // Plotly should animate all frames. The pause button works by
-            // passing `[null]`, which indicates we'd like to interrupt any
-            // currently running animations with a new list of frames. Here
-            // The new list of frames is empty, so it halts the animation.
-            updatemenus: [
-                {
-                    x: 0,
-                    y: 0,
-                    yanchor: "top",
-                    xanchor: "left",
-                    showactive: false,
-                    direction: "left",
-                    type: "buttons",
-                    pad: { t: 87, r: 10 },
-                    buttons: [
-                        {
-                            method: "animate",
-                            args: [
-                                null,
-                                {
-                                    mode: "immediate",
-                                    fromcurrent: true,
-                                    transition: { duration: 200 },
-                                    frame: { duration: 200, redraw: true },
-                                },
-                            ],
-                            label: "Play",
-                        },
-                        {
-                            method: "animate",
-                            args: [
-                                [null],
-                                {
-                                    mode: "immediate",
-                                    transition: { duration: 0 },
-                                    frame: { duration: 0, redraw: true },
-                                },
-                            ],
-                            label: "Pause",
-                        },
-                    ],
-                },
-            ],
-            // Finally, add the slider and use `pad` to position it
-            // nicely next to the buttons.
-            sliders: [
-                {
-                    active: graphSliderIndex,
-                    pad: { l: 130, t: 55 },
-                    currentvalue: {
-                        visible: true,
-                        prefix: "",
-                        xanchor: "right",
-                        font: { size: 20, color: "#666" },
-                    },
-                    steps: sliderSteps,
-                },
-            ],
-        };
-
-        // is either dark, light, or empty (light)
-        let theme = document.documentElement.getAttribute("data-bs-theme");
-        if (theme === "dark") {
-            let bodyBg = getComputedStyle(
-                document.documentElement,
-            ).getPropertyValue("--bs-body-bg");
-            let bodyColor = getComputedStyle(
-                document.documentElement,
-            ).getPropertyValue("--bs-body-color");
-            layout.plot_bgcolor = bodyBg;
-            layout.paper_bgcolor = bodyBg;
-            layout.font = { color: bodyColor };
-            layout.xaxis = {
-                ...layout.xaxis,
-                gridcolor: bodyColor,
-                zerolinecolor: bodyColor,
-                tickfont: { color: bodyColor },
-                titlefont: { color: bodyColor },
-            };
-            layout.yaxis = {
-                ...layout.yaxis,
-                gridcolor: bodyColor,
-                zerolinecolor: bodyColor,
-                tickfont: { color: bodyColor },
-                titlefont: { color: bodyColor },
-            };
-            layout.legend = {
-                ...layout.legend,
-                font: { color: bodyColor },
-            };
-        }
-
-        beginJourneySpan("journey.conflict_to_bubble.runtimeLoad", {
-            runtime: "plotjs",
+        const model = buildBubbleCanvasModel({
+            traceBuildResult: tracesTime,
+            coalitionNames: coalition_names,
+            metrics,
         });
-        ensureScriptsLoaded(["plotjs"]).then(() => {
-            endJourneySpan("journey.conflict_to_bubble.runtimeLoad");
-            const plotly = getPlotly();
-            if (!plotly) return;
-            const graphDivAny = graphDiv as any;
-            const schemaTraceKey = traces
-                .map((trace) => {
-                    const mode = trace.mode ?? "";
-                    const pointCount = Array.isArray(trace.x)
-                        ? trace.x.length
-                        : 0;
-                    const idCount = Array.isArray(trace.id)
-                        ? trace.id.length
-                        : 0;
-                    return `${mode}:${pointCount}:${idCount}`;
-                })
-                .join("|");
-            const schemaFrameKey = frames
-                .map((frame) => `${frame?.name ?? ""}:${frame?.data?.length ?? 0}`)
-                .join("|");
-            const nextSchemaKey = `${schemaTraceKey}::${schemaFrameKey}`;
-            const needsFullRebuild =
-                !lastPlotSchemaKey || lastPlotSchemaKey !== nextSchemaKey;
-            const finishSpan = startPerfSpan("graph.plotly.react", {
-                traceCount: traces.length,
-                frameCount: frames.length,
-                fullRebuild: needsFullRebuild,
-            });
-            if (needsFullRebuild) {
-                plotly.purge(graphDiv);
-            }
-            plotly.react(graphDiv, {
-                data: traces,
-                layout: layout,
-                frames: frames,
-            });
-            if (!hasCompletedFirstBubbleMount) {
-                hasCompletedFirstBubbleMount = true;
-                endJourneySpan("journey.conflict_to_bubble.firstMount");
-            }
-            lastPlotSchemaKey = nextSchemaKey;
-            finishSpan();
-            if (plotlyAnimatedListener) {
-                graphDivAny.removeListener?.(
-                    "plotly_animated",
-                    plotlyAnimatedListener,
-                );
-            }
-            if (plotlySliderChangeListener) {
-                graphDivAny.removeListener?.(
-                    "plotly_sliderchange",
-                    plotlySliderChangeListener,
-                );
-            }
-            plotlyAnimatedListener = function () {
-                plotly.relayout(graphDiv, {
-                    "xaxis.autorange": true,
-                    "yaxis.autorange": true,
-                });
-            };
-            plotlySliderChangeListener = function (sliderData: any) {
-                graphSliderIndex = sliderData.slider.active;
-                setQueryParam("time", graphSliderIndex, { replace: true });
-                saveCurrentQueryParams();
-            };
-            graphDivAny.on?.("plotly_animated", plotlyAnimatedListener);
-            graphDivAny.on?.("plotly_sliderchange", plotlySliderChangeListener);
-        }).catch((error) => {
-            endJourneySpan("journey.conflict_to_bubble.runtimeLoad");
-            console.error("Failed to load plot runtime", error);
+        if (!model) {
+            void ensureBubbleControlsPanel();
+            return;
+        }
+        updateBubbleChartModel(model, {
+            measurePerf: true,
+            reason: hasCompletedFirstBubbleMount
+                ? "update-model"
+                : "initial-model",
         });
+        lastBubbleModelKey = cacheKey;
+    }
+
+    function scheduleGraphUpdate() {
+        stopBubblePlayback();
+        clearBubbleInteractionState();
+        if (graphUpdateQueued) return;
+        graphUpdateQueued = true;
+        requestAnimationFrame(() => {
+            graphUpdateQueued = false;
+            if (_rawData) {
+                void setupGraphData();
+            }
+        });
+    }
+
+    function stopBubblePlayback(): void {
+        if (bubblePlaybackFrame != null) {
+            cancelAnimationFrame(bubblePlaybackFrame);
+            bubblePlaybackFrame = null;
+        }
+        bubblePlaybackLastTimestamp = null;
+        isBubblePlaybackActive = false;
+    }
+
+    function clearBubbleChartState(): void {
+        stopBubblePlayback();
+        finishBubbleRenderMeasurement();
+        bubbleSizeScale = 1;
+        bubbleChartModel = null;
+        latestTraceBuildResult = null;
+        latestTraceMetrics = null;
+        latestTraceAggregationMode = null;
+        clearBubbleInteractionState();
+        bubbleCanvasRenderResult = null;
+        bubbleActiveTimeLabel = "";
+        bubbleTimelineTicks = [];
+    }
+
+    function formatBubbleNumber(value: number): string {
+        if (!Number.isFinite(value)) return "0";
+        const abs = Math.abs(value);
+        const maximumFractionDigits = abs < 10 ? 2 : abs < 100 ? 1 : 0;
+        return value.toLocaleString(undefined, {
+            maximumFractionDigits,
+        });
+    }
+
+    function syncBubbleFrameState(): void {
+        if (!bubbleChartModel) {
+            bubbleActiveTimeLabel = "";
+            bubbleTimelineTicks = [];
+            return;
+        }
+
+        graphSliderIndex = clampBubbleFrameIndex(
+            bubbleChartModel.frames.length,
+            graphSliderIndex,
+        );
+        bubbleActiveTimeLabel =
+            bubbleChartModel.frames[graphSliderIndex]?.label ?? "";
+        bubbleTimelineTicks = buildBubbleTimelineTicks(
+            bubbleChartModel.frames.map((frame) => frame.label ?? ""),
+            5,
+        );
+    }
+
+    function updateBubbleChartModel(
+        model: BubbleCanvasModel,
+        options?: {
+            measurePerf?: boolean;
+            reason?: string;
+        },
+    ): void {
+        bubbleChartModel = model;
+        clearBubbleInteractionState();
+        syncBubbleFrameState();
+        bubbleCanvasRenderResult = null;
+        if (options?.measurePerf) {
+            beginBubbleRenderMeasurement(options.reason ?? "render");
+        }
+    }
+
+    function persistGraphSliderIndex(replace = true): void {
+        setQueryParam("time", graphSliderIndex, { replace });
+        saveCurrentQueryParams();
+    }
+
+    function setActiveBubbleFrameIndex(
+        nextIndex: number,
+        options?: {
+            persist?: boolean;
+            replace?: boolean;
+            reason?: string;
+        },
+    ): void {
+        if (!bubbleChartModel) {
+            graphSliderIndex = Math.max(0, Math.round(nextIndex));
+            if (options?.persist) {
+                persistGraphSliderIndex(options.replace ?? true);
+            }
+            return;
+        }
+
+        const clamped = clampBubbleFrameIndex(
+            bubbleChartModel.frames.length,
+            nextIndex,
+        );
+        if (clamped === graphSliderIndex) {
+            if (options?.persist) {
+                persistGraphSliderIndex(options.replace ?? true);
+            }
+            return;
+        }
+
+        graphSliderIndex = clamped;
+        clearBubbleInteractionState();
+        syncBubbleFrameState();
+        if (options?.persist) {
+            persistGraphSliderIndex(options.replace ?? true);
+        }
+        beginBubbleRenderMeasurement(options?.reason ?? "frame-change");
+    }
+
+    function runBubblePlaybackFrame(timestamp: number): void {
+        if (!bubbleChartModel || bubbleChartModel.frames.length <= 1) {
+            stopBubblePlayback();
+            return;
+        }
+        if (bubblePlaybackLastTimestamp == null) {
+            bubblePlaybackLastTimestamp = timestamp;
+        }
+
+        if (timestamp - bubblePlaybackLastTimestamp >= BUBBLE_PLAYBACK_STEP_MS) {
+            bubblePlaybackLastTimestamp = timestamp;
+            const nextIndex = graphSliderIndex + 1;
+            if (nextIndex >= bubbleChartModel.frames.length) {
+                stopBubblePlayback();
+                return;
+            }
+            setActiveBubbleFrameIndex(nextIndex, {
+                persist: true,
+                replace: true,
+                reason: "playback",
+            });
+        }
+
+        bubblePlaybackFrame = requestAnimationFrame(runBubblePlaybackFrame);
+    }
+
+    function toggleBubblePlayback(): void {
+        if (!bubbleChartModel || bubbleChartModel.frames.length <= 1) return;
+        if (isBubblePlaybackActive) {
+            stopBubblePlayback();
+            return;
+        }
+
+        if (graphSliderIndex >= bubbleChartModel.frames.length - 1) {
+            setActiveBubbleFrameIndex(0, {
+                persist: true,
+                replace: true,
+                reason: "playback-reset",
+            });
+        }
+
+        isBubblePlaybackActive = true;
+        bubblePlaybackLastTimestamp = null;
+        bubblePlaybackFrame = requestAnimationFrame(runBubblePlaybackFrame);
+    }
+
+    function previewBubbleTimelineValues(nextValues: number[]): void {
+        stopBubblePlayback();
+        const nextIndex = Number(nextValues[0] ?? graphSliderIndex);
+        setActiveBubbleFrameIndex(nextIndex, {
+            persist: false,
+            reason: "time-slider-preview",
+        });
+    }
+
+    function commitBubbleTimelineValues(nextValues: number[]): void {
+        stopBubblePlayback();
+        const nextIndex = Number(nextValues[0] ?? graphSliderIndex);
+        setActiveBubbleFrameIndex(nextIndex, {
+            persist: true,
+            replace: true,
+            reason: "time-slider",
+        });
+    }
+
+    function handleBubbleCanvasHover(
+        event: CustomEvent<BubbleChartPointerEventDetail>,
+    ): void {
+        const { point, pointer } =
+            event.detail as BubbleChartPointerEventDetail<BubbleCanvasPointMeta>;
+        bubbleHoverPoint = point;
+        bubbleTooltipAnchor =
+            point && bubbleCanvasRenderResult
+                ? resolveBubbleTooltipAnchor(pointer, bubbleCanvasRenderResult)
+                : null;
+    }
+
+    function handleBubbleCanvasFrameRendered(
+        event: CustomEvent,
+    ): void {
+        bubbleCanvasRenderResult =
+            event.detail as BubbleCanvasRenderResult;
+        finishBubbleRenderMeasurement();
+        void ensureBubbleControlsPanel();
+        if (!hasCompletedFirstBubbleMount) {
+            hasCompletedFirstBubbleMount = true;
+            endJourneySpan("journey.conflict_to_bubble.firstMount");
+        }
+    }
+
+    async function setupGraphData() {
+        if (!_rawData) return;
+        const runId = ++latestGraphRunId;
+        const metrics = buildSelectedBubbleMetrics();
+        const activeAggregationMode = bubbleAggregationMode;
+        if (!metrics) return;
+        if (_allowedAllianceIds.size === 0) {
+            _allowedAllianceIds = resolveInitialAllowedAllianceIds(
+                _rawData,
+                requestedAllianceIdsFromQuery,
+            );
+        }
+        const selectedAllianceIds = normalizeAllianceIdList(
+            Array.from(_allowedAllianceIds),
+        );
+        const cacheKey = getTraceCacheKey(
+            metrics,
+            cityValues,
+            _rawData,
+            selectedAllianceIds,
+        );
+        if (cacheKey === lastBubbleModelKey && bubbleChartModel) {
+            incrementPerfCounter("graph.bubble.renderSkipped", 1, {
+                reason: "unchanged-trace-key",
+            });
+            syncBubbleFrameState();
+            return;
+        }
+        const artifacts = bubbleArtifacts;
+        const finishComputeSpan = startPerfSpan(
+            "journey.conflict_to_bubble.graphCompute",
+            { workerAvailable: !!artifacts?.hasWorker() },
+        );
+        const tracesTime = await (artifacts
+            ? artifacts.getTrace({
+                cacheKey,
+                metrics,
+                aggregationMode: activeAggregationMode,
+                selectedAllianceIds,
+                cityRange: cityValues,
+                graphData: fallbackGraphData ?? undefined,
+                contextKey: `bubble:${conflictId ?? "unknown"}`,
+                requestId: runId,
+            })
+            : fallbackGraphData
+              ? Promise.resolve(
+                generateTraces(
+                    fallbackGraphData,
+                    metrics[0],
+                    metrics[1],
+                    metrics[2],
+                    cityValues,
+                    selectedAllianceIds,
+                    activeAggregationMode,
+                ),
+            )
+              : Promise.resolve(null)).finally(() => {
+                finishComputeSpan();
+            });
+        if (runId !== latestGraphRunId) return;
+        applyBubbleTraceResult(
+            tracesTime,
+            _rawData,
+            metrics,
+            cacheKey,
+            activeAggregationMode,
+        );
     }
 
     function buildBubbleExportBundle(): ExportBundle | null {
@@ -1093,6 +1228,8 @@
         }
 
         const { traces, times } = latestTraceBuildResult;
+        const exportAggregationMode =
+            latestTraceAggregationMode ?? DEFAULT_BUBBLE_AGGREGATION_MODE;
         const coalitionNames = _rawData.coalitions.map((c) => c.name);
         const keys = Object.keys(traces)
             .map(Number)
@@ -1113,10 +1250,13 @@
         )) {
             const coalitionId = Number(coalitionIdStr);
             for (let i = 0; i < trace.id.length; i++) {
+                const seriesLabel = trace.text[i] ?? `AA:${trace.id[i]}`;
                 frameRows.push([
                     coalitionNames[coalitionId] ??
                         `Coalition ${coalitionId + 1}`,
-                    trace.text[i] ?? `AA:${trace.id[i]}`,
+                    exportAggregationMode === "coalition"
+                        ? `${seriesLabel} (aggregated)`
+                        : seriesLabel,
                     trace.id[i],
                     activeTime,
                     timeFormat(activeTime),
@@ -1135,10 +1275,13 @@
             )) {
                 const coalitionId = Number(coalitionIdStr);
                 for (let i = 0; i < trace.id.length; i++) {
+                    const seriesLabel = trace.text[i] ?? `AA:${trace.id[i]}`;
                     timelineRows.push([
                         coalitionNames[coalitionId] ??
                             `Coalition ${coalitionId + 1}`,
-                        trace.text[i] ?? `AA:${trace.id[i]}`,
+                        exportAggregationMode === "coalition"
+                            ? `${seriesLabel} (aggregated)`
+                            : seriesLabel,
                         trace.id[i],
                         time,
                         timeFormat(time),
@@ -1154,6 +1297,9 @@
             ["conflict_id", conflictId ?? ""],
             ["conflict_name", conflictName ?? ""],
             ["selected_metrics", selected_metrics.map((m) => m.value)],
+            ["selected_alliance_count", _allowedAllianceIds.size],
+            ["selected_alliance_ids", Array.from(_allowedAllianceIds)],
+            ["aggregation_mode", exportAggregationMode],
             ["city_min", cityValues[0]],
             ["city_max", cityValues[1]],
             ["normalize_x", normalize_x ? 1 : 0],
@@ -1170,12 +1316,14 @@
                 conflictId,
                 conflictName,
                 selectedMetrics: latestTraceMetrics,
+                selectedAllianceIds: Array.from(_allowedAllianceIds),
                 cityRange: cityValues,
                 normalize: {
                     x: normalize_x,
                     y: normalize_y,
                     z: normalize_z,
                 },
+                aggregationMode: exportAggregationMode,
                 activeTime,
                 activeTimeLabel: timeFormat(activeTime),
                 isTurn: times.is_turn,
@@ -1216,9 +1364,12 @@
 </script>
 
 <svelte:head>
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.css"
+    <link rel="preconnect" href={config.data_origin} crossorigin="anonymous" />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin="anonymous" />
+    <meta name="lc-data-origin" content={config.data_origin} />
+    <meta
+        name="lc-graph-data-version"
+        content={String(config.version.graph_data)}
     />
 </svelte:head>
 <div class="container-fluid p-2 ux-page-body">
@@ -1239,21 +1390,21 @@
             />
             <span class="ux-page-title-main">Conflict: {conflictName}</span>
         </div>
-        {#if (_rawData as any)?.wiki}
+        {#if _rawData?.wiki}
             <a
                 class="btn ux-btn fw-bold"
-                href="https://politicsandwar.fandom.com/wiki/{(_rawData as any)
-                    .wiki}"
-                >Wiki:{(_rawData as any)?.wiki}&nbsp;<i
-                    class="bi bi-box-arrow-up-right"
-                ></i></a
+                href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}"
+                >Wiki:{_rawData.wiki}<Icon
+                    name="externalLink"
+                    className="ux-icon-inline"
+                /></a
             >
         {/if}
     </h1>
     <ConflictRouteTabs {conflictId} active="bubble" routeKind="single" />
     <div
         class="row m-0 p-0 ux-surface ux-tab-panel"
-        style="min-height: 116px; position: relative; z-index: 80; overflow: visible;"
+        style="min-height: 116px; position: relative; overflow: visible;"
     >
         {#if !_loaded}
             <Progress />
@@ -1269,111 +1420,72 @@
                 >
             </div>
         {/if}
-        <div class="col-12">
-            <div style="width: calc(100% - 30px);margin-left:15px;">
-                <div
-                    class="mt-3 mb-5"
-                    class:bubble-city-slider={true}
-                    style="position: relative; z-index: 1;"
-                    bind:this={sliderElement}
-                ></div>
-            </div>
-            {#if _rawData}
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="fw-bold"
-                        >Select 3
-                        <button
-                            type="button"
-                            class="btn btn-link btn-sm p-0 ms-1 align-baseline"
-                            title="Metrics with ':' are cumulative sums over time. Metrics without ':' are point-in-time values for each frame."
-                            aria-label="Metric behavior help"
+        <div class="col-12 ux-compact-controls px-2 pt-2 pb-2">
+            <div class="ux-graph-control-launcher" class:bubble-city-slider={_rawData !== null}>
+                {#if _rawData && bubbleControlsPanelPromise}
+                    {#await bubbleControlsPanelPromise}
+                        <div
+                            class="ux-graph-controls-loading small ux-muted"
+                            role="status"
+                            aria-live="polite"
                         >
-                            <i class="bi bi-info-circle"></i>
-                        </button></span
-                    >
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <ExportDataMenu
-                            datasets={bubbleExportDatasets}
-                            bind:selectedDatasetKey={selectedBubbleExportDataset}
-                            onExport={handleBubbleExport}
-                        />
-                        <ShareResetBar
-                            onReset={resetFilters}
-                            resetDirty={isResetDirty}
-                        />
-                    </div>
-                </div>
-                <div
-                    class="select-compact mb-2"
-                    style="position: relative; z-index: 3;"
-                >
-                    <Select
-                        multiple
-                        {items}
-                        on:change={handleMetricsChange}
-                        bind:value={selected_metrics}
-                        showChevron={true}
-                    >
-                        <div class="empty" slot="empty">
-                            {maxItems ? "Max 3 items" : "No options"}
+                            <strong>Loading controls…</strong>
                         </div>
-                    </Select>
-                </div>
-                <div class="small text-muted mb-2">
-                    Metrics: {selected_metrics
-                        .map((item) => item.label)
-                        .join(" / ")} • Cities {cityValues[0]}-{cityValues[1]}
-                </div>
-                <span class="fw-bold">Per Unit or Nation:</span>
-                <div
-                    class="form-check form-check-inline"
-                    style="position: relative; z-index: 2;"
-                >
-                    <label class="form-check-label" for="inlineCheckbox1"
-                        >X</label
+                    {:then BubbleControlsPanel}
+                        <svelte:component
+                            this={BubbleControlsPanel}
+                            rawData={_rawData}
+                            {items}
+                            selectedMetrics={selected_metrics}
+                            cityRange={cityValues}
+                            normalizeX={normalize_x}
+                            normalizeY={normalize_y}
+                            normalizeZ={normalize_z}
+                            aggregationByCoalition={
+                                bubbleAggregationMode === "coalition"
+                            }
+                            allowedAllianceIds={Array.from(_allowedAllianceIds)}
+                            selectedExportDatasetKey={selectedBubbleExportDataset}
+                            exportDatasets={bubbleExportDatasets}
+                            {isResetDirty}
+                            onSelectedMetricsCommit={handleBubbleMetricsCommit}
+                            onCityRangeCommit={handleBubbleCityRangeCommit}
+                            onNormalizeCommit={commitNormalizeChange}
+                            onAggregationByCoalitionCommit={
+                                handleBubbleAggregationByCoalitionCommit
+                            }
+                            onAllowedAllianceIdsCommit={handleBubbleAllianceIdsCommit}
+                            onSelectedExportDatasetKeyChange={handleBubbleExportDatasetKeyChange}
+                            onExport={handleBubbleExport}
+                            onReset={resetFilters}
+                        />
+                    {:catch}
+                        <div
+                            class="ux-graph-controls-loading small ux-muted"
+                            role="status"
+                            aria-live="polite"
+                        >
+                            <strong>Controls unavailable.</strong>
+                        </div>
+                    {/await}
+                {:else if _rawData}
+                    <div
+                        class="ux-graph-controls-loading small ux-muted"
+                        role="status"
+                        aria-live="polite"
                     >
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="inlineCheckbox1"
-                        value="option1"
-                        bind:checked={normalize_x}
-                        on:change={handleCheckbox}
-                    />
-                </div>
-                <div
-                    class="form-check form-check-inline"
-                    style="position: relative; z-index: 2;"
-                >
-                    <label class="form-check-label" for="inlineCheckbox2"
-                        >Y</label
+                        <strong>Loading controls…</strong>
+                    </div>
+                {:else}
+                    <div
+                        class="ux-graph-controls-loading small ux-muted"
+                        role="status"
+                        aria-live="polite"
                     >
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="inlineCheckbox2"
-                        value="option2"
-                        bind:checked={normalize_y}
-                        on:change={handleCheckbox}
-                    />
-                </div>
-                <div
-                    class="form-check form-check-inline"
-                    style="position: relative; z-index: 2;"
-                >
-                    <label class="form-check-label" for="inlineCheckbox3"
-                        >Z</label
-                    >
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="inlineCheckbox3"
-                        value="option3"
-                        bind:checked={normalize_z}
-                        on:change={handleCheckbox}
-                    />
-                </div>
-            {/if}
+                        <strong>Loading controls…</strong>
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
     <div
@@ -1381,7 +1493,193 @@
         style="overflow-x: hidden; position: relative; z-index: 1;"
     >
         <div class="col-12 m-0 p-0">
-            <div class="m-0 p-0" bind:this={graphDiv}></div>
+            <div class="bubble-timeline-controls bubble-timeline-shell ux-control-strip mx-2 mt-2">
+                {#if bubbleChartModel}
+                    <div class="bubble-timeline-buttons">
+                        <button
+                            type="button"
+                            class="btn btn-sm ux-btn bubble-timeline-button"
+                            on:click={toggleBubblePlayback}
+                            disabled={bubbleChartModel.frames.length <= 1}
+                        >
+                            {isBubblePlaybackActive ? "Pause" : "Play"}
+                        </button>
+                    </div>
+                    <div class="bubble-timeline-meta">
+                        <div class="bubble-timeline-status" aria-live="polite">
+                            <strong class="bubble-timeline-status-date">
+                                {bubbleActiveTimeLabel}
+                            </strong>
+                            {#if bubbleChartModel.frames.length > 1}
+                                <span
+                                    class="bubble-timeline-status-count"
+                                    aria-label={`Frame ${graphSliderIndex + 1} of ${bubbleChartModel.frames.length}`}
+                                >
+                                    {graphSliderIndex + 1}/{bubbleChartModel.frames.length}
+                                </span>
+                            {/if}
+                        </div>
+                        <div class="bubble-timeline-slider-wrap">
+                            <GraphSlider
+                                min={0}
+                                max={Math.max(bubbleChartModel.frames.length - 1, 0)}
+                                step={1}
+                                values={bubbleTimelineSliderValues}
+                                ticks={bubbleTimelineSliderTickDescriptors}
+                                formatValue={(value) =>
+                                    bubbleChartModel?.frames[Math.round(value)]?.label ??
+                                    bubbleActiveTimeLabel}
+                                showSelectionSummary={false}
+                                ariaLabel="Bubble chart time frame"
+                                onValuesInput={previewBubbleTimelineValues}
+                                onValuesCommit={commitBubbleTimelineValues}
+                                disabled={bubbleChartModel.frames.length <= 1}
+                            />
+                        </div>
+                    </div>
+                {:else}
+                    <div class="bubble-timeline-buttons">
+                        <button
+                            type="button"
+                            class="btn btn-sm ux-btn bubble-timeline-button"
+                            disabled
+                        >
+                            Play
+                        </button>
+                    </div>
+                    <div class="bubble-timeline-meta">
+                        <div class="bubble-timeline-status" aria-live="polite">
+                            <strong class="bubble-timeline-status-date">
+                                {_loadError ? "Timeline unavailable" : "Loading timeline…"}
+                            </strong>
+                            <span class="bubble-timeline-status-count">
+                                {_loaded ? "Awaiting data" : "Preparing"}
+                            </span>
+                        </div>
+                        <div
+                            class="bubble-timeline-loading-bar"
+                            aria-hidden="true"
+                        ></div>
+                    </div>
+                {/if}
+            </div>
+            <div class="bubble-chart-container">
+                {#if bubbleChartModel && bubbleCanvasConfig}
+                    <div class="bubble-chart-toolbar ux-control-strip">
+                        <div class="bubble-chart-toolbar-scale">
+                            <label for="bubbleSizeScale" class="bubble-chart-toolbar-label">
+                                Bubble size
+                            </label>
+                            <input
+                                id="bubbleSizeScale"
+                                class="bubble-chart-toolbar-range"
+                                type="range"
+                                min="50"
+                                max="200"
+                                step="5"
+                                value={Math.round(bubbleSizeScale * 100)}
+                                on:input={handleBubbleSizeScaleInput}
+                                disabled={!bubbleChartModel}
+                                aria-label="Bubble size scale"
+                            />
+                            <output class="bubble-chart-toolbar-value" for="bubbleSizeScale">
+                                {Math.round(bubbleSizeScale * 100)}%
+                            </output>
+                        </div>
+
+                        <div class="bubble-chart-toolbar-actions">
+                            <span class="bubble-chart-toolbar-hint">
+                                Wheel to zoom • drag to pan • double-click to reset
+                            </span>
+
+                            <button
+                                type="button"
+                                class="btn btn-sm ux-btn"
+                                on:click={resetBubbleView}
+                                disabled={!bubbleChartModel}
+                            >
+                                Reset view
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn btn-sm ux-btn"
+                                on:click={downloadBubblePng}
+                                disabled={!bubbleChartModel}
+                            >
+                                Download PNG
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+                <div class="bubble-chart-stage">
+                    {#if bubbleChartModel && bubbleCanvasConfig}
+                        <BubbleCanvas
+                            bind:this={bubbleCanvasRef}
+                            model={bubbleChartModel.chartModel}
+                            frameIndex={graphSliderIndex}
+                            config={bubbleCanvasConfig}
+                            sizeMultiplier={bubbleSizeScale}
+                            ariaLabel="Conflict bubble chart"
+                            height="clamp(360px, 66vh, 720px)"
+                            on:hover={handleBubbleCanvasHover}
+                            on:frameRendered={handleBubbleCanvasFrameRendered}
+                        />
+                    {:else}
+                        <div
+                            class="bubble-chart-loading"
+                            role="status"
+                            aria-live="polite"
+                        >
+                            <strong>
+                                {_loadError
+                                    ? "Bubble chart unavailable. Try refreshing the page."
+                                    : "Loading alliance data…"}
+                            </strong>
+                        </div>
+                    {/if}
+                    {#if bubbleHoverPoint && bubbleTooltipAnchor}
+                        <div
+                            class="bubble-chart-tooltip"
+                            class:is-flip-x={bubbleTooltipAnchor.flipX}
+                            class:is-flip-y={bubbleTooltipAnchor.flipY}
+                            style={`left:${bubbleTooltipAnchor.x}px;top:${bubbleTooltipAnchor.y}px;--bubble-tooltip-accent:${bubbleHoverPoint.color};`}
+                        >
+                            <div class="bubble-chart-tooltip-title">
+                                {bubbleHoverPoint.label}
+                            </div>
+                            <div class="bubble-chart-tooltip-subtitle">
+                                {bubbleHoverPoint.meta?.coalitionName ?? "Coalition"} • {bubbleHoverPoint.frameLabel}
+                            </div>
+                            <div class="bubble-chart-tooltip-row">
+                                <span>{bubbleChartModel?.xLabel ?? "X"}</span>
+                                <strong>{formatBubbleNumber(bubbleHoverPoint.xValue)}</strong>
+                            </div>
+                            <div class="bubble-chart-tooltip-row">
+                                <span>{bubbleChartModel?.yLabel ?? "Y"}</span>
+                                <strong>{formatBubbleNumber(bubbleHoverPoint.yValue)}</strong>
+                            </div>
+                            <div class="bubble-chart-tooltip-row">
+                                <span>{bubbleChartModel?.sizeLabel ?? "Size"}</span>
+                                <strong>{formatBubbleNumber(bubbleHoverPoint.sizeValue)}</strong>
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+                {#if bubbleChartModel?.legendItems.length}
+                    <div class="bubble-chart-legend" aria-label="Coalition colors">
+                        {#each bubbleChartModel.legendItems as item (item.label)}
+                            <span class="bubble-chart-legend-item">
+                                <span
+                                    class="bubble-chart-legend-swatch"
+                                    style={`background:${item.color};`}
+                                ></span>
+                                <span>{item.label}</span>
+                            </span>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
     {#if datasetProvenance}
@@ -1390,14 +1688,343 @@
 </div>
 
 <style>
-    .bubble-city-slider :global(.noUi-pips),
-    .bubble-city-slider :global(.noUi-pips-horizontal),
-    .bubble-city-slider :global(.noUi-value),
-    .bubble-city-slider :global(.noUi-marker) {
-        pointer-events: none;
+    .ux-graph-control-launcher {
+        min-height: 2.5rem;
     }
 
-    .bubble-city-slider :global(.noUi-pips-horizontal) {
-        z-index: 0;
+    .ux-graph-controls-loading {
+        min-height: 5.2rem;
+        display: grid;
+        align-content: center;
+        gap: 0.22rem;
+        padding: 0.35rem 0.1rem;
+    }
+
+    .bubble-timeline-controls {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: start;
+        gap: 0.5rem;
+    }
+
+    .bubble-timeline-shell {
+        min-height: 4.25rem;
+    }
+
+    .bubble-timeline-buttons {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 0.18rem;
+        padding-top: 0.14rem;
+    }
+
+    .bubble-timeline-button {
+        min-width: 3.15rem;
+        min-height: 1.42rem;
+        padding: 0.06rem 0.48rem !important;
+        font-size: 0.74rem !important;
+        font-weight: 600 !important;
+    }
+
+    .bubble-timeline-meta {
+        min-width: 0;
+        display: grid;
+        gap: 0.34rem;
+    }
+
+    .bubble-timeline-status {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .bubble-timeline-status-date {
+        color: rgba(15, 23, 42, 0.96);
+        font-size: 0.84rem;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+
+    .bubble-timeline-status-count {
+        color: rgba(71, 85, 105, 0.88);
+        font-size: 0.67rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        white-space: nowrap;
+    }
+
+    .bubble-timeline-slider-wrap {
+        min-width: 0;
+        position: relative;
+    }
+
+    .bubble-timeline-loading-bar {
+        position: relative;
+        height: 0.68rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--ux-border) 86%, transparent);
+        background: linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--ux-surface-alt) 92%, transparent),
+            color-mix(in srgb, rgba(148, 163, 184, 0.22) 72%, var(--ux-surface))
+        );
+        overflow: hidden;
+    }
+
+    .bubble-timeline-loading-bar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.58),
+            transparent
+        );
+        transform: translateX(-100%);
+        animation: bubble-sheen 1.55s ease-in-out infinite;
+    }
+
+    .bubble-chart-container {
+        min-height: min(68vh, 760px);
+        padding: 0.25rem 0.5rem 0.6rem;
+        display: grid;
+        gap: 0.8rem;
+    }
+
+    .bubble-chart-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .bubble-chart-toolbar-scale {
+        min-width: min(100%, 22rem);
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex: 1 1 18rem;
+    }
+
+    .bubble-chart-toolbar-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .bubble-chart-toolbar-range {
+        flex: 1 1 14rem;
+        min-width: 8rem;
+    }
+
+    .bubble-chart-toolbar-value {
+        min-width: 3.25rem;
+        text-align: right;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+
+    .bubble-chart-toolbar-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .bubble-chart-toolbar-hint {
+        font-size: 0.68rem;
+        color: rgba(71, 85, 105, 0.88);
+    }
+
+    .bubble-chart-stage {
+        position: relative;
+        overflow: visible;
+        min-height: clamp(360px, 66vh, 720px);
+        border: 1px solid color-mix(in srgb, var(--ux-border) 88%, transparent);
+        border-radius: 12px;
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--ux-surface) 98%, transparent),
+            color-mix(in srgb, rgba(148, 163, 184, 0.06) 76%, var(--ux-surface))
+        );
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+    }
+
+    .bubble-chart-loading {
+        min-height: clamp(360px, 66vh, 720px);
+        display: grid;
+        align-content: center;
+        justify-items: start;
+        gap: 0.34rem;
+        padding: 1rem 1.1rem;
+    }
+
+    :global(.bubble-chart-stage > [role="img"]) {
+        width: 100%;
+    }
+
+    :global(.bubble-chart-stage canvas) {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+        touch-action: none;
+    }
+
+    .bubble-chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.38rem;
+    }
+
+    .bubble-chart-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.24rem 0.48rem;
+        border: 1px solid color-mix(in srgb, var(--ux-border) 88%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--ux-surface-alt) 78%, transparent);
+        color: var(--ux-text);
+        font-size: 0.68rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+
+    .bubble-chart-legend-swatch {
+        width: 0.62rem;
+        height: 0.62rem;
+        border-radius: 999px;
+        border: 1px solid rgba(15, 23, 42, 0.14);
+    }
+
+    :global(html[data-bs-theme="dark"]) .bubble-timeline-status-date {
+        color: rgba(241, 245, 249, 0.96);
+    }
+
+    :global(html[data-bs-theme="dark"]) .bubble-timeline-status-count {
+        color: rgba(203, 213, 225, 0.84);
+    }
+
+    :global(html[data-bs-theme="dark"]) .bubble-timeline-loading-bar {
+        border-color: rgba(148, 163, 184, 0.28);
+        background: linear-gradient(
+            90deg,
+            rgba(30, 41, 59, 0.96),
+            rgba(51, 65, 85, 0.84)
+        );
+    }
+
+    :global(html[data-bs-theme="dark"]) .bubble-chart-stage,
+    :global(html[data-bs-theme="dark"]) .bubble-chart-legend-item {
+        border-color: rgba(148, 163, 184, 0.26);
+        background: linear-gradient(
+            180deg,
+            rgba(15, 23, 42, 0.98),
+            rgba(30, 41, 59, 0.9)
+        );
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    :global(html[data-bs-theme="dark"]) .bubble-chart-toolbar-hint {
+        color: rgba(203, 213, 225, 0.84);
+    }
+
+    :global(html[data-bs-theme="dark"]) .bubble-chart-legend-swatch {
+        border-color: rgba(226, 232, 240, 0.18);
+    }
+
+    .bubble-chart-tooltip {
+        position: absolute;
+        transform: translate(12px, calc(-100% - 12px));
+        max-width: min(16rem, calc(100vw - 1.5rem));
+        padding: 0.42rem 0.52rem;
+        border-radius: 6px;
+        border: 1px solid var(--bubble-tooltip-accent, rgba(148, 163, 184, 0.5));
+        background: rgba(15, 23, 42, 0.96);
+        color: rgb(248, 250, 252);
+        pointer-events: none;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+        z-index: 2;
+    }
+
+    .bubble-chart-tooltip.is-flip-x {
+        transform: translate(calc(-100% - 12px), calc(-100% - 12px));
+    }
+
+    .bubble-chart-tooltip.is-flip-y {
+        transform: translate(12px, 12px);
+    }
+
+    .bubble-chart-tooltip.is-flip-x.is-flip-y {
+        transform: translate(calc(-100% - 12px), 12px);
+    }
+
+    .bubble-chart-tooltip-title {
+        font-weight: 600;
+        font-size: 0.76rem;
+        line-height: 1.2;
+    }
+
+    .bubble-chart-tooltip-subtitle {
+        color: rgba(226, 232, 240, 0.84);
+        font-size: 0.67rem;
+        margin-top: 0.08rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .bubble-chart-tooltip-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.7rem;
+        font-size: 0.71rem;
+    }
+
+    .bubble-chart-tooltip-row + .bubble-chart-tooltip-row {
+        margin-top: 0.14rem;
+    }
+
+    @keyframes bubble-sheen {
+        0% {
+            transform: translateX(-100%);
+        }
+
+        100% {
+            transform: translateX(100%);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .bubble-chart-toolbar-actions {
+            justify-content: flex-start;
+        }
+
+        .bubble-timeline-controls {
+            grid-template-columns: 1fr;
+            gap: 0.4rem;
+        }
+
+        .bubble-timeline-slider-wrap {
+            min-width: 0;
+        }
+
+        .bubble-chart-container {
+            min-height: 420px;
+            padding-inline: 0.5rem;
+        }
+
+        .bubble-chart-toolbar-hint {
+            flex-basis: 100%;
+        }
+
+        .bubble-chart-tooltip {
+            max-width: min(14rem, calc(100vw - 1rem));
+        }
     }
 </style>

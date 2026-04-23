@@ -1,19 +1,15 @@
-type BootstrapModalInstance = {
+type ModalController = {
     show: () => void;
     hide?: () => void;
     dispose?: () => void;
 };
 
 type ManagedModalElement = Element & {
-    __lcModalController?: BootstrapModalInstance;
+    __lcModalController?: ModalController;
 };
 
 export function getVisGlobal<T = any>(): T | undefined {
     return window.vis as T | undefined;
-}
-
-export function getPlotlyGlobal<T = any>(): T | undefined {
-    return window.Plotly as T | undefined;
 }
 
 export function setWindowGlobal<T>(name: string, value: T): void {
@@ -24,15 +20,10 @@ export function getWindowGlobal<T>(name: string): T | undefined {
     return (window as Record<string, unknown>)[name] as T | undefined;
 }
 
-export function getBootstrapModalInstance(
+export function getModalController(
     element: Element | null,
-): BootstrapModalInstance | null {
+): ModalController | null {
     if (!element) return null;
     const managedElement = element as ManagedModalElement;
-    if (managedElement.__lcModalController) {
-        return managedElement.__lcModalController;
-    }
-    const modalFactory = window.bootstrap?.Modal;
-    if (!modalFactory) return null;
-    return modalFactory.getOrCreateInstance(element) as BootstrapModalInstance;
+    return managedElement.__lcModalController ?? null;
 }

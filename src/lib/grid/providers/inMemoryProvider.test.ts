@@ -66,4 +66,48 @@ describe("inMemory grid provider", () => {
         expect(result.rows[0]?.id).toBe(21);
         expect(result.rows.at(-1)?.id).toBe(36);
     });
+
+    it("reuses query and summary results for equivalent filter matches", async () => {
+        const provider = createInMemoryGridProvider({
+            rows: ROWS,
+            getRowId: (row) => row.id,
+            columns: [
+                {
+                    key: "name",
+                    title: "Name",
+                    sortable: "text",
+                    filterable: true,
+                    summary: null,
+                    getCell: (row) => ({ kind: "text", text: row.name }),
+                },
+                {
+                    key: "score",
+                    title: "Score",
+                    sortable: "number",
+                    filterable: false,
+                    summary: "sum-avg",
+                    getCell: (row) => ({ kind: "number", text: String(row.score), value: row.score }),
+                },
+            ],
+            defaultSort: { key: "score", dir: "desc" },
+        });
+
+        const firstQuery = await provider.query(
+            createState({ filters: { name: "r" } }),
+        );
+        const secondQuery = await provider.query(
+            createState({ filters: { name: "ro" } }),
+        );
+
+        expect(secondQuery).toBe(firstQuery);
+
+        const firstSummary = await provider.querySummary(
+            createState({ filters: { name: "r" } }),
+        );
+        const secondSummary = await provider.querySummary(
+            createState({ filters: { name: "ro" } }),
+        );
+
+        expect(secondSummary).toBe(firstSummary);
+    });
 });

@@ -55,6 +55,19 @@ export function createTtlCache<K, V>(config: TtlCacheConfig<K, V>) {
         enforceLimit();
     }
 
+    function has(key: K, now: number = nowMs()): boolean {
+        const entry = map.get(key);
+        if (!entry) return false;
+
+        if (entry.expiresAt <= now) {
+            map.delete(key);
+            hooks?.onInvalidate?.(key, entry.value, "expired");
+            return false;
+        }
+
+        return true;
+    }
+
     function del(key: K): boolean {
         return map.delete(key);
     }
@@ -115,6 +128,7 @@ export function createTtlCache<K, V>(config: TtlCacheConfig<K, V>) {
     return {
         get,
         set,
+        has,
         delete: del,
         clear,
         evictExpired,

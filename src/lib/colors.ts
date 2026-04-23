@@ -22,6 +22,13 @@ export const palettePrimary: string[] = [
     '128,128,128'
 ];
 
+type RgbTuple = [number, number, number];
+type ParsedColorPalette = {
+    [key in Palette]: RgbTuple[];
+};
+
+const PALETTE_COUNT = Object.keys(colorPalettes).length;
+
 export function darkenColor(color: string, percentage: number): string {
     let rgbValues = color.match(/\d+/g);
     if (!rgbValues) {
@@ -44,36 +51,85 @@ export function convertToRGB(colors: string[]): string[] {
     });
 }
 
-export function generateColors(d3: any, n: number, palette: Palette) {
-    let colors = [];
-    let colorScale = d3.scaleSequential().domain([0, n]).interpolator(d3.interpolateRgbBasisClosed(convertToRGB(colorPalettes[palette])));
+function parseRgbTuple(color: string): RgbTuple {
+    const [r = 0, g = 0, b = 0] = color.split(',').map(Number);
+    return [r, g, b];
+}
+
+const parsedColorPalettes: ParsedColorPalette = {
+    [Palette.REDS]: colorPalettes[Palette.REDS].map(parseRgbTuple),
+    [Palette.BLUES]: colorPalettes[Palette.BLUES].map(parseRgbTuple),
+    [Palette.GREENS]: colorPalettes[Palette.GREENS].map(parseRgbTuple),
+    [Palette.NEUTRALS]: colorPalettes[Palette.NEUTRALS].map(parseRgbTuple),
+};
+
+function formatRgbColor([r, g, b]: RgbTuple): string {
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+function interpolateChannel(start: number, end: number, t: number): number {
+    return Math.round(start + (end - start) * t);
+}
+
+function interpolatePaletteColor(colors: RgbTuple[], t: number): string {
+    if (colors.length === 0) {
+        return 'rgb(0, 0, 0)';
+    }
+    if (colors.length === 1) {
+        return formatRgbColor(colors[0]);
+    }
+
+    const wrappedT = ((t % 1) + 1) % 1;
+    const segmentPosition = wrappedT * colors.length;
+    const startIndex = Math.floor(segmentPosition) % colors.length;
+    const endIndex = (startIndex + 1) % colors.length;
+    const localT = segmentPosition - Math.floor(segmentPosition);
+    const start = colors[startIndex];
+    const end = colors[endIndex];
+
+    return formatRgbColor([
+        interpolateChannel(start[0], end[0], localT),
+        interpolateChannel(start[1], end[1], localT),
+        interpolateChannel(start[2], end[2], localT),
+    ]);
+}
+
+export function generateColors(n: number, palette: Palette): string[] {
+    if (n <= 0) {
+        return [];
+    }
+
+    const paletteColors = parsedColorPalettes[palette];
+    const colors = new Array<string>(n);
     for (let i = 0; i < n; i++) {
-        colors.push(colorScale(i));
+        colors[i] = interpolatePaletteColor(paletteColors, i / n);
     }
     return colors;
 }
 
-export function generateColorsFromPalettes(d3: any, palettes: Palette[]) {
-    let countByPalette: number[] = new Array(Object.keys(Palette).length).fill(0);
+export function generateColorsFromPalettes(palettes: Palette[]) {
+    let countByPalette: number[] = new Array(PALETTE_COUNT).fill(0);
     for (const element of palettes) {
         countByPalette[element]++;
     }
-    let colorsByPalette: string[][] = new Array(countByPalette.length).fill([]);
-    for (const element of palettes) {
-        let palette = element;
+    let colorsByPalette: string[][] = Array.from(
+        { length: PALETTE_COUNT },
+        () => [],
+    );
+    for (let palette = 0; palette < countByPalette.length; palette++) {
         let count = countByPalette[palette];
         if (count > 0) {
-            let paletteColors = generateColors(d3, count, palette);
+            let paletteColors = generateColors(count, palette as Palette);
             colorsByPalette[palette] = paletteColors;
         }
     }
     countByPalette.fill(0);
-    let colors = [];
-    for (const element of palettes) {
-        let palette = element;
+    let colors = new Array<string>(palettes.length);
+    for (let i = 0; i < palettes.length; i++) {
+        let palette = palettes[i];
         let j = countByPalette[palette]++;
         let paletteColors = colorsByPalette[palette];
-        colors.push(paletteColors[j]);
+        colors[i] = paletteColors[j];
     }
     return colors;
 }

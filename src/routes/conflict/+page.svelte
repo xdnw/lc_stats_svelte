@@ -1,13 +1,12 @@
 <script lang="ts">
+    import "../../styles/conflict-shell.css";
     import { base } from "$app/paths";
     import { onDestroy, onMount } from "svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
-    import ColumnPresetManager from "../../components/ColumnPresetManager.svelte";
     import ConflictKpiSection from "../../components/ConflictKpiSection.svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
-    import KpiBuilderModal from "../../components/KpiBuilderModal.svelte";
+    import Icon from "../../components/Icon.svelte";
     import Progress from "../../components/Progress.svelte";
-    import SelectionModal from "../../components/SelectionModal.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import { appConfig as config } from "$lib/appConfig";
     import { getAavaMetricLabel } from "$lib/aava";
@@ -16,10 +15,7 @@
         parseConflictLayoutQuery,
         serializeConflictLayoutQuery,
     } from "$lib/conflictLayoutQueryState";
-    import {
-        createConflictKpiProvider,
-        type ConflictKpiProvider,
-    } from "$lib/conflictGrid/conflictKpiProvider";
+    import type { ConflictKpiProvider } from "$lib/conflictGrid/conflictKpiProvider";
     import { createConflictGridProvider } from "$lib/conflictGrid/conflictGridProvider";
     import type {
         ConflictGridMeta,
@@ -27,6 +23,7 @@
         ConflictKpiRankingRow,
     } from "$lib/conflictGrid/protocol";
     import {
+        ALL_CONFLICT_GRID_LAYOUTS,
         ConflictGridLayout,
         conflictGridLayoutLabel,
     } from "$lib/conflictGrid/rowIds";
@@ -60,12 +57,13 @@
         DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY,
         createDefaultConflictTableLayoutState,
         detectConflictTableLayoutPresetKey,
+        isConflictTableDefaultPresetState,
         isConflictTableLayoutStateEqual,
     } from "$lib/conflictTablePresets";
     import { layoutTabFromIndex } from "$lib/conflictTabs";
     import { formatAllianceName, formatDate, formatDuration, formatNationName } from "$lib/formatting";
     import { getVisGlobal } from "$lib/globals";
-    import DataGrid from "$lib/grid/DataGrid.svelte";
+    import GridLoadingShell from "$lib/grid/GridLoadingShell.svelte";
     import {
         parseGridPageSizeQueryState,
         serializeGridPageSizeQueryState,
@@ -86,12 +84,8 @@
         type WidgetEntity,
         type WidgetScope,
     } from "$lib/kpi";
-    import { beginJourneySpan, endJourneySpan } from "$lib/perf";
-    import {
-        warmBubbleDefaultArtifact,
-        warmConflictGraphPayload,
-        warmTieringDefaultArtifact,
-    } from "$lib/prefetchArtifacts";
+    import { beginJourneySpan, endJourneySpan, ensureJourneySpan } from "$lib/perf";
+    import { recordPerfSpan } from "$lib/perf";
     import {
         bootstrapIdRouteLifecycle,
     } from "$lib/routeBootstrap";
@@ -114,15 +108,16 @@
     import {
         formatDatasetProvenance,
     } from "$lib/runtime";
-    import { openConflictCoalitionModal } from "$lib/conflictCoalitionModal";
+
+    type ColumnPresetManagerComponent =
+        typeof import("../../components/ColumnPresetManager.svelte").default;
+    type KpiBuilderModalComponent =
+        typeof import("../../components/KpiBuilderModal.svelte").default;
+    type SelectionModalComponent =
+        typeof import("../../components/SelectionModal.svelte").default;
+    type DataGridComponent = typeof import("$lib/grid/DataGrid.svelte").default;
 
     type KPIWidget = ConflictKPIWidget;
-    const ALL_CONFLICT_GRID_LAYOUTS = [
-        ConflictGridLayout.COALITION,
-        ConflictGridLayout.ALLIANCE,
-        ConflictGridLayout.NATION,
-    ] as const;
-
     const layouts = CONFLICT_TABLE_LAYOUT_PRESETS;
     const layoutPresetKeys = CONFLICT_TABLE_LAYOUT_PRESET_KEYS;
     const getVis = (): any => getVisGlobal();
@@ -162,7 +157,6 @@
     let metricCards: MetricCard[] = [];
     let draggingWidgetId: string | null = null;
     let kpiCollapsed = false;
-    let showLayoutPresetModal = false;
     let showKpiBuilderModal = false;
     let showPresetOverflowMenu = false;
     let selectedLayoutPresetKey: string | null = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
@@ -191,15 +185,41 @@
     let metricsOptions: string[] = [];
     let metricTitleByKey: Record<string, string> = {};
 
+    let columnPresetManagerComponent: ColumnPresetManagerComponent | null = null;
+    let kpiBuilderModalComponent: KpiBuilderModalComponent | null = null;
+    let selectionModalComponent: SelectionModalComponent | null = null;
+    let dataGridComponent: DataGridComponent | null = null;
+
     let latestLoadToken = 0;
     let latestSelectionToken = 0;
     let latestSecondaryToken = 0;
     let lastSelectionKey = "";
     let lastSecondaryDependencyKey = "";
+    let selectedConflictGridRowIds: Array<string | number> = [];
+    let layoutChromeLoadPromise: Promise<void> | null = null;
+    let kpiChromeLoadPromise: Promise<void> | null = null;
+    let layoutPresetModalLoadPromise: Promise<void> | null = null;
+    let kpiBuilderModalLoadPromise: Promise<void> | null = null;
+    let dataGridLoadPromise: Promise<void> | null = null;
+    let conflictCoalitionModalPromise:
+        | Promise<typeof import("$lib/conflictCoalitionModal")>
+        | null = null;
+    let timelineAssetsPromise: Promise<void> | null = null;
+    let timelineChromeLoadPromise: Promise<void> | null = null;
+    let timelineObserver: IntersectionObserver | null = null;
+    let timelineHostElement: HTMLDivElement | null = null;
+    let layoutChromeScheduled = false;
+    let secondaryChromeScheduled = false;
 
     let postsData: { [key: string]: [number, string, number] } | null = null;
 
     const kpiCollapseStorageKey = () => `${getPageStorageKey()}:kpi-collapsed`;
+    const VIS_TIMELINE_SCRIPT_ID = "visjs";
+    const VIS_TIMELINE_SCRIPT_SRC =
+        "https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js";
+    const VIS_TIMELINE_STYLESHEET_ID = "visjs-css";
+    const VIS_TIMELINE_STYLESHEET_HREF =
+        "https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css";
 
     function destroyClient(): void {
         conflictGridClient?.destroy();
@@ -225,6 +245,13 @@
         rankingRowsByWidgetId = {};
         metricValuesByWidgetId = {};
         postsData = null;
+        selectedConflictGridRowIds = [];
+        layoutChromeScheduled = false;
+        secondaryChromeScheduled = false;
+        disconnectTimelineObserver();
+        if (timelineHostElement) {
+            timelineHostElement.innerHTML = "";
+        }
         clearSelectionSnapshot();
         lastSecondaryDependencyKey = "";
         latestSecondaryToken += 1;
@@ -253,6 +280,276 @@
         }
 
         window.setTimeout(work, 160);
+    }
+
+    function disconnectTimelineObserver(): void {
+        timelineObserver?.disconnect();
+        timelineObserver = null;
+    }
+
+    function ensureTimelineStylesheet(): void {
+        if (typeof document === "undefined") return;
+        if (document.getElementById(VIS_TIMELINE_STYLESHEET_ID)) return;
+
+        const link = document.createElement("link");
+        link.id = VIS_TIMELINE_STYLESHEET_ID;
+        link.rel = "stylesheet";
+        link.href = VIS_TIMELINE_STYLESHEET_HREF;
+        link.crossOrigin = "anonymous";
+        document.head.appendChild(link);
+    }
+
+    function ensureTimelineChromeLoaded(): Promise<void> {
+        if (!timelineChromeLoadPromise) {
+            timelineChromeLoadPromise = import("$lib/conflictTimelineStyles")
+                .then(() => undefined)
+                .catch((error) => {
+                    timelineChromeLoadPromise = null;
+                    throw error;
+                });
+        }
+
+        return timelineChromeLoadPromise;
+    }
+
+    function ensureTimelineScript(): Promise<void> {
+        if (typeof document === "undefined") {
+            return Promise.resolve();
+        }
+
+        const existing = document.getElementById(VIS_TIMELINE_SCRIPT_ID);
+        if (existing instanceof HTMLScriptElement) {
+            if (existing.dataset.loaded === "true" || typeof getVis() !== "undefined") {
+                return Promise.resolve();
+            }
+
+            return new Promise<void>((resolve, reject) => {
+                existing.addEventListener(
+                    "load",
+                    () => {
+                        existing.dataset.loaded = "true";
+                        resolve();
+                    },
+                    { once: true },
+                );
+                existing.addEventListener(
+                    "error",
+                    () => reject(new Error("Failed to load vis-timeline")),
+                    { once: true },
+                );
+            });
+        }
+
+        return new Promise<void>((resolve, reject) => {
+            const script = document.createElement("script");
+            script.id = VIS_TIMELINE_SCRIPT_ID;
+            script.async = true;
+            script.src = VIS_TIMELINE_SCRIPT_SRC;
+            script.crossOrigin = "anonymous";
+            script.addEventListener(
+                "load",
+                () => {
+                    script.dataset.loaded = "true";
+                    resolve();
+                },
+                { once: true },
+            );
+            script.addEventListener(
+                "error",
+                () => reject(new Error("Failed to load vis-timeline")),
+                { once: true },
+            );
+            document.head.appendChild(script);
+        });
+    }
+
+    async function ensureTimelineAssetsLoaded(): Promise<void> {
+        ensureTimelineStylesheet();
+        const timelineChromePromise = ensureTimelineChromeLoaded();
+        if (typeof getVis() !== "undefined") {
+            await timelineChromePromise;
+            return;
+        }
+
+        if (!timelineAssetsPromise) {
+            timelineAssetsPromise = ensureTimelineScript().finally(() => {
+                timelineAssetsPromise = null;
+            });
+        }
+
+        await Promise.all([timelineChromePromise, timelineAssetsPromise]);
+    }
+
+    function requestTimelineHydration(): void {
+        if (!tableReady || !postsData || timelineReady) return;
+
+        void ensureTimelineAssetsLoaded()
+            .then(() => {
+                initializeTimeline();
+            })
+            .catch((error) => {
+                console.warn("Failed to load conflict timeline assets", error);
+            });
+    }
+
+    function observeTimelineVisibility(): void {
+        if (!tableReady || !postsData || timelineReady || !timelineHostElement) {
+            return;
+        }
+
+        if (typeof IntersectionObserver === "undefined") {
+            requestTimelineHydration();
+            return;
+        }
+
+        disconnectTimelineObserver();
+        timelineObserver = new IntersectionObserver(
+            (entries) => {
+                if (!entries.some((entry) => entry.isIntersecting)) {
+                    return;
+                }
+
+                disconnectTimelineObserver();
+                requestTimelineHydration();
+            },
+            {
+                rootMargin: "240px 0px",
+            },
+        );
+        timelineObserver.observe(timelineHostElement);
+    }
+
+    async function ensureLayoutChromeLoaded(): Promise<void> {
+        if (columnPresetManagerComponent) {
+            return;
+        }
+
+        if (!layoutChromeLoadPromise) {
+            layoutChromeLoadPromise = import("../../components/ColumnPresetManager.svelte")
+                .then((columnPresetManagerModule) => {
+                    columnPresetManagerComponent ??= columnPresetManagerModule.default;
+                })
+                .catch((error) => {
+                    console.warn("Failed to load conflict layout chrome", error);
+                })
+                .finally(() => {
+                    layoutChromeLoadPromise = null;
+                });
+        }
+
+        await layoutChromeLoadPromise;
+    }
+
+    async function ensureKpiProviderLoaded(): Promise<void> {
+        if (conflictKpiProvider) {
+            return;
+        }
+
+        if (!kpiChromeLoadPromise) {
+            const client = conflictGridClient;
+            kpiChromeLoadPromise = import("$lib/conflictGrid/conflictKpiProvider")
+                .then((conflictKpiProviderModule) => {
+                    if (
+                        conflictKpiProvider == null &&
+                        client != null &&
+                        client === conflictGridClient
+                    ) {
+                        conflictKpiProvider =
+                            conflictKpiProviderModule.createConflictKpiProvider({
+                                client,
+                                bootstrapLayout: _layoutData.layout,
+                            });
+
+                        if (selectedConflictGridRowIds.length > 0) {
+                            void resolveSelectionSnapshot(selectedConflictGridRowIds);
+                        }
+                    }
+                })
+                .catch((error) => {
+                    console.warn("Failed to load conflict KPI provider", error);
+                })
+                .finally(() => {
+                    kpiChromeLoadPromise = null;
+                });
+        }
+
+        await kpiChromeLoadPromise;
+    }
+
+    async function ensureLayoutPresetModalLoaded(): Promise<void> {
+        if (selectionModalComponent) {
+            return;
+        }
+
+        if (!layoutPresetModalLoadPromise) {
+            layoutPresetModalLoadPromise = import("../../components/SelectionModal.svelte")
+                .then((module) => {
+                    selectionModalComponent = module.default;
+                })
+                .catch((error) => {
+                    console.warn("Failed to load layout preset modal", error);
+                })
+                .finally(() => {
+                    layoutPresetModalLoadPromise = null;
+                });
+        }
+
+        await layoutPresetModalLoadPromise;
+    }
+
+    async function ensureKpiBuilderModalLoaded(): Promise<void> {
+        if (kpiBuilderModalComponent) {
+            return;
+        }
+
+        if (!kpiBuilderModalLoadPromise) {
+            kpiBuilderModalLoadPromise = import("../../components/KpiBuilderModal.svelte")
+                .then((module) => {
+                    kpiBuilderModalComponent = module.default;
+                })
+                .catch((error) => {
+                    console.warn("Failed to load KPI builder modal", error);
+                })
+                .finally(() => {
+                    kpiBuilderModalLoadPromise = null;
+                });
+        }
+
+        await kpiBuilderModalLoadPromise;
+    }
+
+    async function ensureDataGridLoaded(): Promise<void> {
+        if (dataGridComponent) {
+            return;
+        }
+
+        if (!dataGridLoadPromise) {
+            dataGridLoadPromise = import("$lib/grid/DataGrid.svelte")
+                .then((module) => {
+                    dataGridComponent = module.default;
+                })
+                .catch((error) => {
+                    console.warn("Failed to load conflict data grid", error);
+                    if (!_loadError) {
+                        _loadError = "Could not load the conflict table. Please retry.";
+                    }
+                })
+                .finally(() => {
+                    dataGridLoadPromise = null;
+                });
+        }
+
+        await dataGridLoadPromise;
+    }
+
+    function loadConflictCoalitionModal(): Promise<
+        typeof import("$lib/conflictCoalitionModal")
+    > {
+        if (!conflictCoalitionModalPromise) {
+            conflictCoalitionModalPromise = import("$lib/conflictCoalitionModal");
+        }
+
+        return conflictCoalitionModalPromise;
     }
 
     function queueNonCurrentLayoutWarmup(): void {
@@ -536,14 +833,19 @@
     }
 
     function toggleKpiCollapsed(): void {
-        kpiCollapsed = !kpiCollapsed;
-        localStorage.setItem(kpiCollapseStorageKey(), kpiCollapsed ? "1" : "0");
+        const nextCollapsed = !kpiCollapsed;
+        kpiCollapsed = nextCollapsed;
+        localStorage.setItem(kpiCollapseStorageKey(), nextCollapsed ? "1" : "0");
+        if (!nextCollapsed) {
+            void ensureKpiProviderLoaded();
+        }
     }
 
     function showKpi(): void {
         if (!kpiCollapsed) return;
         kpiCollapsed = false;
         localStorage.setItem(kpiCollapseStorageKey(), "0");
+        void ensureKpiProviderLoaded();
     }
 
     function isSameLayoutState(input: {
@@ -571,16 +873,37 @@
             layoutPresetButtonsEl.scrollWidth > layoutPresetViewportEl.clientWidth;
     }
 
-    function openLayoutPresetModal(): void {
-        showLayoutPresetModal = true;
-    }
+    function requestLayoutPresetModalHydration(): void {
+        if (
+            !showPresetOverflowMenu ||
+            !tableReady ||
+            selectionModalComponent ||
+            layoutPresetModalLoadPromise
+        ) {
+            return;
+        }
 
-    function closeLayoutPresetModal(): void {
-        showLayoutPresetModal = false;
+        scheduleIdleWork(() => {
+            if (
+                !showPresetOverflowMenu ||
+                !tableReady ||
+                selectionModalComponent ||
+                layoutPresetModalLoadPromise
+            ) {
+                return;
+            }
+
+            void ensureLayoutPresetModalLoaded();
+        });
     }
 
     function openKpiBuilderModal(): void {
-        showKpiBuilderModal = true;
+        void Promise.all([
+            ensureKpiProviderLoaded(),
+            ensureKpiBuilderModalLoaded(),
+        ]).then(() => {
+            showKpiBuilderModal = true;
+        });
     }
 
     function closeKpiBuilderModal(): void {
@@ -593,7 +916,6 @@
         const key = firstSelectedString(event.detail.ids);
         if (!key || !(key in layouts)) return;
         applyLayoutPresetKey(key);
-        showLayoutPresetModal = false;
     }
 
     function queryDefaults() {
@@ -803,18 +1125,14 @@
 
     function initializeTimeline(): void {
         if (!tableReady || !postsData || timelineReady) return;
-
-        const script = document.getElementById("visjs");
-        if (
-            !((script && script.getAttribute("data-loaded")) ||
-                typeof getVis() !== "undefined")
-        ) {
+        if (typeof getVis() === "undefined") {
             return;
         }
 
-        if (!conflictMeta) return;
-        const container = document.getElementById("visualization");
-        if (!container) return;
+        if (!conflictMeta || !timelineHostElement) return;
+        disconnectTimelineObserver();
+
+        const container = timelineHostElement;
         if (container.hasChildNodes()) {
             container.innerHTML = "";
         }
@@ -847,14 +1165,11 @@
         timeline.addCustomTime(start, "t1");
         timeline.addCustomTime(end, "t2");
 
+        requestAnimationFrame(() => timeline.redraw());
+        window.setTimeout(() => timeline.redraw(), 120);
+
         timelineReady = true;
         updateSecondaryReady();
-    }
-
-    function onScriptLoad(event: Event): void {
-        const script = event.target as HTMLScriptElement;
-        script.setAttribute("data-loaded", "true");
-        initializeTimeline();
     }
 
     async function beginConflictLoad(id: string): Promise<void> {
@@ -873,10 +1188,6 @@
             version: config.version.conflict_data,
         });
         conflictGridClient = client;
-        conflictKpiProvider = createConflictKpiProvider({
-            client,
-            bootstrapLayout: _layoutData.layout,
-        });
         resetConflictGridState();
         beginJourneySpan("journey.conflicts_to_conflict.dataFetch", {
             conflictId: id,
@@ -885,6 +1196,23 @@
         try {
             const payload = await client.bootstrap(_layoutData.layout);
             if (token !== latestLoadToken) return;
+
+            if (payload.timings.datasetCreateMs > 0) {
+                recordPerfSpan("conflictGrid.dataset.create", payload.timings.datasetCreateMs, {
+                    routeTarget: "/conflict",
+                    source: "worker",
+                    conflictId: id,
+                });
+            }
+            if (payload.timings.layoutBootstrapMs > 0) {
+                recordPerfSpan("conflictGrid.bootstrap.layout", payload.timings.layoutBootstrapMs, {
+                    routeTarget: "/conflict",
+                    source: "worker",
+                    conflictId: id,
+                    layout: _layoutData.layout,
+                    datasetCreated: payload.timings.datasetCreateMs > 0,
+                });
+            }
 
             conflictMeta = payload.meta;
             presetMetrics = payload.presetMetrics;
@@ -912,6 +1240,7 @@
                     : "Could not load conflict data. Please try again later.";
             metaReady = false;
             endJourneySpan("journey.conflicts_to_conflict.dataFetch");
+            endJourneySpan("journey.conflicts_to_conflict.routeTransition");
         }
     }
 
@@ -922,9 +1251,14 @@
             decodeQueryParamValue("grid", query.get("grid")),
         );
         loadKpiWidgets(id, query);
+        ensureJourneySpan("journey.conflicts_to_conflict.routeTransition", {
+            mode: "direct",
+            conflictId: id,
+        });
         beginJourneySpan("journey.conflicts_to_conflict.firstMount", {
             conflictId: id,
         });
+        void ensureDataGridLoaded();
         void beginConflictLoad(id);
     }
 
@@ -939,10 +1273,16 @@
         const coalition = conflictMeta?.coalitions[coalitionIndex];
         if (!coalition) return;
 
-        openConflictCoalitionModal({
-            title: `Coalition ${coalitionIndex + 1}: ${coalition.name}`,
-            alliances: coalition.alliances,
-        });
+        void loadConflictCoalitionModal()
+            .then(({ openConflictCoalitionModal }) => {
+                openConflictCoalitionModal({
+                    title: `Coalition ${coalitionIndex + 1}: ${coalition.name}`,
+                    alliances: coalition.alliances,
+                });
+            })
+            .catch((error) => {
+                console.warn("Failed to load coalition modal", error);
+            });
     }
 
     function handleConflictGridError(
@@ -976,7 +1316,7 @@
         if (!postsData) {
             timelineReady = true;
         } else {
-            initializeTimeline();
+            observeTimelineVisibility();
         }
         updateSecondaryReady();
 
@@ -986,26 +1326,44 @@
             saveCurrentQueryParams();
             queueNonCurrentLayoutWarmup();
 
-            if (conflictId) {
-                warmConflictGraphPayload(conflictId, {
-                    priority: "idle",
-                    reason: "route-conflict-idle-graph-payload",
-                    routeTarget: "/conflict",
-                    intentStrength: "idle",
-                });
-                warmBubbleDefaultArtifact(conflictId, {
-                    priority: "idle",
-                    reason: "route-conflict-idle-bubble-default",
-                    routeTarget: "/bubble",
-                    intentStrength: "idle",
-                });
-                warmTieringDefaultArtifact(conflictId, {
-                    priority: "idle",
-                    reason: "route-conflict-idle-tiering-default",
-                    routeTarget: "/tiering",
-                    intentStrength: "idle",
+            if (!layoutChromeScheduled) {
+                layoutChromeScheduled = true;
+                scheduleIdleWork(() => {
+                    void ensureLayoutChromeLoaded();
                 });
             }
+
+            if (!secondaryChromeScheduled) {
+                secondaryChromeScheduled = true;
+                if (!kpiCollapsed) {
+                    scheduleIdleWork(() => {
+                        void ensureKpiProviderLoaded();
+                    });
+                }
+            }
+        }
+    }
+
+    async function resolveSelectionSnapshot(
+        rowIds: Array<string | number>,
+    ): Promise<void> {
+        if (!conflictKpiProvider || rowIds.length === 0) {
+            clearSelectionSnapshot();
+            return;
+        }
+
+        const token = ++latestSelectionToken;
+        try {
+            const snapshot = await conflictKpiProvider.getSelectionSnapshot(
+                _layoutData.layout,
+                rowIds,
+            );
+            if (token !== latestSelectionToken) return;
+            applySelectionSnapshot(snapshot);
+        } catch (error) {
+            if (token !== latestSelectionToken) return;
+            console.warn("Failed to resolve conflict KPI selection snapshot", error);
+            clearSelectionSnapshot();
         }
     }
 
@@ -1013,27 +1371,21 @@
         event: CustomEvent<{ selectedRowIds: Array<string | number> }>,
     ): void {
         const rowIds = event.detail.selectedRowIds;
+        selectedConflictGridRowIds = [...rowIds];
         const nextKey = rowIds.join("|");
         if (nextKey === lastSelectionKey) return;
         lastSelectionKey = nextKey;
 
-        if (!conflictKpiProvider || rowIds.length === 0) {
+        if (rowIds.length === 0) {
             clearSelectionSnapshot();
             return;
         }
 
-        const token = ++latestSelectionToken;
-        void conflictKpiProvider
-            .getSelectionSnapshot(_layoutData.layout, rowIds)
-            .then((snapshot) => {
-                if (token !== latestSelectionToken) return;
-                applySelectionSnapshot(snapshot);
-            })
-            .catch((error) => {
-                if (token !== latestSelectionToken) return;
-                console.warn("Failed to resolve conflict KPI selection snapshot", error);
-                clearSelectionSnapshot();
-            });
+        if (!conflictKpiProvider) {
+            return;
+        }
+
+        void resolveSelectionSnapshot(rowIds);
     }
 
     function handleConflictGridStateChange(
@@ -1098,6 +1450,12 @@
     $: if (layoutPresetViewportEl && layoutPresetButtonsEl) {
         updateLayoutPresetMode();
     }
+    $: if (showPresetOverflowMenu && tableReady && !selectionModalComponent) {
+        requestLayoutPresetModalHydration();
+    }
+    $: if (tableReady && postsData && timelineHostElement && !timelineReady) {
+        observeTimelineVisibility();
+    }
     $: {
         const detectedKey = detectLayoutPresetKey();
         if (selectedLayoutPresetKey !== detectedKey) {
@@ -1120,18 +1478,9 @@
                   ),
               });
     $: isResetDirty = (() => {
-        const defaultColumns = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns;
-        const sameColumns =
-            _layoutData.columns.length === defaultColumns.length &&
-            _layoutData.columns.every((value, index) => value === defaultColumns[index]);
-        const sameLayout =
-            _layoutData.layout === ConflictGridLayout.COALITION &&
-            _layoutData.sort === DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort &&
-            _layoutData.order === "desc" &&
-            sameColumns;
         const currentWidgets = JSON.stringify(stripWidgetIds(kpiWidgets));
         const defaultWidgets = JSON.stringify(stripWidgetIds(DEFAULT_KPI_WIDGETS));
-        return !(sameLayout && currentWidgets === defaultWidgets) || conflictGridPageSizePreference != null;
+        return !(isConflictTableDefaultPresetState(_layoutData) && currentWidgets === defaultWidgets) || conflictGridPageSizePreference != null;
     })();
     $: if (!tableReady || !conflictKpiProvider) {
         lastSecondaryDependencyKey = "";
@@ -1179,18 +1528,14 @@
 
     onDestroy(() => {
         layoutPresetResizeObserver?.disconnect();
+        disconnectTimelineObserver();
         destroyClient();
     });
 </script>
 
 <svelte:head>
+    <link rel="preconnect" href={config.data_origin} crossorigin="anonymous" />
     <title>Conflict {conflictName}</title>
-    <script
-        id="visjs"
-        async
-        src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js"
-        on:load={onScriptLoad}
-    ></script>
 </svelte:head>
 
 <div
@@ -1232,25 +1577,27 @@
                     <a
                         class="btn ux-btn fw-bold"
                         href="https://politicsandwar.fandom.com/wiki/{conflictMeta.wiki}"
-                        >Wiki:{conflictMeta.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"
-                        ></i></a
+                        >Wiki:{conflictMeta.wiki}<Icon
+                            name="externalLink"
+                            className="ux-icon-inline"
+                        /></a
                     >
                 {/if}
             </div>
         {/if}
     </h1>
 
-    <ConflictRouteTabs
-        {conflictId}
-        mode="layout-picker"
-        routeKind="single"
-        currentLayout={_layoutData.layout}
-        active={layoutTabFromIndex(_layoutData.layout)}
-        onLayoutSelect={handleClick}
-    />
+                            <ConflictRouteTabs
+                                conflictId={conflictId}
+                                active={layoutTabFromIndex(_layoutData.layout)}
+                                mode="layout-picker"
+                                routeKind="single"
+                                currentLayout={_layoutData.layout}
+                                onLayoutSelect={handleClick}
+                            />
 
     <ul
-        class="layout-picker-bar ux-floating-controls nav fw-bold nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
+        class="layout-picker-bar ux-floating-controls ux-compact-controls nav nav-pills m-0 p-2 ux-surface mb-3 d-flex flex-wrap gap-1"
     >
         <li class="layout-preset-slot d-flex align-items-center gap-2 me-1">
             <span>Layout Picker:</span>
@@ -1262,36 +1609,66 @@
                 >
                     {#each layoutPresetKeys as key}
                         <button
-                            class="btn btn-sm fw-bold"
-                            class:ux-btn={selectedLayoutPresetKey === key}
-                            class:btn-outline-secondary={selectedLayoutPresetKey !== key}
+                            class="btn btn-sm ux-layout-preset-button"
+                            class:is-active={selectedLayoutPresetKey === key}
                             on:click={() => applyLayoutPresetKey(key)}>{key}</button
                         >
                     {/each}
                 </div>
                 {#if showPresetOverflowMenu}
-                    <button
-                        class="btn ux-btn btn-sm fw-bold layout-preset-more"
-                        on:click={openLayoutPresetModal}>More presets</button
-                    >
+                    {#if selectionModalComponent}
+                        <svelte:component
+                            this={selectionModalComponent}
+                            title="Choose Layout Preset"
+                            description="Pick a preset column layout for the current conflict table."
+                            items={buildLayoutPresetItems()}
+                            selectedIds={selectedLayoutPresetKey
+                                ? [selectedLayoutPresetKey as string]
+                                : []}
+                            applyLabel="Use preset"
+                            singleSelect={true}
+                            searchPlaceholder="Search presets..."
+                            buttonClass="btn btn-sm ux-layout-preset-button layout-preset-more"
+                            buttonLabel="More presets"
+                            size="sm"
+                            on:apply={applyLayoutPresetModal}
+                            validateSelection={(ids) =>
+                                validateSingleSelection(ids, "layout preset")}
+                        />
+                    {:else}
+                        <button
+                            class="btn btn-sm ux-layout-preset-button layout-preset-more"
+                            type="button"
+                            disabled
+                        >
+                            Loading presets...
+                        </button>
+                    {/if}
                 {/if}
             </div>
         </li>
 
         <li>
-            <ColumnPresetManager
-                currentColumns={_layoutData.columns}
-                currentSort={_layoutData.sort}
-                currentOrder={_layoutData.order}
-                currentKpis={presetCards.map((card) => card.key)}
-                currentKpiConfig={{
-                    widgets: kpiWidgets,
-                    presetCards,
-                    rankingCards,
-                    metricCards,
-                }}
-                on:load={(event) => handleColumnPresetLoad(event.detail.preset)}
-            />
+            {#if columnPresetManagerComponent}
+                <svelte:component
+                    this={columnPresetManagerComponent}
+                    currentColumns={_layoutData.columns}
+                    currentSort={_layoutData.sort}
+                    currentOrder={_layoutData.order}
+                    currentKpis={presetCards.map((card) => card.key)}
+                    currentKpiConfig={{
+                        widgets: kpiWidgets,
+                        presetCards,
+                        rankingCards,
+                        metricCards,
+                    }}
+                    on:load={(event) => handleColumnPresetLoad(event.detail.preset)}
+                />
+            {:else}
+                <button class="btn ux-btn btn-sm" type="button" disabled>
+                    Loading layouts...
+                </button>
+            {/if}
         </li>
 
         {#if kpiCollapsed}
@@ -1343,98 +1720,81 @@
         on:removeWidget={(event) => kpiWidgetActions.removeWidget(event.detail.id)}
     />
 
-    <SelectionModal
-        open={showLayoutPresetModal}
-        title="Choose Layout Preset"
-        description="Pick a preset column layout for the current conflict table."
-        items={buildLayoutPresetItems()}
-        selectedIds={selectedLayoutPresetKey
-            ? [selectedLayoutPresetKey as string]
-            : []}
-        applyLabel="Use preset"
-        singleSelect={true}
-        searchPlaceholder="Search presets..."
-        on:close={closeLayoutPresetModal}
-        on:apply={applyLayoutPresetModal}
-        validateSelection={(ids) =>
-            validateSingleSelection(ids, "layout preset")}
-    />
+    {#if kpiBuilderModalComponent}
+        <svelte:component
+            this={kpiBuilderModalComponent}
+            open={showKpiBuilderModal}
+            title="KPI Builder"
+            widgets={kpiWidgets}
+            presetCardLabels={PRESET_CARD_LABELS}
+            presetCardDescriptions={PRESET_CARD_DESCRIPTIONS}
+            scopeOptions={[
+                { value: "all", label: "All" },
+                { value: "coalition1", label: "Coalition 1" },
+                { value: "coalition2", label: "Coalition 2" },
+                { value: "selection", label: "Selection snapshot" },
+            ]}
+            {metricsOptions}
+            {selectedSnapshotLabel}
+            canAddRanking={hasSelectionForScopeFromState(
+                rankingScopeToAdd,
+                selectedAllianceIdsForKpi,
+                selectedNationIdsForKpi,
+            )}
+            canAddMetric={hasSelectionForScopeFromState(
+                metricScopeToAdd,
+                selectedAllianceIdsForKpi,
+                selectedNationIdsForKpi,
+            )}
+            canAddRankingReason={kpiAddReasonForScopeFromState(
+                rankingScopeToAdd,
+                selectedAllianceIdsForKpi,
+                selectedNationIdsForKpi,
+            )}
+            canAddMetricReason={kpiAddReasonForScopeFromState(
+                metricScopeToAdd,
+                selectedAllianceIdsForKpi,
+                selectedNationIdsForKpi,
+            )}
+            {widgetManagerLabel}
+            {metricLabel}
+            {metricDescription}
+            showAavaHint={!!conflictId}
+            aavaHref={conflictId ? `aava?id=${conflictId}` : null}
+            on:close={closeKpiBuilderModal}
+            on:removeWidget={(event) => kpiWidgetActions.removeWidget(event.detail.id)}
+            on:moveWidget={(event) =>
+                kpiWidgetActions.moveWidget(event.detail.id, event.detail.delta)}
+            on:addPreset={(event) => kpiWidgetActions.addPresetCard(event.detail.key)}
+            on:addRanking={() =>
+                kpiWidgetActions.addRankingCard({
+                    entity: rankingEntityToAdd,
+                    metric: rankingMetricToAdd,
+                    scope: rankingScopeToAdd,
+                    limit: rankingLimitToAdd,
+                })}
+            on:addMetric={() =>
+                kpiWidgetActions.addMetricCard({
+                    entity: metricEntityToAdd,
+                    metric: metricMetricToAdd,
+                    scope: metricScopeToAdd,
+                    aggregation: metricAggToAdd,
+                    normalizeBy: metricNormalizeByToAdd,
+                })}
+            bind:rankingEntityToAdd
+            bind:rankingMetricToAdd
+            bind:rankingScopeToAdd
+            bind:rankingLimitToAdd
+            bind:metricEntityToAdd
+            bind:metricMetricToAdd
+            bind:metricScopeToAdd
+            bind:metricAggToAdd
+            bind:metricNormalizeByToAdd
+        />
+    {/if}
 
-    <KpiBuilderModal
-        open={showKpiBuilderModal}
-        title="KPI Builder"
-        description="Add and arrange KPI widgets."
-        widgets={kpiWidgets}
-        presetCardLabels={PRESET_CARD_LABELS}
-        presetCardDescriptions={PRESET_CARD_DESCRIPTIONS}
-        scopeOptions={[
-            { value: "all", label: "All" },
-            { value: "coalition1", label: "Coalition 1" },
-            { value: "coalition2", label: "Coalition 2" },
-            { value: "selection", label: "Selection snapshot" },
-        ]}
-        {metricsOptions}
-        {selectedSnapshotLabel}
-        canAddRanking={hasSelectionForScopeFromState(
-            rankingScopeToAdd,
-            selectedAllianceIdsForKpi,
-            selectedNationIdsForKpi,
-        )}
-        canAddMetric={hasSelectionForScopeFromState(
-            metricScopeToAdd,
-            selectedAllianceIdsForKpi,
-            selectedNationIdsForKpi,
-        )}
-        canAddRankingReason={kpiAddReasonForScopeFromState(
-            rankingScopeToAdd,
-            selectedAllianceIdsForKpi,
-            selectedNationIdsForKpi,
-        )}
-        canAddMetricReason={kpiAddReasonForScopeFromState(
-            metricScopeToAdd,
-            selectedAllianceIdsForKpi,
-            selectedNationIdsForKpi,
-        )}
-        {widgetManagerLabel}
-        {metricLabel}
-        {metricDescription}
-        showAavaHint={!!conflictId}
-        aavaHref={conflictId ? `aava?id=${conflictId}` : null}
-        on:close={closeKpiBuilderModal}
-        on:removeWidget={(event) => kpiWidgetActions.removeWidget(event.detail.id)}
-        on:moveWidget={(event) =>
-            kpiWidgetActions.moveWidget(event.detail.id, event.detail.delta)}
-        on:addPreset={(event) => kpiWidgetActions.addPresetCard(event.detail.key)}
-        on:addRanking={() =>
-            kpiWidgetActions.addRankingCard({
-                entity: rankingEntityToAdd,
-                metric: rankingMetricToAdd,
-                scope: rankingScopeToAdd,
-                limit: rankingLimitToAdd,
-            })}
-        on:addMetric={() =>
-            kpiWidgetActions.addMetricCard({
-                entity: metricEntityToAdd,
-                metric: metricMetricToAdd,
-                scope: metricScopeToAdd,
-                aggregation: metricAggToAdd,
-                normalizeBy: metricNormalizeByToAdd,
-            })}
-        bind:rankingEntityToAdd
-        bind:rankingMetricToAdd
-        bind:rankingScopeToAdd
-        bind:rankingLimitToAdd
-        bind:metricEntityToAdd
-        bind:metricMetricToAdd
-        bind:metricScopeToAdd
-        bind:metricAggToAdd
-        bind:metricNormalizeByToAdd
-    />
-
-    {#if !metaReady && !_loadError}
-        <div class="ux-surface rounded border p-2 mb-3">
-            <Progress />
-        </div>
+    {#if !metaReady && !_loadError && !kpiCollapsed}
+        <Progress />
     {/if}
 
     {#if _loadError}
@@ -1450,23 +1810,32 @@
     {/if}
 
     {#if conflictGridProvider}
-        <DataGrid
-            provider={conflictGridProvider}
-            initialState={conflictGridInitialState}
-            resetKey={`${conflictId ?? "conflict"}:${_layoutData.layout}:${conflictGridResetVersion}`}
-            exportBaseFileName={`conflict-${conflictId ?? "conflict"}-overview`}
-            exportDatasetKey="overview"
-            exportDatasetLabel="Conflict overview"
-            exportButtonLabel="Export"
-            emptyMessage="No rows match the current view."
-            loadingMessage={metaReady ? "Loading table..." : "Loading conflict dataset..."}
-            caption={`Conflict ${conflictName || conflictId || "conflict"} ${currentLayoutLabel} grid`}
-            on:stateChange={handleConflictGridStateChange}
-            on:selectionChange={handleConflictGridSelectionChange}
-            on:cellAction={handleConflictGridCellAction}
-            on:queryResult={handleConflictGridQueryResult}
-            on:error={handleConflictGridError}
-        />
+        {#if dataGridComponent}
+            <svelte:component
+                this={dataGridComponent}
+                provider={conflictGridProvider}
+                initialState={conflictGridInitialState}
+                resetKey={`${conflictId ?? "conflict"}:${_layoutData.layout}:${conflictGridResetVersion}`}
+                exportBaseFileName={`conflict-${conflictId ?? "conflict"}-overview`}
+                exportDatasetKey="overview"
+                exportDatasetLabel="Conflict overview"
+                exportButtonLabel="Export"
+                emptyMessage="No rows match the current view."
+                loadingMessage={metaReady ? "Loading table..." : "Loading conflict dataset..."}
+                caption={`Conflict ${conflictName || conflictId || "conflict"} ${currentLayoutLabel} grid`}
+                on:stateChange={handleConflictGridStateChange}
+                on:selectionChange={handleConflictGridSelectionChange}
+                on:cellAction={handleConflictGridCellAction}
+                on:queryResult={handleConflictGridQueryResult}
+                on:error={handleConflictGridError}
+            />
+        {:else}
+            <GridLoadingShell
+                loadingMessage={metaReady ? "Loading table..." : "Loading conflict dataset..."}
+                caption={`Conflict ${conflictName || conflictId || "conflict"} ${currentLayoutLabel} grid`}
+                pageSize={conflictGridPageSizePreference}
+            />
+        {/if}
     {/if}
 
     {#if _layoutData.layout == ConflictGridLayout.COALITION}
@@ -1498,7 +1867,7 @@
                 conflictMeta?.end ?? null,
             )}
         </h4>
-        <div class="m-0" id="visualization"></div>
+        <div class="m-0" id="visualization" bind:this={timelineHostElement}></div>
     </div>
 
     {#if datasetProvenance}
@@ -1531,7 +1900,7 @@
         pointer-events: none;
     }
 
-    .layout-preset-more {
+    :global(.layout-preset-more) {
         position: absolute;
         top: 0;
         left: 0;

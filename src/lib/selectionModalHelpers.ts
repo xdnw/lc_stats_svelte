@@ -1,4 +1,4 @@
-import type { SelectionId, SelectionModalItem } from "./selection/types";
+import type { SelectionId, SelectionModalGroupTone, SelectionModalItem } from "./selection/types";
 
 type CoalitionAllianceShape = {
     alliance_ids?: Array<number | string> | Record<string, number | string | null | undefined>;
@@ -8,6 +8,10 @@ type CoalitionAllianceShape = {
 
 type CoalitionAllianceIdsShape = {
     alliance_ids: number[];
+};
+
+type CoalitionAllianceItemOptions = {
+    startCoalitionIndex?: number;
 };
 
 function parseNumber(value: unknown): number | null {
@@ -103,20 +107,50 @@ export function buildStringSelectionItems(values: string[]): SelectionModalItem[
     }));
 }
 
+function coalitionGroupTone(
+    coalitionIndex: number,
+): SelectionModalGroupTone | undefined {
+    if (coalitionIndex === 0) return "coalition1";
+    if (coalitionIndex === 1) return "coalition2";
+    return undefined;
+}
+
+export function buildAllianceSelectionItems(
+    allianceIds: Array<number | string>,
+    allianceNames: Array<string | null | undefined>,
+    formatAllianceName: (name: string, id: number) => string,
+): SelectionModalItem[] {
+    return allianceIds
+        .map((rawId, index) => {
+            const id = parseNumber(rawId);
+            if (id == null) return null;
+            return {
+                id,
+                label: formatAllianceName(`${allianceNames[index] ?? ""}`, id),
+            };
+        })
+        .filter(notNull);
+}
+
 export function buildCoalitionAllianceItems(
     coalitions: CoalitionAllianceShape[],
     formatAllianceName: (name: string, id: number) => string,
+    options: CoalitionAllianceItemOptions = {},
 ): SelectionModalItem[] {
     const items: SelectionModalItem[] = [];
-    for (const coalition of coalitions ?? []) {
+    for (const [localIndex, coalition] of (coalitions ?? []).entries()) {
         const pairs = extractCoalitionAlliancePairs(coalition);
         const coalitionName = `${coalition?.name ?? "Coalition"}`;
+        const groupTone = coalitionGroupTone(
+            (options.startCoalitionIndex ?? 0) + localIndex,
+        );
 
         pairs.forEach(({ id, name }) => {
             items.push({
                 id,
                 label: formatAllianceName(`${name ?? ""}`, id),
                 group: coalitionName,
+                groupTone,
             });
         });
     }

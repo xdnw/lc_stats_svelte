@@ -8,13 +8,42 @@ export const UNITS_PER_CITY: { [key: string]: number } = {
     infra: 1,
 };
 
+const UNIT_CAPACITY_METRICS: { [key: string]: string } = {
+    soldier: "soldier_capacity",
+    tank: "tank_capacity",
+    aircraft: "aircraft_capacity",
+    ship: "ship_capacity",
+};
+
+const NATION_METRIC_NAME = "nation";
+
+export type MetricNormalization =
+    | {
+          denominatorMetricIndex: number;
+          mode: "value";
+      }
+    | {
+          denominatorMetricIndex: number;
+          mode: "perCity";
+          unitsPerCity: number;
+      };
+
 export type MetricAccessors = {
     metric_ids: number[];
     metric_indexes: number[];
     metric_is_turn: boolean[];
-    metric_normalize: number[];
+    metric_normalize: Array<MetricNormalization | null>;
     isAnyTurn: boolean;
 };
+
+function findDayMetricIndex(data: GraphData, metricName: string): number {
+    const metricId = data.metric_names.indexOf(metricName);
+    if (metricId === -1) {
+        return -1;
+    }
+
+    return data.metrics_day.indexOf(metricId);
+}
 
 export function toggleCoalitionAllianceSelection(
     allowedAllianceIds: Set<number>,
@@ -56,7 +85,12 @@ export function resolveMetricAccessors(
     let metric_ids: number[] = [];
     let metric_indexes: number[] = [];
     let metric_is_turn: boolean[] = [];
-    let metric_normalize: number[] = [];
+    let metric_normalize: Array<MetricNormalization | null> = [];
+    const nationMetricIndex = findDayMetricIndex(data, NATION_METRIC_NAME);
+    if (nationMetricIndex === -1) {
+        console.error(`Metric ${NATION_METRIC_NAME} not found`);
+        return null;
+    }
 
     for (let i = 0; i < metrics.length; i++) {
         let metric = metrics[i];
@@ -78,10 +112,33 @@ export function resolveMetricAccessors(
             return null;
         }
         if (metric.normalize) {
-            let perCity = UNITS_PER_CITY[metric.name];
-            metric_normalize.push(perCity | 0);
+            const capacityMetricName = UNIT_CAPACITY_METRICS[metric.name];
+            const capacityMetricIndex = capacityMetricName
+                ? findDayMetricIndex(data, capacityMetricName)
+                : -1;
+            if (capacityMetricIndex !== -1) {
+                metric_normalize.push({
+                    denominatorMetricIndex: capacityMetricIndex,
+                    mode: "value",
+                });
+                continue;
+            }
+
+            const perCity = UNITS_PER_CITY[metric.name];
+            if (perCity != null) {
+                metric_normalize.push({
+                    denominatorMetricIndex: nationMetricIndex,
+                    mode: "perCity",
+                    unitsPerCity: perCity,
+                });
+            } else {
+                metric_normalize.push({
+                    denominatorMetricIndex: nationMetricIndex,
+                    mode: "value",
+                });
+            }
         } else {
-            metric_normalize.push(-1);
+            metric_normalize.push(null);
         }
     }
 

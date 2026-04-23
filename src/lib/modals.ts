@@ -10,6 +10,10 @@ type RuntimeModalInstance = {
     dispose: () => void;
 };
 
+type RuntimeModalOptions = {
+    headerActions?: HTMLElement;
+};
+
 type RuntimeModalElement = HTMLElement & {
     __lcModalController?: RuntimeModalInstance;
 };
@@ -39,7 +43,7 @@ function dispatchModalEvent(element: HTMLElement, eventName: string): void {
 
 function focusModal(element: HTMLElement): void {
     const focusTarget = element.querySelector<HTMLElement>(
-        ".btn-close, [data-bs-dismiss='modal'], button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+        ".btn-close, [data-modal-dismiss='close'], button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
     );
     focusTarget?.focus();
 }
@@ -59,25 +63,37 @@ export function modalStrWithCloseButton(title: string, bodyStr: string): void {
     modalWithCloseButton(title, bodyElem);
 }
 
-export function modalWithCloseButton(title: string, body: HTMLElement): void {
+export function modalWithCloseButton(
+    title: string,
+    body: HTMLElement,
+    options: RuntimeModalOptions = {},
+): void {
     modal(
         title,
         body,
-        `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`,
+        `<button type="button" class="btn ux-btn btn-sm" data-modal-dismiss="close">Close</button>`,
+        options,
     );
 }
 
-export function modal(title: string, body: HTMLElement, footer: string): void {
+export function modal(
+    title: string,
+    body: HTMLElement,
+    footer: string,
+    options: RuntimeModalOptions = {},
+): void {
     const { modalId, labelId } = nextModalIds();
-    const html = `<div class="modal show d-block ux-runtime-modal" id="${modalId}" tabindex="-1" role="dialog" aria-labelledby="${labelId}" aria-modal="true">
-          <div class="modal-dialog">
-              <div class="modal-content">
+    const html = `<div class="modal show ux-runtime-modal" id="${modalId}" tabindex="-1" role="dialog" aria-labelledby="${labelId}" aria-modal="true">
+          <div class="modal-dialog modal-dialog-scrollable ux-runtime-modal-dialog" role="document">
+              <div class="modal-content ux-runtime-modal-content">
                   <div class="modal-header">
-                      <h5 class="modal-title" id="${labelId}"></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                      <h5 class="modal-title" id="${labelId}"></h5>
+                      <div class="ux-runtime-modal-header-actions"></div>
+                      <button type="button" class="btn-close" data-modal-dismiss="close" aria-label="Close">
                           <span aria-hidden="true">&times;</span>
                       </button>
                   </div>
-                  <div class="modal-body text-break"></div>
+                  <div class="modal-body text-break ux-runtime-modal-body"></div>
                   <div class="modal-footer"></div>
               </div>
           </div>
@@ -88,6 +104,13 @@ export function modal(title: string, body: HTMLElement, footer: string): void {
     backdrop.className = "modal-backdrop show ux-runtime-modal-backdrop";
 
     createdModal.getElementsByClassName("modal-title")[0].innerHTML = title;
+    const modalHeaderActions = createdModal.getElementsByClassName(
+        "ux-runtime-modal-header-actions",
+    )[0];
+    modalHeaderActions.innerHTML = "";
+    if (options.headerActions) {
+        modalHeaderActions.appendChild(options.headerActions);
+    }
     const modalBody = createdModal.getElementsByClassName("modal-body")[0];
     modalBody.innerHTML = "";
     modalBody.appendChild(body);
@@ -139,7 +162,7 @@ export function modal(title: string, body: HTMLElement, footer: string): void {
             runtimeModal.hide();
             return;
         }
-        if (target.closest("[data-bs-dismiss='modal']")) {
+        if (target.closest("[data-modal-dismiss='close']")) {
             runtimeModal.hide();
         }
     }

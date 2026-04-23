@@ -1,4 +1,7 @@
 <script lang="ts">
+  import "../../styles/conflict-shell.css";
+  import "../../styles/conflict-widgets.css";
+  import "../../styles/conflict-timeline.css";
   import { appConfig as config } from "$lib/appConfig";
   /**
    * This page is for viewing the table of all conflicts
@@ -9,15 +12,15 @@
   import Breadcrumbs from "../../components/Breadcrumbs.svelte";
   import ShareResetBar from "../../components/ShareResetBar.svelte";
   import Progress from "../../components/Progress.svelte";
-  import SelectionModal from "../../components/SelectionModal.svelte";
+  import AllianceFilterModal from "../../components/AllianceFilterModal.svelte";
   import type {
-    SelectionId,
     SelectionModalItem,
   } from "$lib/selection/types";
   import { onDestroy, onMount } from "svelte";
   import { decompressBson } from "$lib/binary";
   import { modalStrWithCloseButton } from "$lib/modals";
   import { openConflictCoalitionModal } from "$lib/conflictCoalitionModal";
+  import { renderAppIconSvg } from "$lib/icons";
   import {
     decodeQueryParamValue,
     getCurrentQueryParams,
@@ -51,17 +54,8 @@
   } from "$lib/grid/queryState";
   import type { GridDataProvider, GridQueryState } from "$lib/grid/types";
   import {
-    warmConflictGridWorkerDataset,
-  } from "$lib/conflictGrid/workerClient";
-  import {
-    ConflictGridLayout,
-  } from "$lib/conflictGrid/rowIds";
-  import {
-    warmBubbleDefaultArtifact,
-    warmConflictGraphPayload,
-    warmTieringDefaultArtifact,
-  } from "$lib/prefetchArtifacts";
-  import { toNumberSelection } from "$lib/selectionModalHelpers";
+    buildAllianceSelectionItems,
+  } from "$lib/selectionModalHelpers";
   import { scheduleWhenIdle, yieldToMain } from "$lib/misc";
   import {
     beginJourneySpan,
@@ -72,9 +66,21 @@
   import { ConflictIndex } from "$lib/types";
   import type { JSONValue, RawData } from "$lib/types";
   import {
-    getBootstrapModalInstance,
+    getModalController,
     getVisGlobal,
   } from "$lib/globals";
+
+  type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
+
+  let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
+
+  function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
+    if (!prefetchArtifactsPromise) {
+      prefetchArtifactsPromise = import("$lib/prefetchArtifactsClient");
+    }
+
+    return prefetchArtifactsPromise;
+  }
 
   let _rawData: RawData | null = null;
   let currSource = ["All", 0];
@@ -122,7 +128,6 @@
     "https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js";
 
   let _allowedAllianceIds: Set<number> = new Set();
-  let showAllianceModal = false;
   let allianceRows: SelectionModalItem[] = [];
 
   let categoryCounts: { [key: string]: number } = {};
@@ -161,10 +166,18 @@
     const showPinnedColumn =
       _rawData != null && _allowedAllianceIds.size !== _rawData.alliance_ids.length;
     const defaults = createConflictsGridDefaults(showPinnedColumn);
-    conflictsGridStateOverride = createGridQueryStateOverride(state, defaults);
+    const nextOverride = createGridQueryStateOverride(state, defaults);
+    const nextSerialized = serializeGridQueryState(nextOverride);
+    const currentSerialized = serializeGridQueryState(conflictsGridStateOverride);
+
+    if (nextSerialized === currentSerialized) {
+      return;
+    }
+
+    conflictsGridStateOverride = nextOverride;
     setQueryParam(
       "grid",
-      serializeGridQueryState(conflictsGridStateOverride),
+      nextSerialized,
       { replace: true },
     );
     saveCurrentQueryParams();
@@ -289,26 +302,22 @@
       document.addEventListener("click", conflictActionClickListener, true);
 
       conflictHoverIntentListener = (event: Event) => {
-        const target = findConflictLinkTarget(event);
+        const target = findConflictPageLinkIntentTarget(event);
         if (!target) return;
-        const parsedId = parseConflictId(
-          `${parseGridActionArgs(target)?.conflictId ?? ""}`,
-        );
+        const parsedId = parseConflictId(target.dataset.conflictId);
         if (parsedId == null) return;
-        warmConflictLinkIntent(
+        warmConflictPageIntent(
           parsedId,
           event.type === "focusin" ? "focus" : "hover",
         );
       };
 
       conflictPointerIntentListener = (event: PointerEvent) => {
-        const target = findConflictLinkTarget(event);
+        const target = findConflictPageLinkIntentTarget(event);
         if (!target) return;
-        const parsedId = parseConflictId(
-          `${parseGridActionArgs(target)?.conflictId ?? ""}`,
-        );
+        const parsedId = parseConflictId(target.dataset.conflictId);
         if (parsedId == null) return;
-        warmConflictLinkIntent(parsedId, "pointerdown");
+        warmConflictPageIntent(parsedId, "pointerdown");
       };
 
       document.addEventListener("mouseover", conflictHoverIntentListener, true);
@@ -361,10 +370,11 @@
               alliance_ids[i],
             );
           }
-          allianceRows = alliance_ids.map((id, index) => ({
-            id,
-            label: formatAllianceName(alliance_names[index], id),
-          }));
+          allianceRows = buildAllianceSelectionItems(
+            alliance_ids,
+            alliance_names,
+            formatAllianceName,
+          );
 
           let queryParams = getCurrentQueryParams();
 
@@ -640,7 +650,6 @@
     conflictsGridProvider = createConflictsIndexGridProvider({
       rows: gridRows,
       showPinnedColumn,
-      conflictHref: (conflictId) => `${base}/conflict?id=${conflictId}`,
     });
     conflictsGridResetVersion += 1;
   }
@@ -678,7 +687,7 @@
       ? target.closest(".modal")
       : null;
     const modalElem = targetModal ?? document.querySelector(".modal.show") ?? document.querySelector(".modal");
-    const modalInstance = getBootstrapModalInstance(modalElem);
+    const modalInstance = getModalController(modalElem);
     if (!modalElem || !modalInstance?.hide) {
       openNext();
       return;
@@ -725,67 +734,33 @@
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  function warmConflictLinkIntent(
+  function findConflictPageLinkIntentTarget(event: Event): HTMLElement | null {
+    const target = event.target;
+    if (!(target instanceof Element)) return null;
+    const element = target.closest(
+      '[data-conflict-action="open-conflict-page"][data-conflict-id]',
+    );
+    return element instanceof HTMLElement ? element : null;
+  }
+
+  function warmConflictPageIntent(
     conflictId: number,
     intent: "hover" | "focus" | "pointerdown" | "enter",
   ): void {
     const id = String(conflictId);
 
-    if (intent === "pointerdown" || intent === "enter") {
-      void warmConflictGridWorkerDataset({
-        conflictId: id,
-        version: config.version.conflict_data,
-        layouts: [
-          ConflictGridLayout.COALITION,
-          ConflictGridLayout.ALLIANCE,
-          ConflictGridLayout.NATION,
-        ],
-        aggressive: true,
-      }).catch((error) => {
-        console.warn("Failed to prewarm conflict worker dataset", error);
+    void loadPrefetchArtifacts()
+      .then(({ warmConflictRouteArtifacts }) => {
+        warmConflictRouteArtifacts(id, {
+          priority: "high",
+          reasonBase: `conflicts-open-page-${intent}`,
+          routeTarget: "/conflict",
+          intentStrength: intent,
+        });
+      })
+      .catch((error) => {
+        console.warn("Failed to load conflicts prefetch helpers", error);
       });
-
-      warmConflictGraphPayload(id, {
-        priority: "high",
-        reason: `conflicts-link-${intent}-graph-payload`,
-        routeTarget: "/bubble",
-        intentStrength: intent,
-      });
-      warmBubbleDefaultArtifact(id, {
-        priority: "high",
-        reason: `conflicts-link-${intent}-bubble-default`,
-        routeTarget: "/bubble",
-        intentStrength: intent,
-      });
-      warmTieringDefaultArtifact(id, {
-        priority: "high",
-        reason: `conflicts-link-${intent}-tiering-default`,
-        routeTarget: "/tiering",
-        intentStrength: intent,
-      });
-    }
-  }
-
-  function findConflictLinkTarget(event: Event): HTMLElement | null {
-    const target = event.target;
-    if (!(target instanceof Element)) return null;
-    const element = target.closest(
-      '[data-grid-action-id="open-conflict-card"][data-grid-action-args]',
-    );
-    return element instanceof HTMLElement ? element : null;
-  }
-
-  function parseGridActionArgs(target: HTMLElement): Record<string, unknown> | null {
-    const rawArgs = target.dataset.gridActionArgs;
-    if (!rawArgs) return null;
-    try {
-      const parsed = JSON.parse(rawArgs);
-      return parsed && typeof parsed === "object"
-        ? parsed as Record<string, unknown>
-        : null;
-    } catch {
-      return null;
-    }
   }
 
   function isPlainLeftClick(event?: MouseEvent): boolean {
@@ -920,8 +895,6 @@
     `;
 
     modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
-
-    warmConflictLinkIntent(conflictId, "enter");
   }
 
   function openConflictPageFromCard(
@@ -938,6 +911,7 @@
 
     stopTableEvent(event);
     const href = `${base}/conflict?id=${conflictId}`;
+    warmConflictPageIntent(conflictId, "enter");
     beginJourneySpan("journey.conflicts_to_conflict.routeTransition", {
       mode: "spa",
       source: "conflict-card",
@@ -951,7 +925,7 @@
       eventTarget instanceof Element
         ? eventTarget.closest(".modal")
         : document.querySelector(".modal.show") ?? document.querySelector(".modal");
-    const modalInstance = getBootstrapModalInstance(modalElem);
+    const modalInstance = getModalController(modalElem);
     modalInstance?.hide?.();
     window.setTimeout(() => {
       void goto(href, { keepFocus: true, noScroll: false });
@@ -1034,7 +1008,7 @@
     conflictId: number,
   ): string {
     const safeTitle = escapeHtml(title);
-    return `<button type='button' class='btn ux-btn btn-sm fw-bold me-2' data-conflict-action='open-card' data-conflict-id='${conflictId}' aria-label='Back to conflict actions for ${safeTitle}' title='Back to actions'><i class='bi bi-arrow-left'></i></button>${safeTitle}`;
+    return `<button type='button' class='btn ux-btn btn-sm fw-bold me-2' data-conflict-action='open-card' data-conflict-id='${conflictId}' aria-label='Back to conflict actions for ${safeTitle}' title='Back to actions'>${renderAppIconSvg("arrowLeft")}</button>${safeTitle}`;
   }
 
   function escapeHtml(value: string): string {
@@ -1059,19 +1033,8 @@
     requestTimelineRender(true);
   }
 
-  function openAllianceModal() {
-    showAllianceModal = true;
-  }
-
-  function closeAllianceModal() {
-    showAllianceModal = false;
-  }
-
-  function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
-    const nextIds = toNumberSelection(event.detail.ids);
-    if (nextIds.length === 0) return;
+  function commitAllowedAllianceIds(nextIds: number[]) {
     _allowedAllianceIds = new Set(nextIds);
-    showAllianceModal = false;
     recalcAlliances();
   }
 
@@ -1095,7 +1058,6 @@
     selectedConflictIds = new Set();
     selectionMessage = null;
     conflictsGridStateOverride = null;
-    showAllianceModal = false;
     resetQueryParams(["ids", "guild", "grid"]);
     saveCurrentQueryParams();
     setupConflicts(_rawData);
@@ -1267,6 +1229,8 @@
 
       // Create a Timeline
       const timeline = new vis.Timeline(container, items, options);
+      requestAnimationFrame(() => timeline.redraw());
+      window.setTimeout(() => timeline.redraw(), 120);
       // Add red bar at the start and end dates
       timeline.addCustomTime(minStart, "t1");
       timeline.addCustomTime(maxEnd, "t2");
@@ -1276,7 +1240,13 @@
 
 <svelte:head>
   <!-- Modify head -->
+  <link rel="preconnect" href={config.data_origin} crossorigin="anonymous" />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin="anonymous" />
   <title>Conflicts</title>
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css"
+  />
 </svelte:head>
 <!-- Add navbar component to page  -->
 <div class="container-fluid p-2 ux-page-body">
@@ -1290,9 +1260,9 @@
     {#if _rawData && _rawData.source_names}
       <div class="d-inline-block ms-auto">
         <div class="input-group ux-inputbar">
-          <label for="source" class="fw-bold input-group-text">Source:</label>
+          <label for="source" class="input-group-text">Source:</label>
           <select
-            class="form-select form-select-sm fw-bold"
+            class="form-select form-select-sm"
             on:change={selectSource}
           >
             <option selected={currSource[1] == 0} value="0">All</option>
@@ -1301,13 +1271,13 @@
             {/each}
           </select>
           <a
-            class="btn ux-btn fw-bold ux-btn-success"
+            class="btn ux-btn btn-sm"
             href="http://locutus.link/#/command/conflict%20create_temp"
             target="_blank"
             rel="noopener noreferrer">Create Conflict</a
           >
           <a
-            class="btn ux-btn fw-bold ux-btn-danger"
+            class="btn ux-btn btn-sm"
             href="https://locutus.link/#/conflicts"
             target="_blank"
             rel="noopener noreferrer">Edit Conflicts</a
@@ -1332,11 +1302,11 @@
   {#if _rawData}
     <div class="ux-surface p-2 mb-2">
       <div class="d-flex flex-wrap gap-2 align-items-center">
-        <span class="fw-bold">Quick filters:</span>
+        <span class="fw-semibold">Quick filters:</span>
         <span class="ux-muted">Category</span>
         {#each Object.entries(categoryCounts) as [category, count]}
           <button
-            class="btn btn-sm fw-bold"
+            class="btn btn-sm ux-filter-chip"
             class:ux-btn={selectedCategories.has(category)}
             class:btn-outline-secondary={!selectedCategories.has(category)}
             on:click={() => toggleCategory(category)}
@@ -1354,12 +1324,20 @@
       </div>
     </div>
 
-    <div class="d-flex flex-wrap gap-1 mb-2 align-items-center">
-      <button class="btn ux-btn" on:click={openAllianceModal}>
-        Filter Alliances ({_allowedAllianceIds.size}/{_rawData.alliance_ids
-          .length})
-      </button>
-      <button class="btn ux-btn" on:click={openCompositeSelection}>
+    <div class="d-flex flex-wrap gap-1 mb-2 align-items-center ux-compact-controls">
+      <AllianceFilterModal
+        title="Filter Alliances"
+        description="Select alliances to include in conflict filtering. This does not change individual conflict stats."
+        items={allianceRows}
+        selectedIds={Array.from(_allowedAllianceIds)}
+        applyLabel="Apply filter"
+        selectedCountLabel="Alliances selected"
+        mode="direct"
+        buttonLabel={`Filter Alliances (${_allowedAllianceIds.size}/${_rawData.alliance_ids.length})`}
+        size="sm"
+        on:commit={(event) => commitAllowedAllianceIds(event.detail.ids)}
+      />
+      <button class="btn ux-btn btn-sm" on:click={openCompositeSelection}>
         Open composite ({selectedConflictIds.size}/{MAX_COMPOSITE_CONFLICT_IDS})
       </button>
       <ShareResetBar onReset={resetFilters} resetDirty={isResetDirty} />
@@ -1367,18 +1345,6 @@
     {#if selectionMessage}
       <div class="alert alert-warning m-2 py-2">{selectionMessage}</div>
     {/if}
-    <SelectionModal
-      open={showAllianceModal}
-      title="Filter Alliances"
-      description="Select alliances to include in conflict filtering. This does not change individual conflict stats."
-      items={allianceRows}
-      selectedIds={Array.from(_allowedAllianceIds)}
-      searchPlaceholder="Search alliances..."
-      on:close={closeAllianceModal}
-      on:apply={applyAllianceModal}
-      validateSelection={(ids) =>
-        ids.length === 0 ? "Select at least one alliance." : null}
-    />
   {/if}
   {#if conflictsGridProvider}
     <DataGrid

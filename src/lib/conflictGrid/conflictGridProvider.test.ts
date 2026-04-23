@@ -99,6 +99,10 @@ function createWorkerClient(
                 leadingCoalition: null,
                 offWarsPerNationStats: null,
             },
+            timings: {
+                datasetCreateMs: 0,
+                layoutBootstrapMs: 0,
+            },
         }),
         query,
         querySummary: async () => ({} satisfies GridSummaryByColumnKey),

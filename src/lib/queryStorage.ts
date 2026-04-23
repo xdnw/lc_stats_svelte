@@ -1,6 +1,29 @@
 import { replaceState } from "$app/navigation";
 import { getCompositeConflictSignature } from "./conflictIds";
 
+function isRouterNotInitializedError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes("before router is initialized");
+}
+
+function safeReplaceState(url: string, pageState: App.PageState): void {
+    try {
+        replaceState(url, pageState);
+    } catch (error) {
+        if (isRouterNotInitializedError(error)) {
+            setTimeout(() => {
+                try {
+                    replaceState(url, pageState);
+                } catch {
+                    // Skip early-route updates rather than writing history directly.
+                }
+            }, 0);
+            return;
+        }
+        throw error;
+    }
+}
+
 export function getPageStorageKey(pathname?: string): string {
     const path = pathname ?? window.location.pathname;
     return `lc_stats:view:${path}`;
@@ -104,7 +127,7 @@ export function applySavedQueryParamsIfMissing(
             window.history.state && typeof window.history.state === "object"
                 ? (window.history.state as App.PageState)
                 : {};
-        replaceState(url.toString(), pageState);
+        safeReplaceState(url.toString(), pageState);
     }
 
     return changed;

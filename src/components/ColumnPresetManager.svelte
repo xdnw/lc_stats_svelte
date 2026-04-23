@@ -1,6 +1,7 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { createEventDispatcher, onMount } from "svelte";
+    import DeferredModalTrigger from "./DeferredModalTrigger.svelte";
     import {
         readColumnPresets,
         saveColumnPreset,
@@ -23,6 +24,7 @@
 
     let presets: Record<string, ColumnPreset> = {};
     let name = "";
+    let open = false;
     let lastLoadedStorageKey: string | null = null;
 
     function loadPresets() {
@@ -64,6 +66,7 @@
         const p = presets[presetName];
         if (!p) return;
         dispatch("load", { name: presetName, preset: p });
+        open = false;
     }
 
     function handleDelete(presetName: string) {
@@ -76,22 +79,19 @@
     }
 </script>
 
-<div class="dropdown d-inline">
-    <button
-        class="btn ux-btn btn-sm"
-        type="button"
-        id="cpDropdown"
-        data-bs-toggle="dropdown"
-        aria-expanded="false"
-    >
-        My layouts&nbsp;<i class="bi bi-chevron-down"></i>
-    </button>
-    <div
-        class="dropdown-menu p-2"
-        aria-labelledby="cpDropdown"
-        style="min-width:260px;"
-    >
-        <div class="input-group input-group-sm mb-2">
+<DeferredModalTrigger
+    bind:open
+    title="My layouts"
+    size="md"
+    scrollable={false}
+    buttonLabel="My layouts"
+    buttonClass="btn ux-btn btn-sm"
+>
+    <div class="ux-column-preset-modal">
+        <div class="small ux-muted">
+            Save the current layout or reuse a saved layout for this table.
+        </div>
+        <div class="input-group input-group-sm ux-column-preset-savebar">
             <input
                 class="form-control form-control-sm"
                 placeholder="Save current as..."
@@ -101,17 +101,16 @@
                 >Save</button
             >
         </div>
-        <hr class="dropdown-divider" />
         <div class="preset-list">
             {#if Object.keys(presets).length === 0}
-                <div class="small text-muted px-2">No saved layouts</div>
+                <div class="ux-column-preset-empty small text-muted">No saved layouts</div>
             {/if}
             {#each Object.keys(presets) as pn}
-                <div class="preset-item px-2 py-1 small">
-                    <div class="text-truncate" style="max-width:140px">
+                <div class="preset-item">
+                    <div class="preset-name" title={pn}>
                         {pn}
                     </div>
-                    <div>
+                    <div class="preset-actions">
                         <button
                             class="btn ux-btn btn-sm me-1"
                             on:click={() => handleLoad(pn)}>Load</button
@@ -125,17 +124,59 @@
             {/each}
         </div>
     </div>
-</div>
+</DeferredModalTrigger>
 
 <style>
-    .preset-list {
-        max-height: 220px;
-        overflow: auto;
+    .ux-column-preset-modal {
+        display: grid;
+        gap: 0.7rem;
+        min-width: min(34rem, 100%);
+        max-width: 100%;
     }
+
+    .ux-column-preset-savebar {
+        margin: 0;
+    }
+
+    .preset-list {
+        display: grid;
+        gap: 0.55rem;
+        max-height: min(48vh, 20rem);
+        overflow: auto;
+        padding-right: 0.08rem;
+    }
+
     .preset-item {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.75rem;
         align-items: center;
+        padding: 0.5rem 0.56rem;
+        border: 1px solid var(--ux-border);
+        border-radius: var(--ux-radius-sm);
+        background: color-mix(in srgb, var(--ux-surface-alt) 88%, transparent);
+    }
+
+    .preset-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--ux-text-sm);
+        font-weight: 600;
+    }
+
+    .preset-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.38rem;
+    }
+
+    .ux-column-preset-empty {
+        padding: 0.8rem 0.9rem;
+        border: 1px dashed color-mix(in srgb, var(--ux-border) 90%, transparent);
+        border-radius: var(--ux-radius-sm);
+        background: color-mix(in srgb, var(--ux-surface-alt) 72%, transparent);
     }
 </style>

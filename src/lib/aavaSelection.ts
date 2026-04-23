@@ -19,18 +19,16 @@ export type AavaSelectionRow = {
     abs_net: number;
 };
 
-type AavaIndexCache = {
-    coalitionAllianceIds: [number[], number[]];
+export type AavaSelectionSource = {
+    headers: string[];
+    matrices: number[][][];
     indexByCoalitionAndAllianceId: [Map<number, number>, Map<number, number>];
     allianceByMatrixIndex: Array<{ id: number; name: string }>;
 };
 
-const aavaIndexCache = new WeakMap<Conflict, AavaIndexCache>();
+const aavaIndexCache = new WeakMap<Conflict, AavaSelectionSource>();
 
-function getAavaIndexCache(data: Conflict): AavaIndexCache {
-    const cached = aavaIndexCache.get(data);
-    if (cached) return cached;
-
+export function createAavaSelectionSource(data: Conflict): AavaSelectionSource {
     const c1Ids = data.coalitions[0].alliance_ids;
     const c2Ids = data.coalitions[1].alliance_ids;
     const coalitionAllianceIds: [number[], number[]] = [
@@ -74,31 +72,40 @@ function getAavaIndexCache(data: Conflict): AavaIndexCache {
         });
     });
 
-    const next: AavaIndexCache = {
-        coalitionAllianceIds,
+    return {
+        headers: [...data.war_web.headers],
+        matrices: data.war_web.data as number[][][],
         indexByCoalitionAndAllianceId,
         allianceByMatrixIndex,
     };
+}
+
+export function getAavaSelectionSource(data: Conflict): AavaSelectionSource {
+    const cached = aavaIndexCache.get(data);
+    if (cached) return cached;
+
+    const next = createAavaSelectionSource(data);
     aavaIndexCache.set(data, next);
     return next;
 }
 
-export function buildAavaSelectionRows(
-    data: Conflict,
+export function buildAavaSelectionRowsFromSource(
+    source: AavaSelectionSource,
     snapshot: AavaSelectionSnapshot,
 ): AavaSelectionRow[] {
     const {
+        headers,
+        matrices,
         indexByCoalitionAndAllianceId,
         allianceByMatrixIndex,
-    } =
-        getAavaIndexCache(data);
+    } = source;
     const primaryCoalitionIndex = snapshot.primaryCoalitionIndex === 1 ? 1 : 0;
     const vsCoalitionIndex = primaryCoalitionIndex === 0 ? 1 : 0;
 
-    const headerIndex = data.war_web.headers.indexOf(snapshot.header);
+    const headerIndex = headers.indexOf(snapshot.header);
     if (headerIndex < 0) return [];
 
-    const matrix = data.war_web.data[headerIndex] as number[][];
+    const matrix = matrices[headerIndex] as number[][];
 
     const pIndices = snapshot.primaryIds
         .map(
@@ -152,4 +159,14 @@ export function buildAavaSelectionRows(
     });
 
     return rows;
+}
+
+export function buildAavaSelectionRows(
+    data: Conflict,
+    snapshot: AavaSelectionSnapshot,
+): AavaSelectionRow[] {
+    return buildAavaSelectionRowsFromSource(
+        getAavaSelectionSource(data),
+        snapshot,
+    );
 }

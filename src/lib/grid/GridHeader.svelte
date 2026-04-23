@@ -1,5 +1,6 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
+    import GridFilterField from "./GridFilterField.svelte";
     import type { GridColumnDefinition, GridSort } from "./types";
 
     export let columns: GridColumnDefinition[] = [];
@@ -20,11 +21,19 @@
         return sort.dir === "asc" ? "\u2191" : "\u2193";
     }
 
+    function widthClass(column: GridColumnDefinition): string {
+        switch (column.widthHint) {
+            case "wide":
+                return "ux-grid-column-wide";
+            case "text":
+                return "ux-grid-column-text";
+            default:
+                return "ux-grid-column-fit";
+        }
+    }
+
     function columnClass(column: GridColumnDefinition): string {
-        const widthClass = column.filterable
-            ? "ux-grid-column-text"
-            : "ux-grid-column-compact";
-        return `${widthClass} ${column.toneClass ?? ""}`.trim();
+        return `${widthClass(column)} ${column.toneClass ?? ""}`.trim();
     }
 
     function startColumnDrag(event: DragEvent, key: string): void {
@@ -56,16 +65,20 @@
         dragKey = null;
         dragOverKey = null;
     }
+
+    $: hasFilterRow = columns.some((column) => column.filterable);
 </script>
 
-<thead class="table-info">
-    <tr>
-        <th scope="col" class="ux-grid-lead-header">#</th>
-        {#each columns as column}
+<thead>
+    <tr class="ux-grid-header-row">
+        <th scope="col" class="ux-grid-lead-header" rowspan={hasFilterRow ? 2 : undefined}>#</th>
+        {#each columns as column, index (column.key)}
             <th
                 scope="col"
                 class={columnClass(column)}
+            class:ux-grid-last-data-column={index === columns.length - 1}
                 class:ux-grid-column-drop-target={dragOverKey === column.key && dragKey !== column.key}
+                rowspan={hasFilterRow && !column.filterable ? 2 : undefined}
                 draggable={columns.length > 1}
                 on:dragstart={(event) => startColumnDrag(event, column.key)}
                 on:dragend={clearColumnDrag}
@@ -87,64 +100,80 @@
                             <span class="ux-grid-sort-indicator">{sortIndicator(column)}</span>
                         </button>
                     {/if}
-                    {#if column.filterable}
-                        <input
-                            class="form-control form-control-sm"
-                            type="search"
-                            placeholder={`Filter ${column.title}`}
-                            value={filters[column.key] ?? ""}
-                            on:input={(event) =>
-                                dispatch("filterChange", {
-                                    key: column.key,
-                                    value: (event.currentTarget as HTMLInputElement)
-                                        .value,
-                                })}
-                            aria-label={`Filter ${column.title}`}
-                        />
-                    {/if}
                 </div>
             </th>
         {/each}
+        <th scope="col" class="ux-grid-filler-column" rowspan={hasFilterRow ? 2 : undefined} aria-hidden="true"></th>
     </tr>
+    {#if hasFilterRow}
+        <tr class="ux-grid-filter-row">
+            {#each columns as column (column.key)}
+                {#if column.filterable}
+                    <th scope="col" class={columnClass(column)}>
+                        <GridFilterField
+                            {column}
+                            value={filters[column.key] ?? ""}
+                            on:change={(event) =>
+                                dispatch("filterChange", {
+                                    key: column.key,
+                                    value: event.detail.value,
+                                })}
+                        />
+                    </th>
+                {/if}
+            {/each}
+        </tr>
+    {/if}
 </thead>
 
 <style>
     .ux-grid-lead-header,
     .ux-grid-filter-spacer {
-        min-width: 2.5rem;
-        width: 2.5rem;
+        min-width: 3.1rem;
+        width: 3.1rem;
+        max-width: 3.1rem;
+        white-space: nowrap;
     }
 
     .ux-grid-header-stack {
         display: grid;
-        gap: 0.18rem;
-        align-items: start;
+        gap: 0;
+        align-items: center;
+        align-content: center;
+        min-height: 0.9rem;
     }
 
     .ux-grid-header-label {
         display: block;
-        font-size: 0.72rem;
-        line-height: 1.2;
+        font-size: 0.7rem;
+        line-height: 1.12;
         white-space: normal;
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
+        word-break: normal;
     }
 
     .ux-grid-sort {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: flex-start;
-        gap: 0.25rem;
+        gap: 0.14rem;
         width: 100%;
+        min-height: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
         color: inherit;
-        font-size: 0.72rem;
-        line-height: 1.1;
+        font-size: 0.66rem;
+        line-height: 1.05;
         text-align: left;
     }
 
     .ux-grid-sort-text {
         min-width: 0;
         white-space: normal;
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
+        word-break: normal;
     }
 
     .ux-grid-sort-indicator {
@@ -160,7 +189,16 @@
 
     :global(.ux-grid-shell thead th) {
         min-width: 0;
-        padding: 0.22rem 0.38rem;
+        padding: 0.12rem 0.26rem;
+        vertical-align: middle;
+        background: var(--ux-grid-header-surface);
+        box-shadow: inset 0 -1px 0 var(--ux-grid-divider);
+    }
+
+    :global(.ux-grid-shell thead .ux-grid-filter-row th) {
+        padding-top: 0.08rem;
+        padding-bottom: 0.1rem;
+        padding-inline: 0;
         vertical-align: top;
     }
 
@@ -169,28 +207,43 @@
         top: 0;
         z-index: 8;
         background: var(--ux-grid-sticky-surface);
-        box-shadow: inset 0 -1px 0 var(--ux-grid-divider);
     }
 
-    :global(.ux-grid-shell thead input.form-control) {
+    :global(.ux-grid-table-wrap-all .ux-grid-table thead .ux-grid-filter-row th) {
+        top: 1.18rem;
+        z-index: 7;
+    }
+
+    :global(.ux-grid-shell thead .ux-grid-filter-row > th > input.form-control) {
+        display: block;
         width: 100%;
         min-width: 0;
         max-width: 100%;
-        padding: 0.12rem 0.2rem;
-        font-size: 0.67rem;
+        box-sizing: border-box;
+        min-height: 1.08rem;
+        height: 1.08rem;
+        padding: 0.04rem 0.12rem;
+        font-size: 0.64rem;
         line-height: 1.1;
     }
 
-    :global(.ux-grid-shell thead th.ux-grid-column-text) {
-        width: 6.4rem;
-        min-width: 6.4rem;
-        max-width: 6.4rem;
+    :global(.ux-grid-shell thead th.ux-grid-column-wide) {
+        width: 13rem;
+        min-width: 8rem;
+        max-width: none;
     }
 
-    :global(.ux-grid-shell thead th.ux-grid-column-compact) {
-        width: 4.6rem;
-        min-width: 4.6rem;
-        max-width: 4.6rem;
+    :global(.ux-grid-shell thead th.ux-grid-column-text) {
+        width: 8.5rem;
+        min-width: 6rem;
+        max-width: none;
+    }
+
+    :global(.ux-grid-shell thead th.ux-grid-column-fit) {
+        width: auto;
+        min-width: 0;
+        max-width: none;
+        white-space: nowrap;
     }
 
     :global(.ux-grid-shell thead th.ux-grid-tone-selected),
@@ -205,23 +258,31 @@
 
     @media (max-width: 640px) {
         :global(.ux-grid-shell thead th) {
-            padding: 0.16rem 0.28rem;
+            padding: 0.1rem 0.2rem;
         }
 
-        :global(.ux-grid-shell thead input.form-control) {
-            padding: 0.1rem 0.16rem;
+        :global(.ux-grid-shell thead .ux-grid-filter-row th) {
+            padding-top: 0.08rem;
+            padding-bottom: 0.1rem;
+            padding-inline: 0;
+        }
+
+        :global(.ux-grid-shell thead .ux-grid-filter-row > th > input.form-control) {
+            min-height: 1.08rem;
+            height: 1.08rem;
+            padding: 0.04rem 0.12rem;
+        }
+
+        :global(.ux-grid-shell thead th.ux-grid-column-wide) {
+            min-width: 6.6rem;
         }
 
         :global(.ux-grid-shell thead th.ux-grid-column-text) {
-            width: 5.2rem;
-            min-width: 5.2rem;
-            max-width: 5.2rem;
+            min-width: 4.8rem;
         }
 
-        :global(.ux-grid-shell thead th.ux-grid-column-compact) {
-            width: 4rem;
-            min-width: 4rem;
-            max-width: 4rem;
+        :global(.ux-grid-shell thead th.ux-grid-column-fit) {
+            min-width: 0;
         }
     }
 </style>

@@ -6,6 +6,7 @@ export type ConflictLayoutTab = "coalition" | "alliance" | "nation";
 export type ConflictTab =
     | ConflictLayoutTab
     | "aava"
+    | "metric-time"
     | "tiering"
     | "bubble"
     | "chord";
@@ -41,6 +42,7 @@ const TAB_ORDER: ConflictTab[] = [
     "alliance",
     "nation",
     "aava",
+    "metric-time",
     "tiering",
     "bubble",
     "chord",
@@ -51,6 +53,7 @@ const COMPOSITE_DEFAULT_CAPABILITIES: Record<ConflictTab, boolean> = {
     alliance: true,
     nation: true,
     aava: true,
+    "metric-time": false,
     tiering: false,
     bubble: false,
     chord: false,
@@ -61,6 +64,7 @@ const SINGLE_DEFAULT_CAPABILITIES: Record<ConflictTab, boolean> = {
     alliance: true,
     nation: true,
     aava: true,
+    "metric-time": true,
     tiering: true,
     bubble: true,
     chord: true,
@@ -107,6 +111,7 @@ export function resolveActiveTabFromUrl(
     const pathname = resolvePathname(urlOrSearchParams);
     if (pathname) {
         if (pathname.endsWith("/aava")) return "aava";
+        if (pathname.endsWith("/metric-time")) return "metric-time";
         if (pathname.endsWith("/tiering")) return "tiering";
         if (pathname.endsWith("/bubble")) return "bubble";
         if (pathname.endsWith("/chord")) return "chord";

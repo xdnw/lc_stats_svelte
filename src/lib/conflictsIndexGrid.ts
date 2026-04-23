@@ -75,7 +75,6 @@ function actionCell(
     actionId: string,
     args: Record<string, string | number | boolean | null>,
     title?: string,
-    href?: string,
 ): GridCellView {
     return {
         kind: "action",
@@ -83,7 +82,6 @@ function actionCell(
         actionId,
         args,
         title,
-        href,
     };
 }
 
@@ -159,12 +157,12 @@ export function getConflictsIndexDefaultVisibleColumnKeys(
 export function createConflictsIndexGridProvider(options: {
     rows: ConflictsIndexRow[];
     showPinnedColumn: boolean;
-    conflictHref: (conflictId: number) => string;
 }): GridDataProvider {
     const columns: InMemoryGridColumn<ConflictsIndexRow>[] = [
         {
             key: "name",
             title: "Conflict",
+            widthHint: "wide",
             sortable: "text",
             filterable: true,
             summary: null,
@@ -176,7 +174,6 @@ export function createConflictsIndexGridProvider(options: {
                     "open-conflict-card",
                     { conflictId: row.id },
                     `Open conflict actions for ${row.name}`,
-                    options.conflictHref(row.id),
                 ),
             getFilterText: (row) => row.name,
             getExportCells: (row) => [row.name, row.id],
@@ -185,6 +182,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "c1_name",
             title: "C1",
+            widthHint: "text",
             sortable: "text",
             filterable: true,
             summary: null,
@@ -201,6 +199,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "c2_name",
             title: "C2",
+            widthHint: "text",
             sortable: "text",
             filterable: true,
             summary: null,
@@ -217,6 +216,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "start",
             title: "Start",
+            widthHint: "fit",
             sortable: "date",
             filterable: false,
             summary: null,
@@ -227,6 +227,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "end",
             title: "End",
+            widthHint: "fit",
             sortable: "date",
             filterable: false,
             summary: null,
@@ -239,6 +240,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "category",
             title: "Category",
+            widthHint: "text",
             sortable: "text",
             filterable: true,
             summary: null,
@@ -249,6 +251,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "wars",
             title: "Wars",
+            widthHint: "fit",
             sortable: "number",
             filterable: false,
             summary: "sum-avg",
@@ -260,6 +263,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "active_wars",
             title: "Active",
+            widthHint: "fit",
             sortable: "number",
             filterable: false,
             summary: "sum-avg",
@@ -271,6 +275,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "c1_dealt",
             title: "C1 dealt",
+            widthHint: "fit",
             sortable: "number",
             filterable: false,
             summary: "sum-avg",
@@ -282,6 +287,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "c2_dealt",
             title: "C2 dealt",
+            widthHint: "fit",
             sortable: "number",
             filterable: false,
             summary: "sum-avg",
@@ -293,6 +299,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "total",
             title: "Total",
+            widthHint: "fit",
             sortable: "number",
             filterable: false,
             summary: "sum-avg",
@@ -304,6 +311,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "pinned",
             title: "Pinned",
+            widthHint: "text",
             sortable: false,
             filterable: false,
             summary: null,
@@ -314,6 +322,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "c1_alliances",
             title: "Coalition 1",
+            widthHint: "text",
             sortable: false,
             filterable: false,
             summary: null,
@@ -323,6 +332,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "c2_alliances",
             title: "Coalition 2",
+            widthHint: "text",
             sortable: false,
             filterable: false,
             summary: null,
@@ -332,6 +342,7 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "wiki",
             title: "Wiki",
+            widthHint: "text",
             sortable: false,
             filterable: false,
             summary: null,
@@ -340,7 +351,7 @@ export function createConflictsIndexGridProvider(options: {
                 row.wikiUrl
                     ? {
                           kind: "link",
-                          text: row.wikiUrl,
+                          text: "Wiki",
                           href: row.wikiUrl,
                           external: true,
                       }
@@ -350,38 +361,41 @@ export function createConflictsIndexGridProvider(options: {
         {
             key: "status",
             title: "Status",
+            widthHint: "text",
             sortable: false,
             filterable: false,
             summary: null,
             detailsEligible: false,
             getCell: (row) =>
                 row.status
-                    ? actionCell(row.status, "open-field", {
+                                        ? actionCell("Status", "open-field", {
                           conflictId: row.id,
                           field: "status",
-                      })
+                                            }, row.status)
                     : { kind: "empty" },
             getExportCells: (row) => [row.status ?? ""],
         },
         {
             key: "cb",
             title: "CB",
+            widthHint: "text",
             sortable: false,
             filterable: false,
             summary: null,
             detailsEligible: false,
             getCell: (row) =>
                 row.cb
-                    ? actionCell(row.cb, "open-field", {
+                                        ? actionCell("CB", "open-field", {
                           conflictId: row.id,
                           field: "cb",
-                      })
+                                            }, row.cb)
                     : { kind: "empty" },
             getExportCells: (row) => [row.cb ?? ""],
         },
         {
             key: "posts",
             title: "Posts",
+            widthHint: "fit",
             sortable: false,
             filterable: false,
             summary: null,

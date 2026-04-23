@@ -1,15 +1,7 @@
 declare global {
 	interface Window {
-		Plotly?: unknown;
 		vis?: unknown;
-		bootstrap?: {
-			Modal?: {
-				getOrCreateInstance: (element: Element) => {
-					show: () => void;
-					hide?: () => void;
-				};
-			};
-		};
+		__lcPrimedCompressedPayloads?: Record<string, Promise<ArrayBuffer>>;
 		[key: string]: unknown;
 	}
 

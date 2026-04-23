@@ -1,79 +1,30 @@
 import { decompressBson } from "./binary";
-import type { Conflict, GraphData, TierMetric } from "./types";
-import { getConflictDataUrl, getConflictGraphDataUrl, getConflictsIndexUrl, prewarmRuntimeGroup, type RuntimePrefetchGroup } from "./runtime";
+import { getConflictsIndexUrl } from "./runtime";
 import { queueArtifactPrefetch, promotePrefetchTarget, type ArtifactPrefetchTaskDescriptor, type PrefetchPriority } from "./prefetchCoordinator";
 import { appConfig as config } from "./appConfig";
+import type { DecompressStrategy } from "./binary";
 import {
-    ensureBubbleDatasetReady,
-    ensureTieringDatasetReady,
-    warmBubbleDefaultTrace,
-    warmTieringDefaultDataset,
-    type TraceBuildResult,
-    type TieringDataSetResponse,
-} from "./graphDerivedCache";
-import { requestWorkerRpc } from "./workerRpc";
-import {
-    createModuleWorker,
-} from "./workerDatasetLifecycle";
-import type {
-    WorkerDatasetComputeRequest,
-    WorkerDatasetComputeResult,
-    WorkerDatasetInitRequest,
-    WorkerDatasetInitResult,
-} from "./workerDatasetProtocol";
-import { resolveMetricAccessors } from "./graphMetrics";
-import { formatAllianceName } from "./formatting";
+    createBubbleDefaultArtifactDescriptor,
+    createConflictGraphPayloadArtifactDescriptor,
+    createConflictGridArtifactDescriptor,
+    createConflictPayloadArtifactDescriptor,
+    createTieringDefaultArtifactDescriptor,
+} from "./conflictArtifactRegistry";
+import { acquireMetricTimeArtifactHandle } from "./metricTimeArtifactRegistry";
+import { buildConflictArtifactRegistryKey } from "./conflictArtifactKeys";
+import { loadConflictGraphPayload } from "./conflictGraphPayload";
 import { loadConflictContext } from "./conflictContext";
 import { getCompositeConflictSignature } from "./conflictIds";
-import { incrementPerfCounter, startPerfSpan } from "./perf";
+import {
+    hasCompositeContextCacheEntry,
+    makeCompositeContextCacheKey,
+} from "./compositeContextCache";
+import { incrementPerfCounter } from "./perf";
 import type { ConflictRouteContext } from "./routeBootstrap";
-
-const DEFAULT_BUBBLE_METRICS: [TierMetric, TierMetric, TierMetric] = [
-    { name: "dealt:loss_value", cumulative: true, normalize: false },
-    { name: "loss:loss_value", cumulative: true, normalize: false },
-    { name: "off:wars", cumulative: true, normalize: false },
-];
-
-const DEFAULT_TIERING_METRICS: TierMetric[] = [
-    { name: "nation", cumulative: false, normalize: false },
-];
+import { type ConflictGridLayoutValue } from "./conflictGrid/rowIds";
 
 const MAX_COMPOSITE_WARM_COUNT = 8;
 const COMPOSITE_WARM_TIMEOUT_MS = 12_000;
-
-type BubbleTraceParams = {
-    metrics: [TierMetric, TierMetric, TierMetric];
-    minCity: number;
-    maxCity: number;
-};
-
-type TieringWarmParams = {
-    metrics: TierMetric[];
-    alliance_ids: number[][];
-    useSingleColor: boolean;
-    cityBandSize: number;
-};
-
-let bubbleWarmWorker: Worker | null = null;
-let tieringWarmWorker: Worker | null = null;
-
-function getBubbleWarmWorker(): Worker | null {
-    if (bubbleWarmWorker) return bubbleWarmWorker;
-    bubbleWarmWorker = createModuleWorker(
-        new URL("../workers/bubbleTraceWorker.ts", import.meta.url),
-        "Bubble warm worker unavailable",
-    );
-    return bubbleWarmWorker;
-}
-
-function getTieringWarmWorker(): Worker | null {
-    if (tieringWarmWorker) return tieringWarmWorker;
-    tieringWarmWorker = createModuleWorker(
-        new URL("../workers/tieringDataWorker.ts", import.meta.url),
-        "Tiering warm worker unavailable",
-    );
-    return tieringWarmWorker;
-}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -93,321 +44,36 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     });
 }
 
-function bubbleDatasetKey(conflictId: string, graphVersion: string | number): string {
-    return `bubble:${conflictId}:${String(graphVersion)}`;
-}
-
-function tieringDatasetKey(conflictId: string, graphVersion: string | number): string {
-    return `tiering:${conflictId}:${String(graphVersion)}`;
-}
-
-function bubbleTraceKey(conflictId: string): string {
-    return `${conflictId}|dealt:loss_value:0:1|loss:loss_value:0:1|off:wars:0:1|0-70`;
-}
-
-function tieringDatasetCacheKey(conflictId: string, allianceIds: number[][]): string {
-    const allianceKey = allianceIds.map((ids) => ids.join(".")).join("|");
-    return `${conflictId}|nation:0:0|${allianceKey}|0|band:0`;
-}
-
-async function loadConflictPayload(conflictId: string, version = config.version.conflict_data): Promise<Conflict> {
-    return (await decompressBson(getConflictDataUrl(conflictId, version))) as Conflict;
-}
-
-async function loadGraphPayload(conflictId: string, version = config.version.graph_data): Promise<GraphData> {
-    return (await decompressBson(getConflictGraphDataUrl(conflictId, version))) as GraphData;
-}
-
-async function initializeBubbleDataset(datasetKey: string, data: GraphData): Promise<void> {
-    const worker = getBubbleWarmWorker();
-    if (!worker) return;
-
-    await requestWorkerRpc<
-        WorkerDatasetInitRequest<GraphData>,
-        WorkerDatasetInitResult
-    >(
-        worker,
-        {
-            action: "init",
-            datasetKey,
-            data,
-        },
-        {
-            timeoutMs: 30_000,
-            operation: "bubble warm dataset init",
-        },
-    );
-}
-
-async function initializeTieringDataset(datasetKey: string, data: GraphData): Promise<void> {
-    const worker = getTieringWarmWorker();
-    if (!worker) return;
-
-    await requestWorkerRpc<
-        WorkerDatasetInitRequest<GraphData>,
-        WorkerDatasetInitResult
-    >(
-        worker,
-        {
-            action: "init",
-            datasetKey,
-            data,
-        },
-        {
-            timeoutMs: 30_000,
-            operation: "tiering warm dataset init",
-        },
-    );
-}
-
-async function computeBubbleDefaultTrace(
-    graphData: GraphData,
-    conflictId: string,
-): Promise<TraceBuildResult | null> {
-    const worker = getBubbleWarmWorker();
-    const datasetKey = bubbleDatasetKey(conflictId, config.version.graph_data);
-
-    if (!worker) {
-        return generateBubbleTraceMainThread(
-            graphData,
-            DEFAULT_BUBBLE_METRICS,
-            0,
-            70,
-        );
-    }
-
-    await ensureBubbleDatasetReady(datasetKey, () =>
-        initializeBubbleDataset(datasetKey, graphData),
-    );
-
-    const workerResult = await requestWorkerRpc<
-        WorkerDatasetComputeRequest<BubbleTraceParams>,
-        WorkerDatasetComputeResult<TraceBuildResult | null>
-    >(
-        worker,
-        {
-            action: "compute",
-            datasetKey,
-            params: {
-                metrics: DEFAULT_BUBBLE_METRICS,
-                minCity: 0,
-                maxCity: 70,
-            },
-        },
-        {
-            timeoutMs: 30_000,
-            operation: "bubble warm default trace compute",
-        },
-    );
-
-    return workerResult.value;
-}
-
-function generateBubbleTraceMainThread(
-    data: GraphData,
-    metrics: [TierMetric, TierMetric, TierMetric],
-    minCity: number,
-    maxCity: number,
-): TraceBuildResult | null {
-    const metricAccessors = resolveMetricAccessors(data, metrics);
-    if (!metricAccessors) return null;
-
-    const ranges = {
-        x: [0, Number.MIN_SAFE_INTEGER],
-        y: [0, Number.MIN_SAFE_INTEGER],
-        z: [0, Number.MIN_SAFE_INTEGER],
-    };
-    const rangesKeys: Array<keyof typeof ranges> = ["x", "y", "z"];
-    const lookup: { [key: number]: { [key: number]: any } } = {};
-
-    let lookupMin = Number.POSITIVE_INFINITY;
-    let lookupMax = Number.NEGATIVE_INFINITY;
-
-    for (let coalitionIdx = 0; coalitionIdx < data.coalitions.length; coalitionIdx += 1) {
-        const coalition = data.coalitions[coalitionIdx];
-
-        let minCityIndex = coalition.cities.findIndex((city) => city >= minCity);
-        let maxCityIndex = coalition.cities
-            .slice()
-            .reverse()
-            .findIndex((city) => city <= maxCity);
-
-        if (maxCityIndex !== -1) {
-            maxCityIndex = coalition.cities.length - 1 - maxCityIndex;
-        }
-        if (minCityIndex === -1) minCityIndex = 0;
-        if (maxCityIndex === -1) maxCityIndex = coalition.cities.length;
-
-        const turnStart = coalition.turn.range[0];
-        const dayStart = coalition.day.range[0];
-        const start = metricAccessors.isAnyTurn ? turnStart : dayStart;
-        const end = metricAccessors.isAnyTurn
-            ? coalition.turn.range[1]
-            : coalition.day.range[1];
-
-        for (let allianceIdx = 0; allianceIdx < coalition.alliance_ids.length; allianceIdx += 1) {
-            const allianceId = coalition.alliance_ids[allianceIdx];
-            const allianceName = formatAllianceName(
-                coalition.alliance_names[allianceIdx],
-                allianceId,
-            );
-            const buffer = [0, 0, 0];
-            let lastDay = -1;
-
-            for (let turnOrDay = start; turnOrDay <= end; turnOrDay += 1) {
-                lookupMin = Math.min(lookupMin, turnOrDay);
-                lookupMax = Math.max(lookupMax, turnOrDay);
-
-                let traceByCoalition = lookup[turnOrDay];
-                if (!traceByCoalition) {
-                    traceByCoalition = {};
-                    lookup[turnOrDay] = traceByCoalition;
-                }
-
-                let trace = traceByCoalition[coalitionIdx];
-                if (!trace) {
-                    trace = {
-                        x: [],
-                        y: [],
-                        customdata: [],
-                        id: [],
-                        text: [],
-                        marker: { size: [] },
-                    };
-                    traceByCoalition[coalitionIdx] = trace;
-                }
-
-                trace.id.push(allianceId);
-                trace.text.push(allianceName);
-
-                const turn = metricAccessors.isAnyTurn ? turnOrDay : Math.floor(turnOrDay * 12);
-                const day = metricAccessors.isAnyTurn ? Math.floor(turnOrDay / 12) : turnOrDay;
-
-                for (let metricIdx = 0; metricIdx < metrics.length; metricIdx += 1) {
-                    const isTurnMetric = metricAccessors.metric_is_turn[metricIdx];
-                    if (!isTurnMetric && lastDay === day) continue;
-
-                    const metricIndex = metricAccessors.metric_indexes[metricIdx];
-                    const valuesByTime = isTurnMetric
-                        ? coalition.turn.data[metricIndex][allianceIdx]
-                        : coalition.day.data[metricIndex][allianceIdx];
-                    if (!valuesByTime) continue;
-
-                    const valuesByCity = valuesByTime[
-                        isTurnMetric ? turn - turnStart : day - dayStart
-                    ];
-                    if (!valuesByCity || valuesByCity.length === 0) continue;
-
-                    let total = 0;
-                    for (let cityIndex = minCityIndex; cityIndex <= maxCityIndex; cityIndex += 1) {
-                        total += valuesByCity[cityIndex] ?? 0;
-                    }
-
-                    const normalize = metricAccessors.metric_normalize[metricIdx];
-                    if (normalize !== -1) {
-                        const nationCountsByDay = coalition.day.data[0][allianceIdx];
-                        if (!nationCountsByDay) continue;
-                        const nationCounts = nationCountsByDay[day - dayStart];
-                        if (!nationCounts || nationCounts.length === 0) continue;
-
-                        let nations = 0;
-                        if (normalize === 0) {
-                            for (let cityIndex = minCityIndex; cityIndex <= maxCityIndex; cityIndex += 1) {
-                                nations += nationCounts[cityIndex] ?? 0;
-                            }
-                        } else {
-                            for (let cityIndex = minCityIndex; cityIndex <= maxCityIndex; cityIndex += 1) {
-                                nations +=
-                                    (nationCounts[cityIndex] ?? 0) *
-                                    coalition.cities[cityIndex] *
-                                    normalize;
-                            }
-                        }
-
-                        if (nations !== 0) total /= nations;
-                    }
-
-                    if (metrics[metricIdx].cumulative) {
-                        buffer[metricIdx] += total;
-                    } else {
-                        buffer[metricIdx] = total;
-                    }
-                }
-
-                trace.x.push(buffer[0]);
-                trace.y.push(buffer[1]);
-                trace.customdata.push(buffer[2]);
-
-                for (let rangeIndex = 0; rangeIndex < 3; rangeIndex += 1) {
-                    const key = rangesKeys[rangeIndex];
-                    ranges[key][0] = Math.min(ranges[key][0], buffer[rangeIndex]);
-                    ranges[key][1] = Math.max(ranges[key][1], buffer[rangeIndex]);
-                }
-
-                lastDay = day;
-            }
-        }
-    }
-
-    if (!Number.isFinite(lookupMin) || !Number.isFinite(lookupMax)) {
-        return null;
-    }
-
-    return {
-        traces: lookup,
-        times: {
-            start: lookupMin,
-            end: lookupMax,
-            is_turn: metricAccessors.isAnyTurn,
-        },
-        ranges,
-    };
-}
-
-async function computeTieringDefaultDataset(
-    graphData: GraphData,
-    conflictId: string,
-): Promise<TieringDataSetResponse | null> {
-    const worker = getTieringWarmWorker();
-    const datasetKey = tieringDatasetKey(conflictId, config.version.graph_data);
-    const allAllianceIds: number[][] = graphData.coalitions.map((coalition) =>
-        [...coalition.alliance_ids],
-    );
-
-    if (!worker) {
-        return null;
-    }
-
-    await ensureTieringDatasetReady(datasetKey, () =>
-        initializeTieringDataset(datasetKey, graphData),
-    );
-
-    const workerResult = await requestWorkerRpc<
-        WorkerDatasetComputeRequest<TieringWarmParams>,
-        WorkerDatasetComputeResult<TieringDataSetResponse | null>
-    >(
-        worker,
-        {
-            action: "compute",
-            datasetKey,
-            params: {
-                metrics: DEFAULT_TIERING_METRICS,
-                alliance_ids: allAllianceIds,
-                useSingleColor: false,
-                cityBandSize: 0,
-            },
-        },
-        {
-            timeoutMs: 30_000,
-            operation: "tiering warm default dataset compute",
-        },
-    );
-
-    return workerResult.value;
-}
-
 function enqueueArtifact(task: ArtifactPrefetchTaskDescriptor): boolean {
     return queueArtifactPrefetch(task);
+}
+
+type RouteArtifactWarmOptions = {
+    priority?: PrefetchPriority;
+    routeTarget?: string;
+    intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
+    reasonBase?: string;
+    contextKey?: string;
+    requestId?: number;
+    layouts?: ConflictGridLayoutValue[];
+    aggressive?: boolean;
+};
+
+function buildWarmReason(
+    reasonBase: string | undefined,
+    suffix: string,
+    fallback: string,
+): string {
+    const trimmed = reasonBase?.trim();
+    if (!trimmed) return fallback;
+    return `${trimmed}-${suffix}`;
+}
+
+function buildPromotionTargets(
+    primaryTarget: string,
+    additionalTargets: string[] = [],
+): string[] {
+    return Array.from(new Set([primaryTarget, ...additionalTargets]));
 }
 
 export function promoteArtifactTarget(routeTarget: string): void {
@@ -442,19 +108,75 @@ export function warmConflictPayload(conflictId: string, options?: {
     routeTarget?: string;
     intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
 }): boolean {
-    const version = config.version.conflict_data;
+    const descriptor = createConflictPayloadArtifactDescriptor({
+        conflictId,
+        version: config.version.conflict_data,
+    });
+
     return enqueueArtifact({
-        key: `payload:conflict:${conflictId}:v${String(version)}`,
+        key: descriptor.key,
         artifactKind: "payload",
         routeTarget: options?.routeTarget ?? "/conflict",
         reason: options?.reason ?? "route-intent",
         intentStrength: options?.intentStrength ?? "hover",
         priority: options?.priority ?? "high",
-        estimatedBytes: 900_000,
+        estimatedBytes: descriptor.estimatedBytes,
         estimatedCpuMs: 80,
+        isFresh: descriptor.isFresh,
         run: async () => {
-            await loadConflictPayload(conflictId, version);
+            await descriptor.warm();
         },
+    });
+}
+
+export function warmConflictTableArtifact(conflictId: string, options?: {
+    version?: string | number;
+    layouts?: ConflictGridLayoutValue[];
+    aggressive?: boolean;
+    priority?: PrefetchPriority;
+    reason?: string;
+    routeTarget?: string;
+    intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
+}): boolean {
+    const version = options?.version ?? config.version.conflict_data;
+    const descriptor = createConflictGridArtifactDescriptor({
+        conflictId,
+        version,
+        layouts: options?.layouts,
+        aggressive: options?.aggressive,
+    });
+
+    return enqueueArtifact({
+        key: descriptor.key,
+        artifactKind: "conflict-grid",
+        routeTarget: options?.routeTarget ?? "/conflict",
+        reason: options?.reason ?? "route-intent-conflict-grid",
+        intentStrength: options?.intentStrength ?? "hover",
+        priority: options?.priority ?? "high",
+        estimatedBytes: descriptor.estimatedBytes,
+        estimatedCpuMs: 140 + (options?.layouts?.length ?? 1) * 60 + ((options?.aggressive ?? false) ? 120 : 0),
+        isFresh: descriptor.isFresh,
+        run: async () => {
+            await descriptor.warm();
+        },
+    });
+}
+
+export function warmConflictRouteArtifacts(
+    conflictId: string,
+    options?: RouteArtifactWarmOptions,
+): boolean {
+    return warmConflictTableArtifact(conflictId, {
+        layouts: options?.layouts,
+        aggressive: options?.aggressive ?? false,
+        priority: options?.priority,
+        routeTarget: options?.routeTarget ?? "/conflict",
+        intentStrength: options?.intentStrength,
+        reason: buildWarmReason(
+            options?.reasonBase,
+            "grid-bootstrap",
+            "route-intent-conflict-grid",
+        ),
     });
 }
 
@@ -462,21 +184,35 @@ export function warmConflictGraphPayload(conflictId: string, options?: {
     priority?: PrefetchPriority;
     reason?: string;
     routeTarget?: string;
+    promotionTargets?: string[];
     intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
+    decompressStrategy?: DecompressStrategy;
 }): boolean {
-    const version = config.version.graph_data;
+    const descriptor = createConflictGraphPayloadArtifactDescriptor({
+        conflictId,
+        version: config.version.graph_data,
+    });
 
     return enqueueArtifact({
-        key: `payload:graph:${conflictId}:v${String(version)}`,
+        key: descriptor.key,
         artifactKind: "payload",
         routeTarget: options?.routeTarget ?? "/bubble",
+        promotionTargets: buildPromotionTargets(
+            options?.routeTarget ?? "/bubble",
+            options?.promotionTargets ?? ["/bubble", "/tiering"],
+        ),
         reason: options?.reason ?? "route-intent-graph",
         intentStrength: options?.intentStrength ?? "hover",
         priority: options?.priority ?? "high",
-        estimatedBytes: 1_200_000,
+        estimatedBytes: descriptor.estimatedBytes,
         estimatedCpuMs: 90,
+        isFresh: descriptor.isFresh,
         run: async () => {
-            await loadGraphPayload(conflictId, version);
+            await loadConflictGraphPayload({
+                conflictId,
+                version: config.version.graph_data,
+                decompressStrategy: options?.decompressStrategy,
+            });
         },
     });
 }
@@ -489,24 +225,25 @@ export function warmBubbleDefaultArtifact(conflictId: string, options?: {
     contextKey?: string;
     requestId?: number;
 }): boolean {
+    const descriptor = createBubbleDefaultArtifactDescriptor({
+        conflictId,
+        version: config.version.graph_data,
+        contextKey: options?.contextKey,
+        requestId: options?.requestId,
+    });
+
     return enqueueArtifact({
-        key: `bubble:default:${conflictId}:v${String(config.version.graph_data)}`,
+        key: descriptor.key,
         artifactKind: "bubble",
         routeTarget: options?.routeTarget ?? "/bubble",
         reason: options?.reason ?? "route-intent-bubble-default",
         intentStrength: options?.intentStrength ?? "hover",
         priority: options?.priority ?? "idle",
-        estimatedBytes: 0,
+        estimatedBytes: descriptor.estimatedBytes,
         estimatedCpuMs: 350,
+        isFresh: descriptor.isFresh,
         run: async () => {
-            const graphData = await loadGraphPayload(conflictId, config.version.graph_data);
-            const cacheKey = bubbleTraceKey(conflictId);
-            await warmBubbleDefaultTrace({
-                cacheKey,
-                contextKey: options?.contextKey,
-                requestId: options?.requestId,
-                compute: () => computeBubbleDefaultTrace(graphData, conflictId),
-            });
+            await descriptor.warm();
             incrementPerfCounter("prefetch.artifact.warm.hit", 1, {
                 artifact: "bubble",
                 routeTarget: options?.routeTarget ?? "/bubble",
@@ -523,31 +260,76 @@ export function warmTieringDefaultArtifact(conflictId: string, options?: {
     contextKey?: string;
     requestId?: number;
 }): boolean {
+    const descriptor = createTieringDefaultArtifactDescriptor({
+        conflictId,
+        version: config.version.graph_data,
+        contextKey: options?.contextKey,
+        requestId: options?.requestId,
+    });
+
     return enqueueArtifact({
-        key: `tiering:default:${conflictId}:v${String(config.version.graph_data)}`,
+        key: descriptor.key,
         artifactKind: "tiering",
         routeTarget: options?.routeTarget ?? "/tiering",
         reason: options?.reason ?? "route-intent-tiering-default",
         intentStrength: options?.intentStrength ?? "hover",
         priority: options?.priority ?? "idle",
-        estimatedBytes: 0,
+        estimatedBytes: descriptor.estimatedBytes,
         estimatedCpuMs: 360,
+        isFresh: descriptor.isFresh,
         run: async () => {
-            const graphData = await loadGraphPayload(conflictId, config.version.graph_data);
-            const allAllianceIds: number[][] = graphData.coalitions.map((coalition) =>
-                [...coalition.alliance_ids],
-            );
-            const cacheKey = tieringDatasetCacheKey(conflictId, allAllianceIds);
-            await warmTieringDefaultDataset({
-                cacheKey,
-                contextKey: options?.contextKey,
-                requestId: options?.requestId,
-                compute: () => computeTieringDefaultDataset(graphData, conflictId),
-            });
+            await descriptor.warm();
             incrementPerfCounter("prefetch.artifact.warm.hit", 1, {
                 artifact: "tiering",
                 routeTarget: options?.routeTarget ?? "/tiering",
             });
+        },
+    });
+}
+
+export function warmMetricTimeDefaultArtifact(conflictId: string, options?: {
+    aggregationMode?: "alliance" | "coalition";
+    priority?: PrefetchPriority;
+    reason?: string;
+    routeTarget?: string;
+    intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
+    contextKey?: string;
+    requestId?: number;
+}): boolean {
+    const version = config.version.graph_data;
+    const graphDescriptor = createConflictGraphPayloadArtifactDescriptor({
+        conflictId,
+        version,
+    });
+    const aggregationMode = options?.aggregationMode ?? "alliance";
+
+    return enqueueArtifact({
+        key: `metric-time:default:${buildConflictArtifactRegistryKey({ kind: "conflict", id: conflictId }, version)}:agg:${aggregationMode}`,
+        artifactKind: "metric-time",
+        routeTarget: options?.routeTarget ?? "/metric-time",
+        reason: options?.reason ?? "route-intent-metric-time-default-series",
+        intentStrength: options?.intentStrength ?? "hover",
+        priority: options?.priority ?? "idle",
+        estimatedBytes: graphDescriptor.estimatedBytes,
+        estimatedCpuMs: 360,
+        run: async () => {
+            const handle = acquireMetricTimeArtifactHandle({
+                conflictId,
+                version,
+            });
+            try {
+                await handle.warmDefaultSeries({
+                    aggregationMode,
+                    contextKey: options?.contextKey,
+                    requestId: options?.requestId,
+                });
+                incrementPerfCounter("prefetch.artifact.warm.hit", 1, {
+                    artifact: "metric-time",
+                    routeTarget: options?.routeTarget ?? "/metric-time",
+                });
+            } finally {
+                handle.destroy();
+            }
         },
     });
 }
@@ -568,6 +350,11 @@ export function warmCompositeContextArtifact(options: {
     if (ids.length < 2) return false;
 
     const signature = getCompositeConflictSignature(ids);
+    const cacheKey = makeCompositeContextCacheKey(
+        signature,
+        options.aid,
+        config.version.conflict_data,
+    );
 
     return enqueueArtifact({
         key: `composite:${signature}:aid:${options.aid}:v${String(config.version.conflict_data)}`,
@@ -578,6 +365,7 @@ export function warmCompositeContextArtifact(options: {
         priority: options.priority ?? "high",
         estimatedBytes: ids.length * 900_000,
         estimatedCpuMs: 550,
+        isFresh: () => hasCompositeContextCacheEntry(cacheKey),
         run: async () => {
             const context: ConflictRouteContext = {
                 mode: "composite",
@@ -595,27 +383,98 @@ export function warmCompositeContextArtifact(options: {
     });
 }
 
-export function warmRuntimeArtifact(group: RuntimePrefetchGroup, options?: {
-    priority?: PrefetchPriority;
-    reason?: string;
-    routeTarget?: string;
-    intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
-}): boolean {
-    return enqueueArtifact({
-        key: `runtime:${group}`,
-        artifactKind: "runtime",
-        routeTarget: options?.routeTarget ?? "/",
-        reason: options?.reason ?? "runtime-warm",
-        intentStrength: options?.intentStrength ?? "idle",
-        priority: options?.priority ?? "idle",
-        estimatedBytes: 900_000,
-        estimatedCpuMs: 20,
-        run: async () => {
-            const finish = startPerfSpan("runtime.group.warm", {
-                group,
-            });
-            await prewarmRuntimeGroup(group);
-            finish();
-        },
+export function warmBubbleRouteArtifacts(
+    conflictId: string,
+    options?: RouteArtifactWarmOptions,
+): boolean {
+    const routeTarget = options?.routeTarget ?? "/bubble";
+    const graphQueued = warmConflictGraphPayload(conflictId, {
+        priority: options?.priority,
+        routeTarget,
+        promotionTargets: ["/bubble", "/tiering"],
+        intentStrength: options?.intentStrength,
+        reason: buildWarmReason(
+            options?.reasonBase,
+            "graph-payload",
+            "route-intent-bubble-graph-payload",
+        ),
     });
+    const bubbleQueued = warmBubbleDefaultArtifact(conflictId, {
+        priority: options?.priority,
+        routeTarget,
+        intentStrength: options?.intentStrength,
+        contextKey: options?.contextKey,
+        requestId: options?.requestId,
+        reason: buildWarmReason(
+            options?.reasonBase,
+            "default-trace",
+            "route-intent-bubble-default-trace",
+        ),
+    });
+
+    return graphQueued || bubbleQueued;
+}
+
+export function warmTieringRouteArtifacts(
+    conflictId: string,
+    options?: RouteArtifactWarmOptions,
+): boolean {
+    const routeTarget = options?.routeTarget ?? "/tiering";
+    const graphQueued = warmConflictGraphPayload(conflictId, {
+        priority: options?.priority,
+        routeTarget,
+        promotionTargets: ["/bubble", "/tiering"],
+        intentStrength: options?.intentStrength,
+        reason: buildWarmReason(
+            options?.reasonBase,
+            "graph-payload",
+            "route-intent-tiering-graph-payload",
+        ),
+    });
+    const tieringQueued = warmTieringDefaultArtifact(conflictId, {
+        priority: options?.priority,
+        routeTarget,
+        intentStrength: options?.intentStrength,
+        contextKey: options?.contextKey,
+        requestId: options?.requestId,
+        reason: buildWarmReason(
+            options?.reasonBase,
+            "default-dataset",
+            "route-intent-tiering-default-dataset",
+        ),
+    });
+
+    return graphQueued || tieringQueued;
+}
+
+export function warmMetricTimeRouteArtifacts(
+    conflictId: string,
+    options?: RouteArtifactWarmOptions,
+): boolean {
+    const routeTarget = options?.routeTarget ?? "/metric-time";
+    const graphQueued = warmConflictGraphPayload(conflictId, {
+        priority: options?.priority,
+        routeTarget,
+        promotionTargets: ["/bubble", "/tiering", "/metric-time"],
+        intentStrength: options?.intentStrength,
+        reason: buildWarmReason(
+            options?.reasonBase,
+            "graph-payload",
+            "route-intent-metric-time-graph-payload",
+        ),
+    });
+    const metricTimeQueued = warmMetricTimeDefaultArtifact(conflictId, {
+        priority: options?.priority,
+        routeTarget,
+        intentStrength: options?.intentStrength,
+        contextKey: options?.contextKey,
+        requestId: options?.requestId,
+        reason: buildWarmReason(
+            options?.reasonBase,
+            "default-series",
+            "route-intent-metric-time-default-series",
+        ),
+    });
+
+    return graphQueued || metricTimeQueued;
 }

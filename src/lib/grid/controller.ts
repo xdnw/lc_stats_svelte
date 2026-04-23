@@ -73,9 +73,13 @@ export function setGridFilter(
     columnKey: string,
     value: string,
 ): GridControllerState {
+    const normalizedValue = value.trim();
+    const currentValue = state.filters[columnKey] ?? "";
+    if (normalizedValue === currentValue) return state;
+
     const filters = { ...state.filters };
-    if (!value.trim()) delete filters[columnKey];
-    else filters[columnKey] = value;
+    if (!normalizedValue) delete filters[columnKey];
+    else filters[columnKey] = normalizedValue;
 
     return normalizeGridControllerState(bootstrap, {
         ...state,
@@ -90,9 +94,12 @@ export function setGridPageIndex(
     state: GridControllerState,
     pageIndex: number,
 ): GridControllerState {
+    const nextPageIndex = Math.max(0, Math.floor(pageIndex));
+    if (nextPageIndex === state.pageIndex) return state;
+
     return normalizeGridControllerState(bootstrap, {
         ...state,
-        pageIndex: Math.max(0, Math.floor(pageIndex)),
+        pageIndex: nextPageIndex,
     });
 }
 
@@ -101,6 +108,8 @@ export function setGridPageSize(
     state: GridControllerState,
     pageSize: GridPageSize,
 ): GridControllerState {
+    if (pageSize === state.pageSize) return state;
+
     return normalizeGridControllerState(bootstrap, {
         ...state,
         pageSize,
@@ -115,6 +124,13 @@ export function setGridViewport(
     viewport: GridViewport,
 ): GridControllerState {
     if (state.pageSize !== "all") return state;
+    if (
+        state.viewport?.start === viewport.start &&
+        state.viewport?.end === viewport.end
+    ) {
+        return state;
+    }
+
     return normalizeGridControllerState(bootstrap, {
         ...state,
         viewport,

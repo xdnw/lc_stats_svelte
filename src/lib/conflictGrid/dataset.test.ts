@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeGridSelectionFilterValue } from "../grid/filterValue";
 import type { GridQueryState } from "../grid/types";
 import type { MetricCard, RankingCard } from "../kpi";
 import type { Conflict } from "../types";
@@ -104,6 +105,16 @@ describe("conflictGrid dataset", () => {
             alliances: [{ id: 101, name: "Red Alliance" }],
         });
         expect(bootstrap.grid.rowCount).toBe(2);
+        expect(bootstrap.grid.columns[0]).toMatchObject({
+            key: "name",
+            title: "Coalition",
+            widthHint: "wide",
+        });
+        const allianceBootstrap = dataset.bootstrap(ConflictGridLayout.ALLIANCE);
+        expect(allianceBootstrap.grid.columns[0]?.filterUi).toMatchObject({
+            kind: "selection",
+            title: "Filter Alliances",
+        });
         expect(bootstrap.grid.columns.map((column) => column.key)).toContain("net:damage");
         expect(bootstrap.presetMetrics.totalDamage).toBe(180);
         expect(bootstrap.presetMetrics.warsTracked).toBe(4);
@@ -264,6 +275,42 @@ describe("conflictGrid dataset", () => {
         expect(dataset.getMetricCardValue(metricCard)).toBe(60);
     });
 
+    it("defers nation layout construction until the nation layout is actually requested", () => {
+        const fixture = createConflictFixture();
+
+        Object.defineProperty(fixture.coalitions[0], "nation_names", {
+            configurable: true,
+            get() {
+                throw new Error("nation rows should stay lazy");
+            },
+        });
+
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-lazy",
+            conflictId: "test",
+            data: fixture,
+        });
+
+        expect(dataset.bootstrap(ConflictGridLayout.COALITION).grid.rowCount).toBe(2);
+        expect(() =>
+            dataset.query(
+                ConflictGridLayout.NATION,
+                createQueryState({
+                    visibleColumnKeys: ["alliance", "name", "dealt:damage"],
+                    columnOrderKeys: [
+                        "alliance",
+                        "name",
+                        "dealt:damage",
+                        "loss:damage",
+                        "net:damage",
+                        "off:wars",
+                        "def:wars",
+                        "both:wars",
+                    ],
+                }),
+            )).toThrow("nation rows should stay lazy");
+    });
+
     it("sorts nation names by nation instead of alliance and can prewarm numeric caches", () => {
         const fixture = createConflictFixture();
         fixture.coalitions[0].alliance_names = ["Zulu Alliance"];
@@ -333,5 +380,74 @@ describe("conflictGrid dataset", () => {
         expect(page.filteredRowCount).toBe(2);
         expect(page.rows).toHaveLength(1);
         expect(page.rows[0]?.id).toBe(202);
+    });
+
+    it("filters alliance-valued columns with tagged multi-select ids", () => {
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-selection",
+            conflictId: "test",
+            data: createConflictFixture(),
+        });
+
+        const alliancePage = dataset.query(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({
+                filters: { name: encodeGridSelectionFilterValue([202]) },
+            }),
+        );
+        expect(alliancePage.filteredRowCount).toBe(1);
+        expect(alliancePage.rows[0]?.id).toBe(202);
+
+        const nationPage = dataset.query(
+            ConflictGridLayout.NATION,
+            createQueryState({
+                filters: {
+                    alliance: encodeGridSelectionFilterValue([101]),
+                },
+                visibleColumnKeys: ["alliance", "name", "dealt:damage"],
+                columnOrderKeys: [
+                    "alliance",
+                    "name",
+                    "dealt:damage",
+                    "loss:damage",
+                    "net:damage",
+                    "off:wars",
+                    "def:wars",
+                    "both:wars",
+                ],
+            }),
+        );
+        expect(nationPage.filteredRowCount).toBe(1);
+        expect(nationPage.rows[0]?.id).toBe(1001);
+    });
+
+    it("reuses query and summary results for equivalent filter matches", () => {
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v4",
+            conflictId: "test",
+            data: createConflictFixture(),
+        });
+
+        const firstQuery = dataset.query(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({ filters: { name: "all" } }),
+        );
+        const secondQuery = dataset.query(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({ filters: { name: "alli" } }),
+        );
+
+        expect(secondQuery).toBe(firstQuery);
+
+        const firstSummary = dataset.querySummary(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({ filters: { name: "all" } }),
+        );
+        const secondSummary = dataset.querySummary(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({ filters: { name: "alli" } }),
+        );
+
+        expect(secondSummary).toBe(firstSummary);
     });
 });

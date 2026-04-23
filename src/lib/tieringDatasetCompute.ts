@@ -1,9 +1,39 @@
-import * as d3 from "d3";
 import { Palette, generateColors, palettePrimary } from "./colors";
 import { formatAllianceName } from "./formatting";
 import { resolveMetricAccessors } from "./graphMetrics";
+import { readGraphTimelineSnapshot } from "./graphTimelineAccess";
 import type { TieringDataSet, TieringDataSetResponse } from "./graphDerivedCache";
 import type { GraphData, TierMetric } from "./types";
+
+const TURNS_PER_DAY = 12;
+
+type TieringTimeIndex = {
+    turnMetricIndex: number;
+    dayMetricIndex: number;
+    dayValue: number;
+};
+
+function resolveTieringTimeIndex(
+    turnOrDay: number,
+    isAnyTurn: boolean,
+    turnStart: number,
+    dayStart: number,
+): TieringTimeIndex {
+    if (isAnyTurn) {
+        const dayValue = Math.floor(turnOrDay / TURNS_PER_DAY);
+        return {
+            turnMetricIndex: turnOrDay - turnStart,
+            dayMetricIndex: dayValue - dayStart,
+            dayValue,
+        };
+    }
+
+    return {
+        turnMetricIndex: turnOrDay * TURNS_PER_DAY - turnStart,
+        dayMetricIndex: turnOrDay - dayStart,
+        dayValue: turnOrDay,
+    };
+}
 
 export function buildCityBandLabels(
     minCity: number,
@@ -120,7 +150,7 @@ export function getDataSetsByTime(
                 : metrics.length;
         let colors =
             colorLen > 1
-                ? generateColors(d3, colorLen, palette)
+                ? generateColors(colorLen, palette)
                 : ["rgb(" + palettePrimary[i] + ")"];
         let colorIndex = 0;
         for (let j = 0; j < coalition.alliance_ids.length; j++) {
@@ -129,8 +159,7 @@ export function getDataSetsByTime(
             let name = formatAllianceName(coalition.alliance_names[j], alliance_id);
 
             let aaBufferByMetric: number[][] = new Array(metrics.length);
-            let countsBuffer: number[] = new Array(maxCity - minCity + 1).fill(0);
-            let updatedCounts = false;
+            let denominatorBufferByMetric: number[][] = new Array(metrics.length);
             let last_day = -1;
 
             for (
@@ -138,17 +167,21 @@ export function getDataSetsByTime(
                 turnOrDay2 <= col_time_max;
                 turnOrDay2++
             ) {
-                updatedCounts = false;
                 let dataI = turnOrDay2 - time_min;
-                let dataColI = turnOrDay2 - col_time_min;
-                let turnI = isAnyTurn ? dataColI : dataColI * 12;
-                let dayI = isAnyTurn ? Math.floor(dataColI / 12) : dataColI;
+                const timeIndex = resolveTieringTimeIndex(
+                    turnOrDay2,
+                    isAnyTurn,
+                    turn_start,
+                    day_start,
+                );
 
                 for (let k = 0; k < metrics.length; k++) {
                     let dataSetIndex = jUsed * metrics.length + k;
                     let is_turn = metric_is_turn[k];
-                    if (!is_turn && last_day == dayI) continue;
-                    let metricI = is_turn ? turnI : dayI;
+                    if (!is_turn && last_day == timeIndex.dayValue) continue;
+                    let metricI = is_turn
+                        ? timeIndex.turnMetricIndex
+                        : timeIndex.dayMetricIndex;
                     let isCumulative = metrics[k].cumulative;
 
                     let aaBuffer = aaBufferByMetric[k];
@@ -177,13 +210,13 @@ export function getDataSetsByTime(
                         ).fill(0);
                     }
 
-                    let counts: number[] | null = null;
+                    let denominators: number[] | null = null;
                     if (normalizeAny) {
-                        const countsByTime = dataSet[4];
-                        if (countsByTime) {
-                            counts = countsByTime[dataI];
-                            if (!counts) {
-                                counts = countsByTime[dataI] = new Array(
+                        const denominatorsByTime = dataSet[4];
+                        if (denominatorsByTime) {
+                            denominators = denominatorsByTime[dataI];
+                            if (!denominators) {
+                                denominators = denominatorsByTime[dataI] = new Array(
                                     maxCity - minCity + 1,
                                 ).fill(0);
                             }
@@ -191,54 +224,67 @@ export function getDataSetsByTime(
                     }
 
                     let normalize = metric_normalize[k];
-                    if (normalize != -1) {
-                        if (!counts) continue;
-                        let nation_counts_by_day = coalition.day.data[0][j];
-                        if (!nation_counts_by_day) continue;
-                        let nation_counts = nation_counts_by_day[dayI];
-                        if (nation_counts && !updatedCounts) {
-                            updatedCounts = true;
-                            for (let l = 0; l < nation_counts.length; l++) {
-                                let value = nation_counts[l];
+                    if (normalize) {
+                        if (!denominators) continue;
+                        let denominatorBuffer = denominatorBufferByMetric[k];
+                        if (!denominatorBuffer) {
+                            denominatorBuffer = denominatorBufferByMetric[k] = new Array(
+                                maxCity - minCity + 1,
+                            ).fill(0);
+                        }
+                        let denominatorRow = readGraphTimelineSnapshot({
+                            coalition,
+                            allianceIndex: j,
+                            isTurnMetric: false,
+                            metricIndex: normalize.denominatorMetricIndex,
+                            timeIndex: timeIndex.dayMetricIndex,
+                        });
+                        if (denominatorRow) {
+                            for (let l = 0; l < denominatorRow.length; l++) {
+                                let value = denominatorRow[l];
                                 let city = coalition.cities[l];
                                 if (value != null) {
-                                    countsBuffer[city - minCity] = value;
+                                    denominatorBuffer[city - minCity] = value;
                                 }
                             }
                         }
-                        if (normalize == 0) {
-                            for (let l = 0; l < countsBuffer.length; l++) {
-                                counts[l] += countsBuffer[l];
+                        if (normalize.mode === "value") {
+                            for (let l = 0; l < denominatorBuffer.length; l++) {
+                                denominators[l] += denominatorBuffer[l];
                             }
                         } else {
-                            for (let l = 0; l < countsBuffer.length; l++) {
-                                counts[l] += countsBuffer[l] * (l + minCity) * normalize;
+                            for (let l = 0; l < denominatorBuffer.length; l++) {
+                                denominators[l] +=
+                                    denominatorBuffer[l] *
+                                    (l + minCity) *
+                                    normalize.unitsPerCity;
                             }
                         }
                     }
 
                     let metric_index = metric_indexes[k];
-                    let value_by_time = is_turn
-                        ? coalition.turn.data[metric_index][j]
-                        : coalition.day.data[metric_index][j];
-                    if (value_by_time && value_by_time.length != 0) {
-                        let value_by_city = value_by_time[metricI];
-                        if (value_by_city && value_by_city.length != 0) {
-                            if (isCumulative) {
-                                for (let l = 0; l < value_by_city.length; l++) {
-                                    let value = value_by_city[l];
-                                    if (value != null) {
-                                        let city = coalition.cities[l];
-                                        aaBuffer[city - minCity] += value;
-                                    }
+                    let value_by_city = readGraphTimelineSnapshot({
+                        coalition,
+                        allianceIndex: j,
+                        isTurnMetric: is_turn,
+                        metricIndex: metric_index,
+                        timeIndex: metricI,
+                    });
+                    if (value_by_city && value_by_city.length != 0) {
+                        if (isCumulative) {
+                            for (let l = 0; l < value_by_city.length; l++) {
+                                let value = value_by_city[l];
+                                if (value != null) {
+                                    let city = coalition.cities[l];
+                                    aaBuffer[city - minCity] += value;
                                 }
-                            } else {
-                                for (let l = 0; l < value_by_city.length; l++) {
-                                    let value = value_by_city[l];
-                                    if (value != null) {
-                                        let city = coalition.cities[l];
-                                        aaBuffer[city - minCity] = value;
-                                    }
+                            }
+                        } else {
+                            for (let l = 0; l < value_by_city.length; l++) {
+                                let value = value_by_city[l];
+                                if (value != null) {
+                                    let city = coalition.cities[l];
+                                    aaBuffer[city - minCity] = value;
                                 }
                             }
                         }
@@ -248,7 +294,7 @@ export function getDataSetsByTime(
                         tierData[l] += aaBuffer[l];
                     }
                 }
-                last_day = dayI;
+                last_day = timeIndex.dayValue;
             }
 
             colorIndex++;
@@ -269,27 +315,30 @@ export function getDataSetsByTime(
 
     let response: TieringDataSet[] = new Array(len);
     for (let i = 0; i < dataBeforeNormalize.length; i++) {
-        let [col, label, color, dataByTime, counts] = dataBeforeNormalize[i];
+        let [col, label, color, dataByTime, denominators] = dataBeforeNormalize[i];
         if (shouldGroupByBand) {
             dataByTime = groupRowsByCityBand(dataByTime, bandCount, cityBandSize);
-            if (counts) {
-                counts = groupRowsByCityBand(counts, bandCount, cityBandSize);
+            if (denominators) {
+                denominators = groupRowsByCityBand(
+                    denominators,
+                    bandCount,
+                    cityBandSize,
+                );
             }
         }
         let normalized: number[][] = new Array(dataByTime.length);
-        let dataPrev: number[] | null = null;
+        const zeroRow = new Array(
+            shouldGroupByBand ? bandCount : cityCount,
+        ).fill(0);
         for (let k = 0; k < dataByTime.length; k++) {
             let dataK = dataByTime[k];
             if (!dataK || dataK.length == 0) {
-                if (dataPrev) {
-                    dataK = dataPrev;
-                }
+                dataK = [...zeroRow];
             }
-            dataPrev = dataK;
-            if (dataK && dataK.length > 0 && counts) {
-                let countsK = counts[k];
+            if (dataK && dataK.length > 0 && denominators) {
+                let denominatorK = denominators[k] ?? zeroRow;
                 for (let j = 0; j < dataK.length; j++) {
-                    let divisor = countsK[j];
+                    let divisor = denominatorK[j];
                     dataK[j] = divisor ? dataK[j] / divisor : 0;
                 }
             }

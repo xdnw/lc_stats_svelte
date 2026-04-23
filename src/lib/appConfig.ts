@@ -1,4 +1,6 @@
-import { env } from "$env/dynamic/public";
+import * as publicEnv from "$env/static/public";
+
+const staticPublicEnv = publicEnv as Partial<Record<"PUBLIC_DATA_ORIGIN", string>>;
 
 export type AppVersion = {
     conflicts: number;
@@ -39,6 +41,10 @@ function normalizeDataOrigin(value?: string): string {
     return trimmed.replace(/\/+$/, "");
 }
 
+function readPublicDataOrigin(): string | undefined {
+    return staticPublicEnv.PUBLIC_DATA_ORIGIN;
+}
+
 export const appRoutes: AppRoutes = {
     conflicts: "conflicts",
     conflict: "conflict",
@@ -51,14 +57,14 @@ export const appRoutes: AppRoutes = {
 export const appVersion: AppVersion = {
     conflicts: 1.2,
     conflict_data: 1.2,
-    graph_data: 1.2,
+    graph_data: 1.3,
 };
 
 export const appConfig: AppConfig = {
     application: "Locutus",
     admin_id: 664156861033086987,
     admin_nation: 189573,
-    data_origin: normalizeDataOrigin(env.PUBLIC_DATA_ORIGIN),
+    data_origin: normalizeDataOrigin(readPublicDataOrigin()),
     discord_invite: "cUuskPDrB7",
     email: "jessepaleg@gmail.com",
     repository_url: "https://github.com/xdnw/locutus",

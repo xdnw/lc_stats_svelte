@@ -1,57 +1,102 @@
 <script lang="ts">
     // @ts-nocheck
+    import "../../styles/conflict-shell.css";
+    import "../../styles/conflict-widgets.css";
     import { base } from "$app/paths";
     import {
-        buildCoalitionAllianceItems,
         buildStringSelectionItems,
-        decompressBson,
         firstSelectedString,
-        type Conflict,
-        rafDelay,
-        getCurrentQueryParams,
-        bootstrapIdRouteLifecycle,
-        setQueryParam,
+        validateSingleSelection,
+    } from "$lib/selectionModalHelpers";
+    import { decompressBson } from "$lib/binary";
+    import type { Conflict } from "$lib/types";
+    import { getCurrentQueryParams, setQueryParam, resetQueryParams } from "$lib/queryState";
+    import { bootstrapIdRouteLifecycle } from "$lib/routeBootstrap";
+    import {
         generateColorsFromPalettes,
         Palette,
         darkenColor,
-        commafy,
-        toggleCoalitionAllianceSelection,
-        getConflictDataUrl,
-        saveCurrentQueryParams,
-        resetQueryParams,
-        formatDatasetProvenance,
-        formatAllianceName,
+    } from "$lib/colors";
+    import { commafy, formatAllianceName } from "$lib/formatting";
+    import { toggleCoalitionAllianceSelection } from "$lib/graphMetrics";
+    import { getConflictDataUrl, formatDatasetProvenance } from "$lib/runtime";
+    import { saveCurrentQueryParams } from "$lib/queryStorage";
+    import {
         getDefaultWarWebHeader,
+        rankWarWebAllianceIdsByTotalMetric,
         resolveWarWebMetricMeta,
-        validateSingleSelection,
-        validateAtLeastOneSelection,
-        getSelectedAllianceIdsForCoalition,
-        mergeCoalitionAllianceSelection,
-        yieldToMain,
-        startPerfSpan,
+    } from "$lib/warWeb";
+    import { yieldToMain } from "$lib/misc";
+    import { startPerfSpan } from "$lib/perf";
+    import {
         buildSettingsRows,
         exportBundleData,
         type ExportDatasetOption,
-    } from "$lib";
-    import {
-        warmBubbleDefaultArtifact,
-        warmConflictGraphPayload,
-        warmTieringDefaultArtifact,
-    } from "$lib/prefetchArtifacts";
+    } from "$lib/dataExport";
     import { onMount } from "svelte";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
     import ExportDataMenu from "../../components/ExportDataMenu.svelte";
+    import Icon from "../../components/Icon.svelte";
     import ShareResetBar from "../../components/ShareResetBar.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
+    import AllianceFilterModal from "../../components/AllianceFilterModal.svelte";
     import SelectionModal from "../../components/SelectionModal.svelte";
     import type {
         SelectionId,
         SelectionModalItem,
     } from "$lib/selection/types";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
-    import * as d3 from "d3";
+    import { chordDirected, ribbonArrow } from "d3-chord";
+    import { select } from "d3-selection";
+    import { arc } from "d3-shape";
     import { appConfig as config } from "$lib/appConfig";
+
+    type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
+
+    let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
+
+    function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
+        if (!prefetchArtifactsPromise) {
+            prefetchArtifactsPromise = import("$lib/prefetchArtifactsClient");
+        }
+
+        return prefetchArtifactsPromise;
+    }
+
+    function warmChordSecondaryArtifacts(conflictId: string): void {
+        void loadPrefetchArtifacts()
+            .then(
+                ({
+                    warmBubbleRouteArtifacts,
+                    warmConflictTableArtifact,
+                    warmTieringRouteArtifacts,
+                }) => {
+                    warmConflictTableArtifact(conflictId, {
+                        priority: "idle",
+                        reason: "route-chord-idle-conflict-grid",
+                        routeTarget: "/conflict",
+                        intentStrength: "idle",
+                    });
+
+                    warmBubbleRouteArtifacts(conflictId, {
+                        priority: "idle",
+                        reasonBase: "route-chord-idle-bubble",
+                        routeTarget: "/bubble",
+                        intentStrength: "idle",
+                    });
+                    warmTieringRouteArtifacts(conflictId, {
+                        priority: "idle",
+                        reasonBase: "route-chord-idle-tiering",
+                        routeTarget: "/tiering",
+                        intentStrength: "idle",
+                    });
+                },
+            )
+            .catch((error) => {
+                console.warn("Failed to load chord prefetch helpers", error);
+            });
+    }
 
     let conflictName = "";
     let conflictId: string | null = null;
@@ -59,15 +104,11 @@
     let _rawData: Conflict | null = null;
     let _allowedAllianceIds: Set<number> = new Set();
     let _currentHeaderName: string = "wars";
-    let showHeaderModal = false;
-    let showAllianceModal = false;
     let headerModalItems: SelectionModalItem[] = [];
-    let allianceModalItems: SelectionModalItem[] = [];
-    let allianceModalSelectedIds: number[] = [];
-    let activeAllianceCoalitionIndex: 0 | 1 = 0;
     let _loaded = false;
     let _loadError: string | null = null;
     let datasetProvenance = "";
+    let topAllianceCountInput = "5";
     let selectedChordExportDataset = "matrix";
     let chordExportState: {
         header: string;
@@ -172,26 +213,7 @@
                 setupWebWithCurrentLayout();
                 _loaded = true;
                 saveCurrentQueryParams();
-
-                // Warm graph payload cache so switching to Tiering/Bubble is faster.
-                warmConflictGraphPayload(conflictId, {
-                    priority: "idle",
-                    reason: "route-chord-idle-graph-payload",
-                    routeTarget: "/chord",
-                    intentStrength: "idle",
-                });
-                warmBubbleDefaultArtifact(conflictId, {
-                    priority: "idle",
-                    reason: "route-chord-idle-bubble-default",
-                    routeTarget: "/bubble",
-                    intentStrength: "idle",
-                });
-                warmTieringDefaultArtifact(conflictId, {
-                    priority: "idle",
-                    reason: "route-chord-idle-tiering-default",
-                    routeTarget: "/tiering",
-                    intentStrength: "idle",
-                });
+                warmChordSecondaryArtifacts(conflictId);
             })
             .catch((error) => {
                 console.error("Failed to load chord web data", error);
@@ -208,19 +230,10 @@
         setupWebWithCurrentLayout();
     }
 
-    function openHeaderModal() {
-        showHeaderModal = true;
-    }
-
-    function closeHeaderModal() {
-        showHeaderModal = false;
-    }
-
     function applyHeaderModal(event: CustomEvent<{ ids: SelectionId[] }>) {
         const nextHeader = firstSelectedString(event.detail.ids);
         if (!nextHeader) return;
         setLayoutHeader(nextHeader);
-        showHeaderModal = false;
     }
 
     $: headerModalItems = buildStringSelectionItems(
@@ -240,49 +253,29 @@
         setupWebWithCurrentLayout();
     }
 
-    $: allianceModalItems = (() => {
-        if (!_rawData) return [];
-        const coalition = _rawData.coalitions[activeAllianceCoalitionIndex];
-        if (!coalition) return [];
-        return buildCoalitionAllianceItems([coalition], formatAllianceName);
-    })();
-    $: allianceModalSelectedIds = (() => {
-        if (!_rawData) return [];
-        return _rawData.coalitions[
-            activeAllianceCoalitionIndex
-        ].alliance_ids.filter((id) => _allowedAllianceIds.has(id));
-    })();
-
-    function validateAllianceSelection(ids: SelectionId[]): string | null {
-        return validateAtLeastOneSelection(ids);
-    }
-
-    function openAllianceModal(coalitionIndex: 0 | 1) {
-        activeAllianceCoalitionIndex = coalitionIndex;
-        allianceModalSelectedIds = getSelectedAllianceIdsForCoalition(
-            _rawData?.coalitions,
-            coalitionIndex,
-            _allowedAllianceIds,
-        );
-        showAllianceModal = true;
-    }
-
-    function closeAllianceModal() {
-        showAllianceModal = false;
-    }
-
-    function applyAllianceModal(event: CustomEvent<{ ids: SelectionId[] }>) {
+    function commitAllowedAllianceIds(nextAllowedAllianceIds: number[]): void {
         if (!_rawData) return;
-        _allowedAllianceIds = mergeCoalitionAllianceSelection(
-            _rawData.coalitions,
-            activeAllianceCoalitionIndex,
-            _allowedAllianceIds,
-            event.detail.ids,
-        );
-        showAllianceModal = false;
+        _allowedAllianceIds = new Set(nextAllowedAllianceIds);
         setQueryParam("ids", Array.from(_allowedAllianceIds).join("."));
         saveCurrentQueryParams();
         setupWebWithCurrentLayout();
+    }
+
+    function parseTopAllianceCount(value: string): number {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    }
+
+    function selectTopAlliancesForCurrentHeader(): void {
+        if (!_rawData) return;
+        const requestedCount = parseTopAllianceCount(topAllianceCountInput);
+        const [coalition0Ids, coalition1Ids] =
+            rankWarWebAllianceIdsByTotalMetric(_rawData, _currentHeaderName);
+        topAllianceCountInput = String(requestedCount);
+        commitAllowedAllianceIds([
+            ...coalition0Ids.slice(0, requestedCount),
+            ...coalition1Ids.slice(0, requestedCount),
+        ]);
     }
 
     function resetFilters() {
@@ -339,7 +332,7 @@
                 );
             });
         });
-        let allPalette: number[] = [];
+        let allPalette: Palette[] = [];
         let labels: string[] = [];
         let allAllianceIds = [
             ...data.coalitions[0].alliance_ids,
@@ -363,7 +356,7 @@
                 coalition_ids.push(1);
             }
         }
-        let allColors = generateColorsFromPalettes(d3, allPalette);
+        let allColors = generateColorsFromPalettes(allPalette);
         let colors = allColors.filter((value, index) =>
             allowedAllianceIdsSet.has(allAllianceIds[index]),
         );
@@ -484,11 +477,10 @@
     ) {
         const metricMeta = resolveWarWebMetricMeta(_currentHeaderName);
         // clear my_dataviz
-        d3.select("#my_dataviz").selectAll("*").remove();
+        select("#my_dataviz").selectAll("*").remove();
 
         // create the svg area
-        const svg = d3
-            .select("#my_dataviz")
+        const svg = select("#my_dataviz")
             .append("svg")
             .classed("svg-content-responsive", true)
             .attr("preserveAspectRatio", "xMinYMin meet")
@@ -500,11 +492,10 @@
             .attr("height", 440);
 
         // give this matrix to d3.chord(): it will calculates all the info we need to draw arc and ribbon
-        const res = d3
-            .chordDirected()
+        const res = chordDirected()
             .padAngle(0.01) // padding between entities (black arc)
-            .sortSubgroups(d3.ascending)
-            .sortChords(d3.ascending)(matrix);
+            .sortSubgroups((left, right) => left - right)
+            .sortChords((left, right) => left - right)(matrix);
 
         // add the groups on the inner part of the circle
         svg.datum(res)
@@ -519,7 +510,7 @@
             .style("fill", (d, i) => colors[i])
             .style("stroke", "#222")
             .style("stroke-width", "0.25px")
-            .attr("d", d3.arc().innerRadius(210).outerRadius(220));
+            .attr("d", arc().innerRadius(210).outerRadius(220));
 
         // Add the links between groups
         let paths = svg
@@ -528,27 +519,44 @@
             .selectAll("path")
             .data((d) => d)
             .join("path")
-            .attr("d", d3.ribbonArrow().radius(208))
+            .attr("d", ribbonArrow().radius(208))
             .attr("fill-opacity", 0.75)
             .attr("stroke-opacity", 0.5)
             // .style("mix-blend-mode", "multiply")
             .style("fill", (d) => colors[d.source.index])
             .style("stroke", (d) => darkenColor(colors[d.source.index], 25))
-            .style("stroke-width", "0.5px");
+            .style("stroke-width", "0.5px")
+            .style("cursor", "pointer");
 
         let groups = svg
             .datum(res)
             .append("g")
             .selectAll("g")
             .data((d) => d.groups)
-            .join("g");
+            .join("g")
+            .style("cursor", "pointer");
+
+        const allPathNodes = paths.nodes() as SVGPathElement[];
+        const pathNodesByAllianceIndex = new Map<number, SVGPathElement[]>();
+        paths.each(function (d: any) {
+            const node = this as SVGPathElement;
+            const relatedIndexes = new Set([d.source.index, d.target.index]);
+            for (const index of relatedIndexes) {
+                const existing = pathNodesByAllianceIndex.get(index);
+                if (existing) {
+                    existing.push(node);
+                } else {
+                    pathNodesByAllianceIndex.set(index, [node]);
+                }
+            }
+        });
 
         groups
             .append("path")
             .style("fill", (d, i) => colors[i])
             .style("stroke", "#222")
             .style("stroke-width", "0.25px")
-            .attr("d", d3.arc().innerRadius(210).outerRadius(220));
+            .attr("d", arc().innerRadius(210).outerRadius(220));
 
         groups
             .append("text")
@@ -570,6 +578,8 @@
 
         let lastShowIndex: number = -1;
         let showIndex: number = -1;
+        let activePathNodes: SVGPathElement[] = [];
+        let pathFilterActive = false;
         if (
             alliance_ids.filter((id, index) => coalition_ids[index] === 0)
                 .length === 1
@@ -628,25 +638,35 @@
             toolTip.innerHTML = table;
         }
 
+        function setPathNodeVisibility(
+            nodes: SVGPathElement[],
+            isVisible: boolean,
+        ) {
+            const displayValue = isVisible ? "" : "none";
+            for (const node of nodes) {
+                node.style.display = displayValue;
+            }
+        }
+
         function runShowIndex() {
             if (showIndex !== lastShowIndex) {
                 if (showIndex == -1) {
-                    paths.classed("d-none", false);
+                    if (pathFilterActive) {
+                        setPathNodeVisibility(allPathNodes, true);
+                        pathFilterActive = false;
+                        activePathNodes = [];
+                    }
                 } else {
-                    paths
-                        .filter(
-                            (p) =>
-                                p.source.index !== showIndex &&
-                                p.target.index !== showIndex,
-                        )
-                        .classed("d-none", true);
-                    paths
-                        .filter(
-                            (p) =>
-                                p.source.index === showIndex ||
-                                p.target.index === showIndex,
-                        )
-                        .classed("d-none", false);
+                    const nextActiveNodes =
+                        pathNodesByAllianceIndex.get(showIndex) ?? [];
+                    if (!pathFilterActive) {
+                        setPathNodeVisibility(allPathNodes, false);
+                        pathFilterActive = true;
+                    } else {
+                        setPathNodeVisibility(activePathNodes, false);
+                    }
+                    setPathNodeVisibility(nextActiveNodes, true);
+                    activePathNodes = nextActiveNodes;
                     displayTable(showIndex);
                 }
                 lastShowIndex = showIndex;
@@ -655,33 +675,54 @@
         groups.on("click", function (event: MouseEvent, d: any) {
             showIndex = -1;
             lastShowIndex = -1;
+            if (pathFilterActive) {
+                setPathNodeVisibility(allPathNodes, true);
+                pathFilterActive = false;
+                activePathNodes = [];
+            }
             setLayoutAlliance(coalition_ids[d.index], alliance_ids[d.index]);
         });
         // Attach the tooltip to the groups
         groups
-            .on("mouseover", function (event: MouseEvent, d: any) {
+            .on("mouseenter", function (_event: MouseEvent, d: any) {
                 showIndex = d.index;
-                requestAnimationFrame(rafDelay(100, runShowIndex));
+                runShowIndex();
             })
-            .on("mouseout", function (event: MouseEvent, d: any) {
+            .on("mouseleave", function () {
                 showIndex = -1;
-                requestAnimationFrame(rafDelay(100, runShowIndex));
+                runShowIndex();
             })
-            .on("mouseover touchstart", function (event: MouseEvent, d: any) {
+            .on("touchstart", function (_event: TouchEvent, d: any) {
                 showIndex = d.index;
-                requestAnimationFrame(rafDelay(100, runShowIndex));
+                runShowIndex();
             })
-            .on(
-                "mouseout touchend",
-                function (event: MouseEvent | TouchEvent, d: any) {
-                    showIndex = -1;
-                    requestAnimationFrame(rafDelay(100, runShowIndex));
-                },
-            );
+            .on("touchend", function () {
+                showIndex = -1;
+                runShowIndex();
+            });
+
+        paths
+            .on("mouseenter", function (_event: MouseEvent, d: any) {
+                showIndex = d.source.index;
+                runShowIndex();
+            })
+            .on("mouseleave", function () {
+                showIndex = -1;
+                runShowIndex();
+            })
+            .on("touchstart", function (_event: TouchEvent, d: any) {
+                showIndex = d.source.index;
+                runShowIndex();
+            })
+            .on("touchend", function () {
+                showIndex = -1;
+                runShowIndex();
+            });
     }
 </script>
 
 <svelte:head>
+    <link rel="preconnect" href={config.data_origin} crossorigin="anonymous" />
     <!-- <script src="https://d3js.org/d3.v6.js"></script> -->
 </svelte:head>
 <div class="container-fluid p-2 ux-page-body">
@@ -706,13 +747,15 @@
             <a
                 class="btn ux-btn fw-bold"
                 href="https://politicsandwar.fandom.com/wiki/{_rawData.wiki}"
-                >Wiki:{_rawData?.wiki}&nbsp;<i class="bi bi-box-arrow-up-right"
-                ></i></a
+                >Wiki:{_rawData?.wiki}<Icon
+                    name="externalLink"
+                    className="ux-icon-inline"
+                /></a
             >
         {/if}
     </h1>
     <ConflictRouteTabs {conflictId} active="chord" routeKind="single" />
-    <div class="ux-surface ux-tab-panel p-2 fw-bold" style="min-height: 116px;">
+    <div class="ux-surface ux-tab-panel p-2 ux-compact-controls" style="min-height: 116px;">
         {#if !_loaded}
             <Progress />
         {/if}
@@ -733,12 +776,40 @@
                     <span class="fw-bold"
                         >Metric header: {_currentHeaderName}</span
                     >
-                    <button
-                        class="btn ux-btn btn-sm fw-bold"
-                        on:click={openHeaderModal}
+                    <SelectionModal
+                        title="Choose Metric Header"
+                        description="Pick the active header used to generate chord edges and flow tables."
+                        items={headerModalItems}
+                        selectedIds={[_currentHeaderName]}
+                        applyLabel="Use header"
+                        singleSelect={true}
+                        searchPlaceholder="Search layouts..."
+                        buttonLabel="Choose metric header"
+                        size="sm"
+                        on:apply={applyHeaderModal}
+                        validateSelection={(ids) => validateSingleSelection(ids, "header")}
+                    />
+                    <form
+                        class="input-group input-group-sm ux-inputbar chord-top-selection-group"
+                        on:submit|preventDefault={selectTopAlliancesForCurrentHeader}
                     >
-                        Choose metric header
-                    </button>
+                        <label
+                            class="input-group-text"
+                            for="chord-top-alliance-count">Top</label
+                        >
+                        <input
+                            id="chord-top-alliance-count"
+                            class="form-control form-control-sm chord-top-selection-input"
+                            type="number"
+                            min="1"
+                            step="1"
+                            bind:value={topAllianceCountInput}
+                            aria-label="Top alliances to select per coalition"
+                        />
+                        <button class="btn ux-btn btn-sm" type="submit">
+                            Select Top Alliances
+                        </button>
+                    </form>
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <ExportDataMenu
@@ -764,12 +835,17 @@
                     </span>
                 </div>
                 <div class="mt-2">
-                    <button
-                        class="btn ux-btn btn-sm fw-bold"
-                        on:click={() => openAllianceModal(0)}
-                    >
-                        Edit alliances
-                    </button>
+                    <AllianceFilterModal
+                        title={`Filter Alliances: ${_rawData?.coalitions[0]?.name ?? "Coalition"}`}
+                        description="Select alliances for the coalition associated with the button you clicked."
+                        coalitions={_rawData.coalitions}
+                        selectedIds={Array.from(_allowedAllianceIds)}
+                        mode="coalition-merged"
+                        coalitionIndex={0}
+                        buttonLabel="Edit alliances"
+                        size="sm"
+                        on:commit={(event) => commitAllowedAllianceIds(event.detail.ids)}
+                    />
                 </div>
             </div>
             <div
@@ -783,30 +859,27 @@
                     </span>
                 </div>
                 <div class="mt-2">
-                    <button
-                        class="btn ux-btn btn-sm fw-bold"
-                        on:click={() => openAllianceModal(1)}
-                    >
-                        Edit alliances
-                    </button>
+                    <AllianceFilterModal
+                        title={`Filter Alliances: ${_rawData?.coalitions[1]?.name ?? "Coalition"}`}
+                        description="Select alliances for the coalition associated with the button you clicked."
+                        coalitions={_rawData.coalitions}
+                        selectedIds={Array.from(_allowedAllianceIds)}
+                        mode="coalition-merged"
+                        coalitionIndex={1}
+                        buttonLabel="Edit alliances"
+                        size="sm"
+                        on:commit={(event) => commitAllowedAllianceIds(event.detail.ids)}
+                    />
                 </div>
             </div>
             <div class="small text-muted mt-2">
                 {resolveWarWebMetricMeta(_currentHeaderName).directionNote(
                     _currentHeaderName,
                 )}
-                Hover a chord to inspect one Selected alliance versus Compared alliances.
+                Hover an alliance arc or any chord to inspect one Selected alliance versus Compared alliances.
                 "Net" = Selected value minus Compared value.
             </div>
         {/if}
-    </div>
-    <div class="d-flex justify-content-center align-items-center mt-1">
-        <div
-            class="d-flex justify-content-center align-items-center alert alert-danger text-center mb-1 py-1 text-danger"
-        >
-            Click or hover over one of the chords and then scroll down to view
-            the table.
-        </div>
     </div>
     <div class="container bg-light-subtle">
         <div id="my_dataviz"></div>
@@ -815,29 +888,19 @@
     {#if datasetProvenance}
         <div class="small text-muted text-end mt-2">{datasetProvenance}</div>
     {/if}
-    <SelectionModal
-        open={showHeaderModal}
-        title="Choose Metric Header"
-        description="Pick the active header used to generate chord edges and flow tables."
-        items={headerModalItems}
-        selectedIds={[_currentHeaderName]}
-        applyLabel="Use header"
-        singleSelect={true}
-        searchPlaceholder="Search layouts..."
-        on:close={closeHeaderModal}
-        on:apply={applyHeaderModal}
-        validateSelection={(ids) => validateSingleSelection(ids, "header")}
-    />
-    <SelectionModal
-        open={showAllianceModal}
-        title={`Filter Alliances: ${_rawData?.coalitions[activeAllianceCoalitionIndex]?.name ?? "Coalition"}`}
-        description="Select alliances for the coalition associated with the button you clicked."
-        items={allianceModalItems}
-        selectedIds={allianceModalSelectedIds}
-        searchPlaceholder="Search alliances..."
-        on:close={closeAllianceModal}
-        on:apply={applyAllianceModal}
-        validateSelection={validateAllianceSelection}
-    />
     <br />
 </div>
+
+<style>
+    .chord-top-selection-group {
+        width: auto;
+        margin: 0;
+        flex: 0 0 auto;
+    }
+
+    .chord-top-selection-input {
+        flex: 0 0 3.3rem;
+        width: 3.3rem;
+        text-align: end;
+    }
+</style>

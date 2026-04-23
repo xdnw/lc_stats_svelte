@@ -1,4 +1,4 @@
-import { resolveWarWebMetricMeta, trimHeader } from "./index";
+import { resolveWarWebMetricMeta, trimHeader } from "./warWeb";
 import type { CompositeMergeDiagnostics } from "./compositeMerge";
 import type { Conflict } from "./types";
 

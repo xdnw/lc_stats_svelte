@@ -32,7 +32,7 @@ describe("conflictLayoutQueryState", () => {
         });
     });
 
-    it("keeps the name column when it is already present", () => {
+    it("restores the required alliance and name columns for nation layout", () => {
         const query = new URLSearchParams({
             layout: "nation",
             sort: "net:damage",
@@ -44,7 +44,7 @@ describe("conflictLayoutQueryState", () => {
             layout: 2,
             sort: "net:damage",
             order: "asc",
-            columns: ["name", "net:damage", "off:wars"],
+            columns: ["alliance", "name", "net:damage", "off:wars"],
         });
     });
 

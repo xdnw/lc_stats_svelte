@@ -1,6 +1,12 @@
 import { getDataSetsByTime } from "../lib/tieringDatasetCompute";
+import {
+    buildGraphRouteInfo,
+    resolveInitialAllowedAllianceIds,
+    type GraphRouteInfo,
+} from "../lib/graphRouteInfo";
 import type { GraphData, TierMetric } from "../lib/types";
 import type {
+    WorkerVisibleBootstrapTimingBreakdown,
     WorkerDatasetComputeRequest,
     WorkerDatasetComputeResult,
     WorkerDatasetInitRequest,
@@ -9,6 +15,7 @@ import type {
     WorkerDatasetReleaseResult,
     WorkerTimingBreakdown,
 } from "../lib/workerDatasetProtocol";
+import { unpackGraphDataFromCompressedBytes } from "./graphWorkerPayload";
 
 type DataSetResponse = {
     data: {
@@ -30,10 +37,33 @@ type TieringComputeParams = {
     cityBandSize: number;
 };
 
+export type TieringVisibleBootstrapParams = {
+    metrics: TierMetric[];
+    requestedAllianceIds?: number[] | null;
+    useSingleColor: boolean;
+    cityBandSize: number;
+};
+
+export type TieringVisibleBootstrapRequest = {
+    id: number;
+    action: "bootstrapVisible";
+    datasetKey: string;
+    compressedBytes: ArrayBuffer;
+    params: TieringVisibleBootstrapParams;
+};
+
+export type TieringVisibleBootstrapResult = {
+    info: GraphRouteInfo;
+    selectedAllianceIds: number[];
+    value: DataSetResponse | null;
+    timings: WorkerVisibleBootstrapTimingBreakdown;
+};
+
 type WorkerRequest =
     | WorkerDatasetInitRequest<GraphData>
     | WorkerDatasetComputeRequest<TieringComputeParams>
-    | WorkerDatasetReleaseRequest;
+    | WorkerDatasetReleaseRequest
+    | TieringVisibleBootstrapRequest;
 
 type WorkerSuccessResponse = {
     id: number;
@@ -41,7 +71,8 @@ type WorkerSuccessResponse = {
     result:
         | WorkerDatasetInitResult
         | WorkerDatasetReleaseResult
-        | WorkerDatasetComputeResult<DataSetResponse | null>;
+    | WorkerDatasetComputeResult<DataSetResponse | null>
+    | TieringVisibleBootstrapResult;
 };
 
 type WorkerErrorResponse = {
@@ -56,12 +87,64 @@ function nowMs(): number {
     return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
-self.onmessage = (event: MessageEvent<WorkerRequest>) => {
+self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const request = event.data;
     const { id } = request;
     const receiveStart = nowMs();
 
     try {
+        if (request.action === "bootstrapVisible") {
+            const unpacked = await unpackGraphDataFromCompressedBytes(
+                request.compressedBytes,
+            );
+            const { data } = unpacked;
+            dataSetByKey.set(request.datasetKey, data);
+
+            const selectedAllianceIds = Array.from(
+                resolveInitialAllowedAllianceIds(
+                    data,
+                    request.params.requestedAllianceIds,
+                ),
+            );
+            const selectedAllianceIdSet = new Set(selectedAllianceIds);
+            const alliance_ids = data.coalitions.map((coalition) =>
+                coalition.alliance_ids.filter((id) => selectedAllianceIdSet.has(id)),
+            );
+
+            const computeStart = nowMs();
+            const { metrics, useSingleColor, cityBandSize } = request.params;
+            const value = getDataSetsByTime(
+                data,
+                metrics,
+                alliance_ids,
+                useSingleColor,
+                cityBandSize,
+            );
+
+            const respondStart = nowMs();
+            const respondEnd = nowMs();
+            const timings: WorkerVisibleBootstrapTimingBreakdown = {
+                receiveMs: computeStart - receiveStart - unpacked.inflateMs - unpacked.unpackMs,
+                inflateMs: unpacked.inflateMs,
+                unpackMs: unpacked.unpackMs,
+                computeMs: respondStart - computeStart,
+                respondMs: respondEnd - respondStart,
+                totalMs: respondEnd - receiveStart,
+            };
+            const response: WorkerSuccessResponse = {
+                id,
+                ok: true,
+                result: {
+                    info: buildGraphRouteInfo(data),
+                    selectedAllianceIds,
+                    value,
+                    timings,
+                },
+            };
+            self.postMessage(response);
+            return;
+        }
+
         if (request.action === "init") {
             dataSetByKey.set(request.datasetKey, request.data);
             const response: WorkerSuccessResponse = {

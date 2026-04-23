@@ -1,0 +1,31 @@
+/* Timeline overrides that should only load with vis-timeline surfaces. */
+
+.vis-item-content {
+    padding: 1px 0 !important;
+    font-size: 0.68rem;
+    line-height: 1.1;
+    display: block;
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vis-item,
+.vis-box,
+.vis-range {
+    max-width: 11.2rem;
+}
+
+.vis-item a {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html[data-bs-theme="dark"] .vis-item {
+    background-color: #23314a;
+    color: #fff;
+    border: 1px solid #385071;
+}

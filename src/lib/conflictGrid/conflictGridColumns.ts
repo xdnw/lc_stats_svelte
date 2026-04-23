@@ -52,6 +52,7 @@ function createMetricColumnSpec(
     return {
         key,
         title: key,
+        widthHint: "fit",
         sortable: "number",
         filterable: false,
         summary: "sum-avg",
@@ -77,6 +78,7 @@ export function buildConflictGridColumnSpecs(
         {
             key: "name",
             title: "Name",
+            widthHint: "wide",
             sortable: "text",
             filterable: true,
             summary: null,
@@ -87,6 +89,7 @@ export function buildConflictGridColumnSpecs(
         {
             key: "alliance",
             title: "Alliance",
+            widthHint: "text",
             sortable: "text",
             filterable: true,
             summary: null,

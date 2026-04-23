@@ -1,4 +1,8 @@
-import { getAavaMetricLabels } from "./aava";
+import {
+    AAVA_DEFAULT_VISIBLE_COLUMN_KEYS,
+    getAavaColumnLabels,
+    type AavaColumnKey,
+} from "./aavaColumns";
 import type { AavaSelectionRow } from "./aavaSelection";
 import { commafy, formatAllianceName } from "./formatting";
 import {
@@ -6,53 +10,6 @@ import {
     type InMemoryGridColumn,
 } from "./grid/providers/inMemoryProvider";
 import type { GridDataProvider } from "./grid/types";
-
-export type AavaColumnKey =
-    | "name"
-    | "primary_to_row"
-    | "row_to_primary"
-    | "net"
-    | "total"
-    | "primary_share_pct"
-    | "row_share_pct"
-    | "abs_net";
-
-export const AAVA_ALL_COLUMN_KEYS: AavaColumnKey[] = [
-    "name",
-    "primary_to_row",
-    "row_to_primary",
-    "net",
-    "total",
-    "primary_share_pct",
-    "row_share_pct",
-    "abs_net",
-];
-
-export const AAVA_DEFAULT_VISIBLE_COLUMN_KEYS: AavaColumnKey[] = [
-    "name",
-    "primary_to_row",
-    "row_to_primary",
-    "net",
-    "total",
-    "primary_share_pct",
-    "row_share_pct",
-];
-
-export function getAavaColumnLabels(
-    header: string,
-): Record<AavaColumnKey, string> {
-    const labels = getAavaMetricLabels(header);
-    return {
-        name: "Alliance",
-        primary_to_row: labels.primary_to_row,
-        row_to_primary: labels.row_to_primary,
-        net: "Net",
-        total: "Total",
-        primary_share_pct: labels.primary_share_pct,
-        row_share_pct: labels.row_share_pct,
-        abs_net: "Abs Net",
-    };
-}
 
 function normalizeNumber(value: number): number {
     return Number.isFinite(value) ? value : 0;
@@ -83,6 +40,7 @@ export function createAavaGridProvider(
     ): InMemoryGridColumn<AavaSelectionRow> => ({
         key,
         title: label,
+        widthHint: "fit",
         toneClass,
         sortable: "number",
         filterable: false,
@@ -103,6 +61,7 @@ export function createAavaGridProvider(
     ): InMemoryGridColumn<AavaSelectionRow> => ({
         key,
         title: label,
+        widthHint: "fit",
         toneClass,
         sortable: "number",
         filterable: false,
@@ -120,6 +79,7 @@ export function createAavaGridProvider(
         {
             key: "name",
             title: labels.name,
+            widthHint: "text",
             sortable: "text",
             filterable: true,
             summary: null,

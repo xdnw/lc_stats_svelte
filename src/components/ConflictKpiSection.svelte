@@ -48,23 +48,26 @@
 </script>
 
 {#if visible}
-    <div class="ux-surface p-2 mb-3 rounded border">
+    <div class="ux-surface ux-kpi-section mb-3">
         <div class="d-flex align-items-center justify-content-between mb-2">
-            <h5 class="m-0">KPI</h5>
+            <h5 class="m-0 ux-kpi-heading">KPI</h5>
             <button
                 type="button"
-                class="btn-close"
+                class="btn-close ux-kpi-section-close"
                 aria-label="Hide KPI"
                 on:click={() => dispatch("toggleCollapse")}
             ></button>
         </div>
 
-        <div class="row g-2">
+        <div class="row g-1">
             {#each kpiWidgets as card}
                 <div class={card.kind === "ranking" ? "col-12 col-lg-6" : "col-12 col-sm-6 col-xl-4"}>
                     <div
-                        class="ux-surface p-3 rounded border h-100 position-relative kpi-card"
+                        class="ux-surface ux-kpi-card h-100 position-relative kpi-card"
                         class:kpi-card-dragging={draggingWidgetId === card.id}
+                        class:ux-kpi-card-preset={card.kind === "preset"}
+                        class:ux-kpi-card-ranking={card.kind === "ranking"}
+                        class:ux-kpi-card-metric={card.kind === "metric"}
                         role="group"
                         draggable="true"
                         on:dragstart={() => dispatch("startDrag", { id: card.id })}
@@ -78,48 +81,54 @@
                             aria-label="Remove KPI card"
                             on:click={() => dispatch("removeWidget", { id: card.id })}
                         ></button>
+                        <div
+                            class="ux-kpi-card-content"
+                            class:ux-kpi-card-content-preset={card.kind === "preset"}
+                            class:ux-kpi-card-content-ranking={card.kind === "ranking"}
+                            class:ux-kpi-card-content-metric={card.kind === "metric"}
+                        >
                         {#if card.kind === "preset"}
                             {#if !presetReady}
-                                <div class="small text-muted">Loading preset KPI...</div>
-                                <div class="h6 m-0">-</div>
+                                <div class="ux-kpi-card-label">Loading preset KPI...</div>
+                                <div class="ux-kpi-card-value">-</div>
                             {:else if card.key === "duration"}
-                                <div class="small text-muted">Duration</div>
-                                <div class="h6 m-0">{durationSoFar}</div>
+                                <div class="ux-kpi-card-label">Duration</div>
+                                <div class="ux-kpi-card-value">{durationSoFar}</div>
                             {:else if card.key === "wars"}
-                                <div class="small text-muted">Wars tracked</div>
-                                <div class="h6 m-0">{formatKpiNumber(warsTracked)}</div>
+                                <div class="ux-kpi-card-label">Wars tracked</div>
+                                <div class="ux-kpi-card-value">{formatKpiNumber(warsTracked)}</div>
                             {:else if card.key === "damage-total"}
-                                <div class="small text-muted">Total damage exchanged</div>
-                                <div class="h6 m-0">{formatKpiNumber(totalDamage)}</div>
+                                <div class="ux-kpi-card-label">Total damage exchanged</div>
+                                <div class="ux-kpi-card-value">{formatKpiNumber(totalDamage)}</div>
                             {:else if card.key === "net-gap"}
-                                <div class="small text-muted">Damage gap</div>
-                                <div class="h6 m-0">{formatKpiNumber(damageGap)}</div>
+                                <div class="ux-kpi-card-label">Damage gap</div>
+                                <div class="ux-kpi-card-value">{formatKpiNumber(damageGap)}</div>
                                 {#if leadingCoalition}
-                                    <div class="small text-muted">Lead: {leadingCoalition.name}</div>
+                                    <div class="ux-kpi-card-note">Lead: {leadingCoalition.name}</div>
                                 {/if}
                             {:else if card.key === "c1-dealt"}
-                                <div class="small text-muted">
+                                <div class="ux-kpi-card-label">
                                     {coalitionSummary?.[0]?.name ?? "Coalition 1"} dealt
                                 </div>
-                                <div class="h6 m-0">
+                                <div class="ux-kpi-card-value">
                                     {formatKpiNumber(coalitionSummary?.[0]?.dealt)}
                                 </div>
                             {:else if card.key === "c2-dealt"}
-                                <div class="small text-muted">
+                                <div class="ux-kpi-card-label">
                                     {coalitionSummary?.[1]?.name ?? "Coalition 2"} dealt
                                 </div>
-                                <div class="h6 m-0">
+                                <div class="ux-kpi-card-value">
                                     {formatKpiNumber(coalitionSummary?.[1]?.dealt)}
                                 </div>
                             {:else if card.key === "off-wars-per-nation"}
-                                <div class="small text-muted">Offensive wars per nation</div>
-                                <div class="h6 m-0">
+                                <div class="ux-kpi-card-label">Offensive wars per nation</div>
+                                <div class="ux-kpi-card-value">
                                     {offWarsPerNationStats
                                         ? offWarsPerNationStats.perNation.toFixed(2)
                                         : "N/A"}
                                 </div>
                                 {#if offWarsPerNationStats}
-                                    <div class="small text-muted">
+                                    <div class="ux-kpi-card-note">
                                         {formatKpiNumber(offWarsPerNationStats.totalOffWars)}
                                         offensive / {formatKpiNumber(offWarsPerNationStats.totalNations)}
                                         nations
@@ -127,7 +136,7 @@
                                 {/if}
                             {/if}
                         {:else if card.kind === "ranking"}
-                            <div class="small text-muted mb-1">
+                            <div class="ux-kpi-card-label">
                                 Top {card.limit}
                                 {card.entity}s by
                                 {card.source === "aava"
@@ -136,9 +145,9 @@
                                 ({widgetScopeLabel(card)})
                             </div>
                             {#if rankingRowsByWidgetId[card.id] === undefined && !secondaryReady}
-                                <div class="small text-muted">Loading ranking...</div>
+                                <div class="ux-kpi-card-note">Loading ranking...</div>
                             {:else if (rankingRowsByWidgetId[card.id] ?? []).length === 0}
-                                <div class="small text-muted">No ranking data for this widget.</div>
+                                <div class="ux-kpi-card-note">No ranking data for this widget.</div>
                             {:else}
                                 {@const rows = rankingRowsByWidgetId[card.id] ?? []}
                                 <div class="table-responsive">
@@ -177,7 +186,7 @@
                                 </div>
                             {/if}
                         {:else}
-                            <div class="small text-muted">
+                            <div class="ux-kpi-card-label">
                                 {card.aggregation.toUpperCase()}
                                 {card.entity}
                                 {card.source === "aava"
@@ -195,7 +204,7 @@
                                     : ""}
                                 ({widgetScopeLabel(card)})
                             </div>
-                            <div class="h6 m-0">
+                            <div class="ux-kpi-card-value">
                                 {#if metricValuesByWidgetId[card.id] === undefined && !secondaryReady}
                                     Loading...
                                 {:else}
@@ -203,9 +212,103 @@
                                 {/if}
                             </div>
                         {/if}
+                        </div>
                     </div>
                 </div>
             {/each}
         </div>
     </div>
 {/if}
+
+<style>
+    .ux-kpi-section {
+        padding: 0.34rem 0.42rem !important;
+    }
+
+    .ux-kpi-heading {
+        font-size: 0.98rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+    }
+
+    .ux-kpi-card {
+        padding: 0.4rem 0.42rem 0.36rem !important;
+    }
+
+    .kpi-card {
+        padding-top: 0.28rem !important;
+        cursor: move;
+    }
+
+    .ux-kpi-card-content {
+        display: grid;
+        gap: 0.28rem;
+        align-content: start;
+        min-height: 100%;
+        padding-top: 0.06rem;
+    }
+
+    .ux-kpi-card-content-preset {
+        min-height: 6.2rem;
+    }
+
+    .ux-kpi-card-content-metric {
+        min-height: 5.2rem;
+    }
+
+    .ux-kpi-card-content-ranking {
+        min-height: 8.8rem;
+    }
+
+    .ux-kpi-card-label {
+        font-size: 0.74rem;
+        line-height: 1.16;
+        letter-spacing: 0.01em;
+        color: var(--ux-text);
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .ux-kpi-card-value {
+        font-size: 0.88rem;
+        line-height: 1.14;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .ux-kpi-card-note {
+        font-size: 0.68rem;
+        line-height: 1.18;
+        color: var(--ux-text-muted);
+    }
+
+    .ux-kpi-section-close {
+        width: 1.06rem;
+        height: 1.06rem;
+    }
+
+    .kpi-card :global(.table) {
+        font-size: 0.72rem;
+    }
+
+    .kpi-card :global(.table-responsive) {
+        margin-top: 0.04rem;
+    }
+
+    .kpi-card :global(.table-sm > :not(caption) > * > *) {
+        padding: 0.18rem 0.28rem;
+    }
+
+    .kpi-card-close {
+        position: absolute;
+        top: 0.04rem;
+        right: 0.04rem;
+        width: 1rem;
+        height: 1rem;
+        z-index: 1;
+    }
+
+    .kpi-card-dragging {
+        opacity: 0.6;
+    }
+</style>

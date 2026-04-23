@@ -10,6 +10,7 @@ describe("conflictTabs", () => {
     it("resolves active route tab from pathname", () => {
         expect(resolveActiveTabFromUrl(new URL("https://example.com/conflict?id=123&layout=alliance"), "single")).toBe("alliance");
         expect(resolveActiveTabFromUrl(new URL("https://example.com/aava?id=123"), "single")).toBe("aava");
+        expect(resolveActiveTabFromUrl(new URL("https://example.com/metric-time?id=123"), "single")).toBe("metric-time");
         expect(resolveActiveTabFromUrl(new URL("https://example.com/conflicts/view?ids=10.20&aid=7&layout=nation"), "composite")).toBe("nation");
     });
 
@@ -87,9 +88,10 @@ describe("conflictTabs", () => {
     });
 
     it("centralizes disabled defaults and capability overrides", () => {
-        expect(resolveDisabledTabs({}, "composite")).toEqual(["tiering", "bubble", "chord"]);
+        expect(resolveDisabledTabs({}, "composite")).toEqual(["metric-time", "tiering", "bubble", "chord"]);
         expect(resolveDisabledTabs({ aava: false, bubble: true }, "composite")).toEqual([
             "aava",
+            "metric-time",
             "tiering",
             "chord",
         ]);

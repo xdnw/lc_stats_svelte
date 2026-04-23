@@ -25,7 +25,24 @@ import type {
     ConflictGridTableQueryRequest,
     ConflictKpiRankingRow,
 } from "./protocol";
-import type { ConflictGridLayoutValue } from "./rowIds";
+import { ConflictGridLayout, type ConflictGridLayoutValue } from "./rowIds";
+
+function nowMs(): number {
+    return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function roundElapsedMs(startedAt: number): number {
+    return Math.round((nowMs() - startedAt) * 100) / 100;
+}
+
+function normalizeWarmLayouts(
+    layouts?: ConflictGridLayoutValue[],
+): ConflictGridLayoutValue[] {
+    return (layouts && layouts.length > 0
+        ? layouts
+        : [ConflictGridLayout.COALITION]
+    ).filter((layout, index, values) => values.indexOf(layout) === index);
+}
 
 export type ConflictGridWorkerClient = {
     readonly conflictId: string;
@@ -90,6 +107,7 @@ const SHARED_WORKER_TTL_MS = 60_000;
 
 type SharedConflictGridHandle = {
     datasetRef: ConflictGridDatasetRef;
+    isArtifactReady: (layouts?: ConflictGridLayoutValue[]) => boolean;
     acquire: () => void;
     release: () => void;
     scheduleReleaseIfIdle: () => void;
@@ -107,16 +125,42 @@ type SharedConflictGridHandle = {
     ) => Promise<ConflictGridPrewarmResult>;
 };
 
+type CachedBootstrapEntry = {
+    promise: Promise<ConflictGridBootstrapPayload>;
+    settled: boolean;
+    value: ConflictGridBootstrapPayload | null;
+};
+
+function cloneBootstrapPayload(
+    payload: ConflictGridBootstrapPayload,
+    zeroTimings = false,
+): ConflictGridBootstrapPayload {
+    return {
+        ...payload,
+        grid: {
+            columns: payload.grid.columns,
+            rowCount: payload.grid.rowCount,
+        },
+        timings: zeroTimings
+            ? {
+                  datasetCreateMs: 0,
+                  layoutBootstrapMs: 0,
+              }
+            : {
+                  ...payload.timings,
+              },
+    };
+}
+
 const sharedHandles = new Map<string, SharedConflictGridHandle>();
 
 function createSharedHandle(
     datasetRef: ConflictGridDatasetRef,
 ): SharedConflictGridHandle {
     const worker = createWorker();
-    const bootstrapByLayout = new Map<
-        ConflictGridLayoutValue,
-        Promise<ConflictGridBootstrapPayload>
-    >();
+    const bootstrapByLayout = new Map<ConflictGridLayoutValue, CachedBootstrapEntry>();
+    const warmedLayouts = new Set<ConflictGridLayoutValue>();
+    let datasetReady = false;
     let refCount = 0;
     let released = false;
     let releaseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -157,6 +201,9 @@ function createSharedHandle(
         return requestWorkerRpc<Request, Result>(worker, payload, {
             timeoutMs,
             operation,
+        }).then((result) => {
+            datasetReady = true;
+            return result;
         });
     }
 
@@ -164,9 +211,20 @@ function createSharedHandle(
         layout: ConflictGridLayoutValue,
     ): Promise<ConflictGridBootstrapPayload> {
         const cached = bootstrapByLayout.get(layout);
-        if (cached) return cached;
+        if (cached) {
+            if (cached.settled && cached.value) {
+                return Promise.resolve(cloneBootstrapPayload(cached.value, true));
+            }
+            return cached.promise;
+        }
 
-        const pending = request<
+        const entry: CachedBootstrapEntry = {
+            promise: Promise.resolve(null as never),
+            settled: false,
+            value: null,
+        };
+
+        entry.promise = request<
             ConflictGridBootstrapPayload,
             ConflictGridBootstrapRequest
         >(
@@ -177,13 +235,20 @@ function createSharedHandle(
             },
             `conflict grid bootstrap (${layout})`,
             45_000,
-        ).catch((error) => {
-            bootstrapByLayout.delete(layout);
-            throw error;
-        });
+        )
+            .then((result) => {
+                warmedLayouts.add(layout);
+                entry.settled = true;
+                entry.value = result;
+                return cloneBootstrapPayload(result);
+            })
+            .catch((error) => {
+                bootstrapByLayout.delete(layout);
+                throw error;
+            });
 
-        bootstrapByLayout.set(layout, pending);
-        return pending;
+        bootstrapByLayout.set(layout, entry);
+        return entry.promise;
     }
 
     function prewarm(
@@ -199,11 +264,20 @@ function createSharedHandle(
             },
             "conflict grid prewarm",
             45_000,
-        );
+        ).then((result) => {
+            result.warmedLayouts.forEach((layout) => warmedLayouts.add(layout));
+            return result;
+        });
     }
 
     return {
         datasetRef,
+        isArtifactReady(layouts) {
+            if (!datasetReady) return false;
+            if (!layouts || layouts.length === 0) return true;
+
+            return layouts.every((layout) => warmedLayouts.has(layout));
+        },
         acquire() {
             ensureActive();
             refCount += 1;
@@ -234,6 +308,17 @@ function getSharedHandle(options: {
     return nextHandle;
 }
 
+export function hasConflictGridWorkerArtifact(options: {
+    conflictId: string;
+    version: string | number;
+    layouts?: ConflictGridLayoutValue[];
+}): boolean {
+    const datasetRef = createDatasetRef(options.conflictId, options.version);
+    const handle = sharedHandles.get(datasetRef.datasetKey);
+    if (!handle) return false;
+    return handle.isArtifactReady(options.layouts);
+}
+
 export function warmConflictGridWorkerDataset(options: {
     conflictId: string;
     version: string | number;
@@ -241,8 +326,23 @@ export function warmConflictGridWorkerDataset(options: {
     aggressive?: boolean;
 }): Promise<ConflictGridPrewarmResult> {
     const handle = getSharedHandle(options);
-    return handle
-        .prewarm(options.layouts, options.aggressive ?? false)
+    const aggressive = options.aggressive ?? false;
+    if (aggressive) {
+        return handle
+            .prewarm(options.layouts, true)
+            .finally(() => handle.scheduleReleaseIfIdle());
+    }
+
+    const layouts = normalizeWarmLayouts(options.layouts);
+    const startedAt = nowMs();
+
+    return Promise.all(layouts.map((layout) => handle.bootstrap(layout)))
+        .then(() => ({
+            datasetKey: handle.datasetRef.datasetKey,
+            warmedLayouts: layouts,
+            metricVectorsWarmed: 0,
+            elapsedMs: roundElapsedMs(startedAt),
+        }))
         .finally(() => handle.scheduleReleaseIfIdle());
 }
 
