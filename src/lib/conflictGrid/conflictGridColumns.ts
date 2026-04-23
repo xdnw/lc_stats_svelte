@@ -32,6 +32,18 @@ export type ConflictGridColumnSpec =
     | ConflictGridAllianceColumnSpec
     | ConflictGridMetricColumnSpec;
 
+function appendUniqueColumns(
+    target: ConflictGridColumnSpec[],
+    seenKeys: Set<string>,
+    ...columns: ConflictGridColumnSpec[]
+): void {
+    for (const column of columns) {
+        if (seenKeys.has(column.key)) continue;
+        seenKeys.add(column.key);
+        target.push(column);
+    }
+}
+
 function baseMetricKey(header: string): string {
     return header.replace("_loss", "").replace("loss_", "");
 }
@@ -98,6 +110,7 @@ export function buildConflictGridColumnSpecs(
             kind: "alliance",
         },
     ];
+    const seenKeys = new Set(columns.map((column) => column.key));
 
     conflict.damage_header.forEach((rawHeader, headerIndex) => {
         const header = trimHeader(rawHeader);
@@ -105,7 +118,9 @@ export function buildConflictGridColumnSpecs(
 
         if (headerType === 0) {
             const baseKey = baseMetricKey(header);
-            columns.push(
+            appendUniqueColumns(
+                columns,
+                seenKeys,
                 createMetricColumnSpec(
                     `loss:${header}`,
                     headerIndex,
@@ -125,7 +140,9 @@ export function buildConflictGridColumnSpecs(
             return;
         }
 
-        columns.push(
+        appendUniqueColumns(
+            columns,
+            seenKeys,
             createMetricColumnSpec(`def:${header}`, headerIndex, "def"),
             createMetricColumnSpec(`off:${header}`, headerIndex, "off"),
             createMetricColumnSpec(`both:${header}`, headerIndex, "both"),
