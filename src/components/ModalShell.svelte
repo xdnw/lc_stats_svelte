@@ -255,7 +255,7 @@
     :global(.ux-modal-shell .form-control),
     :global(.ux-modal-shell .form-select) {
         border-color: color-mix(in srgb, var(--ux-border) 94%, var(--ux-text-muted));
-        background: color-mix(in srgb, var(--ux-surface) 98%, transparent);
+        background-color: color-mix(in srgb, var(--ux-surface) 98%, transparent);
         color: var(--ux-text);
         box-shadow: none;
     }
