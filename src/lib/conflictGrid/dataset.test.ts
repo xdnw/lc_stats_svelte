@@ -115,7 +115,9 @@ describe("conflictGrid dataset", () => {
             kind: "selection",
             title: "Filter Alliances",
         });
-        expect(bootstrap.grid.columns.map((column) => column.key)).toContain("net:damage");
+        expect(
+            bootstrap.grid.columns.map((column: { key: string }) => column.key),
+        ).toContain("net:damage");
         expect(bootstrap.presetMetrics.totalDamage).toBe(180);
         expect(bootstrap.presetMetrics.warsTracked).toBe(4);
         expect(bootstrap.presetMetrics.damageGap).toBe(50);

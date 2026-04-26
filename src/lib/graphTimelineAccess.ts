@@ -1,6 +1,7 @@
 import type { GraphCoalitionData } from "./types";
 
-type GraphTimeline = number[][];
+type GraphFrame = Array<number | null>;
+type GraphTimeline = GraphFrame[];
 type GraphTimelineRoot = GraphCoalitionData["turn"] | GraphCoalitionData["day"];
 
 type TimelineCursor = {
@@ -62,7 +63,7 @@ function getTimelineCursor(
 
 function applyTimelineFrame(
     cursor: TimelineCursor,
-    frame: number[] | undefined,
+    frame: GraphFrame | undefined,
 ): number[] {
     if (!Array.isArray(frame) || frame.length === 0) {
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
@@ -90,6 +91,24 @@ function applyTimelineFrame(
     cursor.snapshot = nextSnapshot;
     cursor.hasSnapshot = true;
     return nextSnapshot as number[];
+}
+
+function advanceTimelineCursor(
+    cursor: TimelineCursor,
+    timeline: GraphTimeline,
+    timeIndex: number,
+): number[] | undefined {
+    if (timeline.length === 0) {
+        return undefined;
+    }
+
+    const targetIndex = Math.min(timeIndex, timeline.length - 1);
+    while (cursor.cursor < targetIndex) {
+        cursor.cursor += 1;
+        cursor.lastFrame = applyTimelineFrame(cursor, timeline[cursor.cursor]);
+    }
+
+    return cursor.lastFrame;
 }
 
 function resolveTimelineEndOffset(
@@ -123,7 +142,7 @@ export function readGraphTimelineSnapshot(options: {
     }
 
     const timeline = timelineRoot.data[metricIndex]?.[allianceIndex];
-    if (!timeline || timeIndex >= timeline.length) {
+    if (!timeline) {
         return undefined;
     }
 
@@ -132,10 +151,5 @@ export function readGraphTimelineSnapshot(options: {
         resetTimelineCursor(cursor, coalition.cities.length);
     }
 
-    while (cursor.cursor < timeIndex) {
-        cursor.cursor += 1;
-        cursor.lastFrame = applyTimelineFrame(cursor, timeline[cursor.cursor]);
-    }
-
-    return cursor.lastFrame;
+    return advanceTimelineCursor(cursor, timeline, timeIndex);
 }

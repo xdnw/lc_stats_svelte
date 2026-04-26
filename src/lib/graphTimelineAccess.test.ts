@@ -155,6 +155,74 @@ describe("graphTimelineAccess", () => {
         ).toEqual([0, 0]);
     });
 
+    it("carries the last snapshot when trailing empty frames are omitted", () => {
+        const coalition = {
+            ...patchGraphFixture.coalitions[0],
+            day: {
+                ...patchGraphFixture.coalitions[0].day,
+                range: [1, 4] as [number, number],
+                data: [
+                    [
+                        [
+                            [2, 3],
+                            [],
+                            [1, null as unknown as number],
+                        ],
+                    ],
+                ],
+            },
+        };
+
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 3,
+            }),
+        ).toEqual([1, 3]);
+    });
+
+    it("zeros after an end offset even when the sparse payload tail is omitted", () => {
+        const coalition = {
+            ...patchGraphFixture.coalitions[0],
+            day: {
+                ...patchGraphFixture.coalitions[0].day,
+                range: [1, 4] as [number, number],
+                end_offsets: [2],
+                data: [
+                    [
+                        [
+                            [2, 3],
+                            [],
+                            [1, null as unknown as number],
+                        ],
+                    ],
+                ],
+            },
+        };
+
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 2,
+            }),
+        ).toEqual([1, 3]);
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 3,
+            }),
+        ).toEqual([0, 0]);
+    });
+
     it("lets metric-time consume raw patch payloads without whole-payload hydration", () => {
         const result = buildMetricTimeSeries({
             data: patchGraphFixture,

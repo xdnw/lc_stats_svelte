@@ -96,12 +96,12 @@ export interface GraphCoalitionData {
     cities: number[],
     turn: {
         range: [number, number],
-        data: number[][][][],
+        data: Array<Array<Array<Array<number | null>>>>,
         end_offsets?: number[],
     },
     day: {
         range: [number, number],
-        data: number[][][][],
+        data: Array<Array<Array<Array<number | null>>>>,
         end_offsets?: number[],
     }
 }

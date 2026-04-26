@@ -239,6 +239,65 @@ describe("metricTimeCompute", () => {
         expect(result.series[1]?.values[0]).toBeNaN();
     });
 
+    it("carries a sparse timeline through omitted trailing empty frames", () => {
+        const sparseGraph: GraphData = {
+            name: "Sparse Tail",
+            start: 0,
+            end: 0,
+            turn_start: 12,
+            turn_end: 12,
+            metric_names: ["nation", "day_metric"],
+            metrics_day: [0, 1],
+            metrics_turn: [],
+            coalitions: [
+                {
+                    name: "Red",
+                    alliance_ids: [101],
+                    alliance_names: ["A"],
+                    cities: [10],
+                    turn: {
+                        range: [12, 12],
+                        data: [],
+                    },
+                    day: {
+                        range: [1, 3],
+                        data: [
+                            [
+                                [[1]],
+                            ],
+                            [
+                                [[3]],
+                            ],
+                        ],
+                    },
+                },
+                {
+                    name: "Blue",
+                    alliance_ids: [201],
+                    alliance_names: ["B"],
+                    cities: [10],
+                    turn: {
+                        range: [12, 12],
+                        data: [],
+                    },
+                    day: {
+                        range: [1, 3],
+                        data: [],
+                    },
+                },
+            ],
+        };
+
+        const result = buildMetricTimeSeries({
+            data: sparseGraph,
+            metric: dayMetric,
+            selectedAllianceIds: [101],
+            aggregationMode: "alliance",
+        });
+
+        expect(result?.series[0]?.values).toEqual([3, 3, 3]);
+    });
+
     it("ignores NaN gaps when building the y-domain", () => {
         const result = buildMetricTimeSeries({
             data: graphFixture,
