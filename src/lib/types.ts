@@ -94,7 +94,7 @@ export type DenseGraphTimeline = DenseGraphFrame[];
 export type IndexedGraphPatchFrame = [number, ...number[]];
 export type IndexedGraphPatchTimeline = IndexedGraphPatchFrame[];
 export type GraphTimeline = DenseGraphTimeline | IndexedGraphPatchTimeline;
-export type GraphTimelineEncoding = "dense_patch_v1" | "indexed_patch_v2";
+export type GraphTimelineEncoding = "dense_patch_v1" | "indexed_patch_v2" | "sparse_patch_v3";
 
 export interface GraphTimelineRoot {
     range: [number, number],

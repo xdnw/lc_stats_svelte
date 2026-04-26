@@ -84,8 +84,8 @@ const patchGraphFixture: GraphData = {
     ],
 };
 
-const indexedPatchGraphFixture: GraphData = {
-    name: "Indexed Patch Fixture",
+const sparsePatchGraphFixture: GraphData = {
+    name: "Sparse Patch Fixture",
     start: 0,
     end: 0,
     turn_start: 12,
@@ -101,7 +101,7 @@ const indexedPatchGraphFixture: GraphData = {
             cities: [10, 11],
             turn: {
                 range: [12, 14],
-                encoding: "indexed_patch_v2",
+                encoding: "sparse_patch_v3",
                 data: [
                     [
                         [
@@ -113,7 +113,7 @@ const indexedPatchGraphFixture: GraphData = {
             },
             day: {
                 range: [1, 4],
-                encoding: "indexed_patch_v2",
+                encoding: "sparse_patch_v3",
                 data: [
                     [
                         [
@@ -132,7 +132,7 @@ const indexedPatchGraphFixture: GraphData = {
             cities: [10, 11],
             turn: {
                 range: [12, 14],
-                encoding: "indexed_patch_v2",
+                encoding: "sparse_patch_v3",
                 data: [
                     [
                         [
@@ -143,7 +143,7 @@ const indexedPatchGraphFixture: GraphData = {
             },
             day: {
                 range: [1, 4],
-                encoding: "indexed_patch_v2",
+                encoding: "sparse_patch_v3",
                 data: [
                     [
                         [
@@ -197,6 +197,44 @@ describe("graphTimelineAccess", () => {
                 timeIndex: 0,
             }),
         ).toEqual([]);
+    });
+
+    it("decodes masked sparse patch frames without up-front expansion", () => {
+        const coalition = {
+            ...sparsePatchGraphFixture.coalitions[0],
+            cities: [10, 11, 12, 13],
+            day: {
+                range: [1, 2] as [number, number],
+                encoding: "sparse_patch_v3" as const,
+                data: [
+                    [
+                        [
+                            [0, -1, 13, 2, 5, 7],
+                            [1, 1, 3],
+                        ],
+                    ],
+                ],
+            },
+        };
+
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 0,
+            }),
+        ).toEqual([2, null, 5, 7]);
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 1,
+            }),
+        ).toEqual([2, 3, 5, 7]);
     });
 
     it("returns a synthetic zero frame after the declared alliance end offset", () => {
@@ -343,7 +381,7 @@ describe("graphTimelineAccess", () => {
     });
 
     it("reconstructs indexed sparse patch frames without dense hydration", () => {
-        const coalition = indexedPatchGraphFixture.coalitions[0];
+        const coalition = sparsePatchGraphFixture.coalitions[0];
 
         expect(
             readGraphTimelineSnapshot({
@@ -374,7 +412,7 @@ describe("graphTimelineAccess", () => {
         ).toEqual([1, 3]);
         expect(
             readGraphTimelineSnapshot({
-                coalition: indexedPatchGraphFixture.coalitions[1],
+                coalition: sparsePatchGraphFixture.coalitions[1],
                 allianceIndex: 0,
                 isTurnMetric: false,
                 metricIndex: 0,
@@ -385,7 +423,7 @@ describe("graphTimelineAccess", () => {
 
     it("lets metric-time consume raw patch payloads without whole-payload hydration", () => {
         const result = buildMetricTimeSeries({
-            data: indexedPatchGraphFixture,
+            data: sparsePatchGraphFixture,
             metric: dayMetric,
             aggregationMode: "coalition",
         });

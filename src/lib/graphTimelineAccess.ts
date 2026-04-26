@@ -17,6 +17,7 @@ type TimelineCursor = {
     lastAppliedTimeIndex: number;
 };
 
+const PATCH_MASK_BITS = 30;
 const EMPTY_FRAME: number[] = [];
 const zeroFrameByCityCount = new Map<number, number[]>();
 const timelineCursorCache = new WeakMap<GraphTimeline, TimelineCursor>();
@@ -142,6 +143,11 @@ function applyIndexedPatchFrame(
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
     }
 
+    const patchMode = Math.trunc(frame[1] ?? Number.NaN);
+    if (Number.isFinite(patchMode) && patchMode < 0) {
+        return applyMaskedPatchFrame(cursor, frame, -patchMode);
+    }
+
     let nextSnapshot = cursor.snapshot;
     let hasFrameValue = false;
     for (let patchIndex = 1; patchIndex + 1 < frame.length; patchIndex += 2) {
@@ -161,6 +167,64 @@ function applyIndexedPatchFrame(
             hasFrameValue = true;
         }
         nextSnapshot[cityIndex] = value;
+    }
+
+    if (!hasFrameValue) {
+        return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
+    }
+
+    cursor.snapshot = nextSnapshot;
+    cursor.hasSnapshot = true;
+    return nextSnapshot as number[];
+}
+
+function applyMaskedPatchFrame(
+    cursor: TimelineCursor,
+    frame: IndexedGraphPatchFrame,
+    maskWordCount: number,
+): number[] {
+    if (maskWordCount <= 0) {
+        return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
+    }
+
+    const maskStart = 2;
+    const valueStart = maskStart + maskWordCount;
+    if (frame.length <= valueStart) {
+        return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
+    }
+
+    let nextSnapshot = cursor.snapshot;
+    let hasFrameValue = false;
+    let valueIndex = valueStart;
+
+    for (let wordIndex = 0; wordIndex < maskWordCount; wordIndex += 1) {
+        let maskWord = Math.trunc(Number(frame[maskStart + wordIndex] ?? Number.NaN));
+        if (!Number.isFinite(maskWord) || maskWord <= 0) {
+            continue;
+        }
+
+        const cityBase = wordIndex * PATCH_MASK_BITS;
+        while (maskWord !== 0 && valueIndex < frame.length) {
+            const lowestBit = maskWord & -maskWord;
+            const bitIndex = 31 - Math.clz32(lowestBit);
+            const cityIndex = cityBase + bitIndex;
+            const value = Number(frame[valueIndex]);
+
+            if (
+                Number.isFinite(value) &&
+                cityIndex >= 0 &&
+                cityIndex < cursor.cityCount
+            ) {
+                if (!hasFrameValue) {
+                    nextSnapshot = [...cursor.snapshot];
+                    hasFrameValue = true;
+                }
+                nextSnapshot[cityIndex] = value;
+            }
+
+            maskWord &= maskWord - 1;
+            valueIndex += 1;
+        }
     }
 
     if (!hasFrameValue) {
@@ -221,7 +285,10 @@ function resolveTimelineEndOffset(
 }
 
 function usesIndexedPatchEncoding(timelineRoot: GraphTimelineRoot): boolean {
-    return timelineRoot.encoding === "indexed_patch_v2";
+    return (
+        timelineRoot.encoding === "indexed_patch_v2" ||
+        timelineRoot.encoding === "sparse_patch_v3"
+    );
 }
 
 export function readGraphTimelineSnapshot(options: {
