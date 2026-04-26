@@ -89,21 +89,28 @@ export interface TableData {
     }) => void
 }
 
+export type DenseGraphFrame = Array<number | null>;
+export type DenseGraphTimeline = DenseGraphFrame[];
+export type IndexedGraphPatchFrame = [number, ...number[]];
+export type IndexedGraphPatchTimeline = IndexedGraphPatchFrame[];
+export type GraphTimeline = DenseGraphTimeline | IndexedGraphPatchTimeline;
+export type GraphTimelineEncoding = "dense_patch_v1" | "indexed_patch_v2";
+
+export interface GraphTimelineRoot {
+    range: [number, number],
+    data: Array<Array<GraphTimeline>>,
+    start_offsets?: number[],
+    end_offsets?: number[],
+    encoding?: GraphTimelineEncoding,
+}
+
 export interface GraphCoalitionData {
     name: string,
     alliance_ids: number[],
     alliance_names: string[],
     cities: number[],
-    turn: {
-        range: [number, number],
-        data: Array<Array<Array<Array<number | null>>>>,
-        end_offsets?: number[],
-    },
-    day: {
-        range: [number, number],
-        data: Array<Array<Array<Array<number | null>>>>,
-        end_offsets?: number[],
-    }
+    turn: GraphTimelineRoot,
+    day: GraphTimelineRoot,
 }
 
 export interface GraphData {

@@ -84,6 +84,79 @@ const patchGraphFixture: GraphData = {
     ],
 };
 
+const indexedPatchGraphFixture: GraphData = {
+    name: "Indexed Patch Fixture",
+    start: 0,
+    end: 0,
+    turn_start: 12,
+    turn_end: 14,
+    metric_names: ["nation", "soldier"],
+    metrics_day: [0],
+    metrics_turn: [1],
+    coalitions: [
+        {
+            name: "Red",
+            alliance_ids: [101],
+            alliance_names: ["A"],
+            cities: [10, 11],
+            turn: {
+                range: [12, 14],
+                encoding: "indexed_patch_v2",
+                data: [
+                    [
+                        [
+                            [0, 0, 50, 1, 30],
+                            [2, 0, 20],
+                        ],
+                    ],
+                ],
+            },
+            day: {
+                range: [1, 4],
+                encoding: "indexed_patch_v2",
+                data: [
+                    [
+                        [
+                            [0, 0, 2, 1, 3],
+                            [2, 0, 1],
+                            [3, 0, 0, 1, 1],
+                        ],
+                    ],
+                ],
+            },
+        },
+        {
+            name: "Blue",
+            alliance_ids: [201],
+            alliance_names: ["B"],
+            cities: [10, 11],
+            turn: {
+                range: [12, 14],
+                encoding: "indexed_patch_v2",
+                data: [
+                    [
+                        [
+                            [1, 0, 10, 1, 5],
+                        ],
+                    ],
+                ],
+            },
+            day: {
+                range: [1, 4],
+                encoding: "indexed_patch_v2",
+                data: [
+                    [
+                        [
+                            [1, 0, 4, 1, 1],
+                            [3, 1, 2],
+                        ],
+                    ],
+                ],
+            },
+        },
+    ],
+};
+
 describe("graphTimelineAccess", () => {
     it("reconstructs patch frames lazily without expanding untouched timelines", () => {
         const coalition = patchGraphFixture.coalitions[0];
@@ -223,9 +296,96 @@ describe("graphTimelineAccess", () => {
         ).toEqual([0, 0]);
     });
 
+    it("honors legacy dense start offsets when timelines begin after the global range", () => {
+        const coalition = {
+            ...patchGraphFixture.coalitions[0],
+            day: {
+                range: [10, 13] as [number, number],
+                start_offsets: [2],
+                data: [
+                    [
+                        [
+                            [2, 3],
+                            [1, null as unknown as number],
+                        ],
+                    ],
+                ],
+            },
+        };
+
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 1,
+            }),
+        ).toBeUndefined();
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 2,
+            }),
+        ).toEqual([2, 3]);
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 3,
+            }),
+        ).toEqual([1, 3]);
+    });
+
+    it("reconstructs indexed sparse patch frames without dense hydration", () => {
+        const coalition = indexedPatchGraphFixture.coalitions[0];
+
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 0,
+            }),
+        ).toEqual([2, 3]);
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 1,
+            }),
+        ).toEqual([2, 3]);
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 2,
+            }),
+        ).toEqual([1, 3]);
+        expect(
+            readGraphTimelineSnapshot({
+                coalition: indexedPatchGraphFixture.coalitions[1],
+                allianceIndex: 0,
+                isTurnMetric: false,
+                metricIndex: 0,
+                timeIndex: 0,
+            }),
+        ).toEqual([]);
+    });
+
     it("lets metric-time consume raw patch payloads without whole-payload hydration", () => {
         const result = buildMetricTimeSeries({
-            data: patchGraphFixture,
+            data: indexedPatchGraphFixture,
             metric: dayMetric,
             aggregationMode: "coalition",
         });

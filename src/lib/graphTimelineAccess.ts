@@ -1,8 +1,12 @@
-import type { GraphCoalitionData } from "./types";
-
-type GraphFrame = Array<number | null>;
-type GraphTimeline = GraphFrame[];
-type GraphTimelineRoot = GraphCoalitionData["turn"] | GraphCoalitionData["day"];
+import type {
+    DenseGraphFrame,
+    DenseGraphTimeline,
+    GraphCoalitionData,
+    GraphTimeline,
+    GraphTimelineRoot,
+    IndexedGraphPatchFrame,
+    IndexedGraphPatchTimeline,
+} from "./types";
 
 type TimelineCursor = {
     cityCount: number;
@@ -10,6 +14,7 @@ type TimelineCursor = {
     snapshot: Array<number | null>;
     hasSnapshot: boolean;
     lastFrame: number[];
+    lastAppliedTimeIndex: number;
 };
 
 const EMPTY_FRAME: number[] = [];
@@ -34,6 +39,7 @@ function resetTimelineCursor(
     cursor.snapshot = Array.from({ length: cityCount }, () => null);
     cursor.hasSnapshot = false;
     cursor.lastFrame = EMPTY_FRAME;
+    cursor.lastAppliedTimeIndex = -1;
 }
 
 function getTimelineCursor(
@@ -48,6 +54,7 @@ function getTimelineCursor(
             snapshot: [],
             hasSnapshot: false,
             lastFrame: EMPTY_FRAME,
+            lastAppliedTimeIndex: -1,
         };
         resetTimelineCursor(cursor, cityCount);
         timelineCursorCache.set(timeline, cursor);
@@ -61,9 +68,9 @@ function getTimelineCursor(
     return cursor;
 }
 
-function applyTimelineFrame(
+function applyDenseTimelineFrame(
     cursor: TimelineCursor,
-    frame: GraphFrame | undefined,
+    frame: DenseGraphFrame | undefined,
 ): number[] {
     if (!Array.isArray(frame) || frame.length === 0) {
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
@@ -93,9 +100,9 @@ function applyTimelineFrame(
     return nextSnapshot as number[];
 }
 
-function advanceTimelineCursor(
+function advanceDenseTimelineCursor(
     cursor: TimelineCursor,
-    timeline: GraphTimeline,
+    timeline: DenseGraphTimeline,
     timeIndex: number,
 ): number[] | undefined {
     if (timeline.length === 0) {
@@ -105,10 +112,100 @@ function advanceTimelineCursor(
     const targetIndex = Math.min(timeIndex, timeline.length - 1);
     while (cursor.cursor < targetIndex) {
         cursor.cursor += 1;
-        cursor.lastFrame = applyTimelineFrame(cursor, timeline[cursor.cursor]);
+        cursor.lastFrame = applyDenseTimelineFrame(cursor, timeline[cursor.cursor]);
+        cursor.lastAppliedTimeIndex = cursor.cursor;
     }
 
     return cursor.lastFrame;
+}
+
+function resolveIndexedFrameTimeOffset(
+    frame: IndexedGraphPatchFrame | undefined,
+): number | null {
+    if (!Array.isArray(frame) || frame.length === 0) {
+        return null;
+    }
+
+    const rawOffset = frame[0];
+    if (!Number.isFinite(rawOffset)) {
+        return null;
+    }
+
+    return Math.trunc(rawOffset);
+}
+
+function applyIndexedPatchFrame(
+    cursor: TimelineCursor,
+    frame: IndexedGraphPatchFrame | undefined,
+): number[] {
+    if (!Array.isArray(frame) || frame.length < 3) {
+        return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
+    }
+
+    let nextSnapshot = cursor.snapshot;
+    let hasFrameValue = false;
+    for (let patchIndex = 1; patchIndex + 1 < frame.length; patchIndex += 2) {
+        const cityIndex = Math.trunc(frame[patchIndex] ?? Number.NaN);
+        const value = Number(frame[patchIndex + 1]);
+        if (
+            !Number.isFinite(cityIndex) ||
+            cityIndex < 0 ||
+            cityIndex >= cursor.cityCount ||
+            !Number.isFinite(value)
+        ) {
+            continue;
+        }
+
+        if (!hasFrameValue) {
+            nextSnapshot = [...cursor.snapshot];
+            hasFrameValue = true;
+        }
+        nextSnapshot[cityIndex] = value;
+    }
+
+    if (!hasFrameValue) {
+        return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
+    }
+
+    cursor.snapshot = nextSnapshot;
+    cursor.hasSnapshot = true;
+    return nextSnapshot as number[];
+}
+
+function advanceIndexedTimelineCursor(
+    cursor: TimelineCursor,
+    timeline: IndexedGraphPatchTimeline,
+    timeIndex: number,
+): number[] | undefined {
+    if (timeline.length === 0) {
+        return undefined;
+    }
+
+    while (cursor.cursor + 1 < timeline.length) {
+        const nextFrame = timeline[cursor.cursor + 1];
+        const nextFrameTimeOffset = resolveIndexedFrameTimeOffset(nextFrame);
+        if (nextFrameTimeOffset == null || nextFrameTimeOffset > timeIndex) {
+            break;
+        }
+
+        cursor.cursor += 1;
+        cursor.lastFrame = applyIndexedPatchFrame(cursor, nextFrame);
+        cursor.lastAppliedTimeIndex = nextFrameTimeOffset;
+    }
+
+    return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
+}
+
+function resolveTimelineStartOffset(
+    timelineRoot: GraphTimelineRoot,
+    allianceIndex: number,
+): number | null {
+    const rawOffset = timelineRoot.start_offsets?.[allianceIndex];
+    if (rawOffset == null || !Number.isFinite(rawOffset)) {
+        return null;
+    }
+
+    return Math.trunc(rawOffset);
 }
 
 function resolveTimelineEndOffset(
@@ -121,6 +218,10 @@ function resolveTimelineEndOffset(
     }
 
     return Math.trunc(rawOffset);
+}
+
+function usesIndexedPatchEncoding(timelineRoot: GraphTimelineRoot): boolean {
+    return timelineRoot.encoding === "indexed_patch_v2";
 }
 
 export function readGraphTimelineSnapshot(options: {
@@ -136,6 +237,11 @@ export function readGraphTimelineSnapshot(options: {
     }
 
     const timelineRoot = isTurnMetric ? coalition.turn : coalition.day;
+    const startOffset = resolveTimelineStartOffset(timelineRoot, allianceIndex);
+    if (startOffset != null && timeIndex < startOffset) {
+        return undefined;
+    }
+
     const endOffset = resolveTimelineEndOffset(timelineRoot, allianceIndex);
     if (endOffset != null && timeIndex > endOffset) {
         return getZeroFrame(coalition.cities.length);
@@ -147,9 +253,30 @@ export function readGraphTimelineSnapshot(options: {
     }
 
     const cursor = getTimelineCursor(timeline, coalition.cities.length);
-    if (timeIndex < cursor.cursor) {
+    if (usesIndexedPatchEncoding(timelineRoot)) {
+        if (timeIndex < cursor.lastAppliedTimeIndex) {
+            resetTimelineCursor(cursor, coalition.cities.length);
+        }
+
+        return advanceIndexedTimelineCursor(
+            cursor,
+            timeline as IndexedGraphPatchTimeline,
+            timeIndex,
+        );
+    }
+
+    const localTimeIndex = startOffset != null ? timeIndex - startOffset : timeIndex;
+    if (localTimeIndex < 0) {
+        return undefined;
+    }
+
+    if (localTimeIndex < cursor.lastAppliedTimeIndex) {
         resetTimelineCursor(cursor, coalition.cities.length);
     }
 
-    return advanceTimelineCursor(cursor, timeline, timeIndex);
+    return advanceDenseTimelineCursor(
+        cursor,
+        timeline as DenseGraphTimeline,
+        localTimeIndex,
+    );
 }
