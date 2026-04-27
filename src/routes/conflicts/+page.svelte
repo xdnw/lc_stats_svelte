@@ -36,6 +36,10 @@
     encodeCompositeSelectionIds,
   } from "$lib/conflictIds";
   import {
+    hasConflictTargetFinderCoalitions,
+    type ConflictTargetFinderCoalition,
+  } from "$lib/conflictTargetFinder";
+  import {
     formatDatasetProvenance,
     getConflictsIndexUrl,
   } from "$lib/runtime";
@@ -71,8 +75,10 @@
   } from "$lib/globals";
 
   type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
+  type ConflictTargetFinderModalModule = typeof import("$lib/conflictTargetFinderModal");
 
   let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
+  let conflictTargetFinderModalPromise: Promise<ConflictTargetFinderModalModule> | null = null;
 
   function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
     if (!prefetchArtifactsPromise) {
@@ -80,6 +86,14 @@
     }
 
     return prefetchArtifactsPromise;
+  }
+
+  function loadConflictTargetFinderModal(): Promise<ConflictTargetFinderModalModule> {
+    if (!conflictTargetFinderModalPromise) {
+      conflictTargetFinderModalPromise = import("$lib/conflictTargetFinderModal");
+    }
+
+    return conflictTargetFinderModalPromise;
   }
 
   let _rawData: RawData | null = null;
@@ -126,6 +140,19 @@
   const VIS_TIMELINE_SCRIPT_ID = "visjs";
   const VIS_TIMELINE_SCRIPT_SRC =
     "https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.min.js";
+  const VIS_TIMELINE_STYLE_ID = "visjs-css";
+  const VIS_TIMELINE_STYLE_HREF =
+    "https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css";
+
+  function ensureTimelineStylesheet(): void {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(VIS_TIMELINE_STYLE_ID)) return;
+    const link = document.createElement("link");
+    link.id = VIS_TIMELINE_STYLE_ID;
+    link.rel = "stylesheet";
+    link.href = VIS_TIMELINE_STYLE_HREF;
+    document.head.appendChild(link);
+  }
 
   let _allowedAllianceIds: Set<number> = new Set();
   let allianceRows: SelectionModalItem[] = [];
@@ -280,6 +307,17 @@
           } else {
             openCoalitionForConflict(undefined, conflictId, index, false);
           }
+          return;
+        }
+
+        if (action === "open-targets") {
+          const targetFinderModalModulePromise = loadConflictTargetFinderModal();
+          openByReplacingActiveModal(event, () => {
+            void openConflictTargetFinderFromCard(
+              conflictId,
+              targetFinderModalModulePromise,
+            );
+          });
           return;
         }
 
@@ -786,6 +824,38 @@
     };
   }
 
+  function buildConflictTargetFinderCoalitions(details: {
+    name: string;
+    c1Name: string;
+    c2Name: string;
+  }): [ConflictTargetFinderCoalition, ConflictTargetFinderCoalition] | null {
+    const coalition1 = getConflictAlliances(details.name, 0);
+    const coalition2 = getConflictAlliances(details.name, 1);
+    if (!coalition1 || !coalition2) return null;
+
+    const toAlliances = (coalition: {
+      alliance_ids: number[];
+      alliance_names: string[];
+    }) =>
+      coalition.alliance_ids.map((id, index) => ({
+        id,
+        name: formatAllianceName(coalition.alliance_names[index], id),
+      }));
+
+    return [
+      {
+        label: "C1",
+        name: details.c1Name,
+        alliances: toAlliances(coalition1),
+      },
+      {
+        label: "C2",
+        name: details.c2Name,
+        alliances: toAlliances(coalition2),
+      },
+    ];
+  }
+
   function openConflictField(
     event: Event | undefined,
     conflictId: number,
@@ -866,6 +936,10 @@
     const conflictUrl = `${base}/conflict?id=${conflictId}`;
     const safeName = escapeHtml(details.name);
     const hasPinnedInfo = (details.pinnedInfo ?? "").trim().length > 0;
+    const targetFinderCoalitions = buildConflictTargetFinderCoalitions(details);
+    const hasTargetFinder = targetFinderCoalitions
+      ? hasConflictTargetFinderCoalitions(targetFinderCoalitions)
+      : false;
 
     const bodyHtml = `
       <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' data-conflict-action='open-conflict-page' data-conflict-id='${conflictId}' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
@@ -878,6 +952,8 @@
         <button type='button' class='btn ux-btn fw-bold' data-conflict-action='open-field' data-conflict-id='${conflictId}' data-conflict-field='posts' data-conflict-from-card='true' ${hasPosts ? "" : "disabled"} aria-label='Open posts for ${safeName}'>Posts</button>
         <a class='btn ux-btn fw-bold' href='${wikiUrl}' ${hasWiki ? "target='_blank' rel='noopener noreferrer'" : "aria-disabled='true' tabindex='-1'"} aria-label='Open wiki for ${safeName} in a new tab'>Wiki</a>
       </div>
+
+      <button type='button' class='btn ux-btn ux-btn-danger fw-bold w-100 mt-2' data-conflict-action='open-targets' data-conflict-id='${conflictId}' ${hasTargetFinder ? "" : "disabled"} aria-label='Find Locutus targets for ${safeName}'>Find Targets on Locutus</button>
 
       <div class='ux-conflict-popup-meta mt-2' role='group' aria-label='Conflict basic info'>
         <div><span class='ux-muted'>C1:</span> ${escapeHtml(details.c1Name)}</div>
@@ -895,6 +971,36 @@
     `;
 
     modalStrWithCloseButton(`${details.name} Details`, bodyHtml);
+  }
+
+  async function openConflictTargetFinderFromCard(
+    conflictId: number,
+    targetFinderModalModulePromise: Promise<ConflictTargetFinderModalModule> =
+      loadConflictTargetFinderModal(),
+  ): Promise<void> {
+    const details = conflictDetailsById[conflictId];
+    if (!details) return;
+
+    const targetFinderCoalitions = buildConflictTargetFinderCoalitions(details);
+    if (!targetFinderCoalitions) return;
+
+    try {
+      const { openConflictTargetFinderModal } = await targetFinderModalModulePromise;
+      openConflictTargetFinderModal({
+        title: `Find Targets: ${details.name}`,
+        titleHtml: conflictModalTitleWithBack(
+          `Find Targets: ${details.name}`,
+          conflictId,
+        ),
+        coalitions: targetFinderCoalitions,
+      });
+    } catch (error) {
+      console.warn("Failed to load conflict target finder modal", error);
+      modalStrWithCloseButton(
+        conflictModalTitleWithBack(`Find Targets: ${details.name}`, conflictId),
+        "<p class='m-0'>Unable to open the target finder right now.</p>",
+      );
+    }
   }
 
   function openConflictPageFromCard(
@@ -1102,6 +1208,7 @@
   }
 
   function ensureTimelineScriptLoaded(): Promise<void> {
+    ensureTimelineStylesheet();
     if (typeof getVis() !== "undefined") {
       return Promise.resolve();
     }
@@ -1243,10 +1350,6 @@
   <link rel="preconnect" href={config.data_origin} crossorigin="anonymous" />
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin="anonymous" />
   <title>Conflicts</title>
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/7.7.3/vis-timeline-graph2d.css"
-  />
 </svelte:head>
 <!-- Add navbar component to page  -->
 <div class="container-fluid p-2 ux-page-body">

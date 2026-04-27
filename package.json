@@ -19,6 +19,7 @@
 		"test": "vitest run",
 		"verify:navigation": "node ./scripts/verifyNavigation.mjs",
 		"verify:navigation:perf": "node ./scripts/verifyNavigation.mjs --report-perf",
+		"verify:shell-budget": "node ./scripts/verifyShellBudget.mjs",
 		"lighthouse:matrix": "node ./scripts/runLighthouseMatrix.mjs",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -48,6 +49,6 @@
 		"@types/d3": "^7.4.3",
 		"d3": "^7.9.0",
 		"lz-string": "^1.5.0",
-		"msgpackr": "^1.11.9"
+		"msgpackr": "^1.11.10"
 	}
 }

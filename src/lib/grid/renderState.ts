@@ -60,6 +60,10 @@ export function areGridCellViewsEqual(
                     ((right as GridCellView & { kind: "action" }).disabled ?? false) &&
                 (left.title ?? "") ===
                     ((right as GridCellView & { kind: "action" }).title ?? "") &&
+                (left.href ?? "") ===
+                    ((right as GridCellView & { kind: "action" }).href ?? "") &&
+                (left.external ?? false) ===
+                    ((right as GridCellView & { kind: "action" }).external ?? false) &&
                 areActionArgsEqual(
                     left.args,
                     (right as GridCellView & { kind: "action" }).args,

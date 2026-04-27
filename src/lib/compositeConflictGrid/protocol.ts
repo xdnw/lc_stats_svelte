@@ -22,6 +22,7 @@ export type CompositeConflictGridDatasetRef = {
     conflicts: CompositeConflictGridSourceConflict[];
     selectedAllianceId: number;
     version: string;
+    basePath?: string;
 };
 
 export type CompositeConflictGridResolveResult = {

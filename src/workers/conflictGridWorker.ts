@@ -60,6 +60,10 @@ async function ensureDataset(
                 datasetKey: datasetRef.datasetKey,
                 conflictId: datasetRef.conflictId,
                 data,
+                aavaRouteContext: {
+                    routeKind: "single",
+                    basePath: datasetRef.basePath,
+                },
             });
             datasetCache.set(datasetRef.datasetKey, dataset);
             pendingDatasetLoads.delete(datasetRef.datasetKey);

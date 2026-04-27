@@ -19,6 +19,7 @@ export type ConflictGridDatasetRef = {
     conflictId: string;
     url: string;
     version: string;
+    basePath?: string;
 };
 
 export type ConflictGridMeta = {

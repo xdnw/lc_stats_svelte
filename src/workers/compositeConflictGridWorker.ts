@@ -192,6 +192,12 @@ async function ensureDataset(
                 datasetKey: datasetRef.datasetKey,
                 conflictId: datasetRef.signature,
                 data: merged.conflict,
+                aavaRouteContext: {
+                    routeKind: "composite",
+                    compositeIds: datasetRef.conflicts.map((conflict) => conflict.id),
+                    selectedAllianceId: datasetRef.selectedAllianceId,
+                    basePath: datasetRef.basePath,
+                },
             });
             const ensured: EnsuredDataset = {
                 dataset,

@@ -114,6 +114,8 @@
 }
 
 .ux-coalition-panel {
+    --ux-coalition-panel-tone: var(--ux-border);
+    --ux-coalition-panel-active-fill: color-mix(in srgb, var(--ux-brand) 14%, transparent);
     background: color-mix(in srgb, var(--ux-surface-alt) 92%, transparent);
     border: 1px solid var(--ux-border);
     border-radius: var(--ux-radius-sm);
@@ -126,36 +128,28 @@
     margin-bottom: 0.2rem;
 }
 
-.ux-coalition-panel--red {
-    border-left: 0.28rem solid color-mix(in srgb, var(--ux-danger) 60%, var(--ux-border));
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface-alt)),
-        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
-    );
+.ux-coalition-panel--red,
+.ux-coalition-panel--blue {
+    border-left: 0.28rem solid color-mix(in srgb, var(--ux-coalition-panel-tone) 60%, var(--ux-border));
+    background: color-mix(in srgb, var(--ux-coalition-panel-tone) 7%, var(--ux-surface-alt));
     box-shadow: none;
+}
+
+.ux-coalition-panel--red {
+    --ux-coalition-panel-tone: var(--ux-danger);
+    --ux-coalition-panel-active-fill: color-mix(in srgb, var(--ux-danger) 12%, transparent);
 }
 
 .ux-coalition-panel--blue {
-    border-left: 0.28rem solid color-mix(in srgb, var(--ux-brand) 60%, var(--ux-border));
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ux-brand) 12%, var(--ux-surface-alt)),
-        color-mix(in srgb, var(--ux-surface-alt) 92%, transparent) 18%
-    );
-    box-shadow: none;
+    --ux-coalition-panel-tone: var(--ux-brand);
 }
 
 .ux-coalition-panel--red .ux-btn.active,
-.ux-coalition-panel--red .ux-btn:active {
-    border-color: color-mix(in srgb, var(--ux-danger) 52%, transparent);
-    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-danger) 12%, transparent);
-}
-
+.ux-coalition-panel--red .ux-btn:active,
 .ux-coalition-panel--blue .ux-btn.active,
 .ux-coalition-panel--blue .ux-btn:active {
-    border-color: color-mix(in srgb, var(--ux-brand) 52%, transparent);
-    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--ux-brand) 14%, transparent);
+    border-color: color-mix(in srgb, var(--ux-coalition-panel-tone) 52%, transparent);
+    box-shadow: inset 0 0 0 9999px var(--ux-coalition-panel-active-fill);
 }
 
 @media (max-width: 768px) {
@@ -167,5 +161,173 @@
     .ux-conflict-popup-actions .btn {
         min-height: 2.35rem;
         font-size: 0.95rem;
+    }
+}
+
+.ux-target-finder-side-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+    margin-bottom: 0.3rem;
+}
+
+.ux-target-finder-section-label {
+    margin: 0 0 0.25rem 0;
+    letter-spacing: 0.01em;
+}
+
+.ux-target-finder-side {
+    --ux-target-finder-side-tone: var(--ux-text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.45rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600 !important;
+    background: color-mix(in srgb, var(--ux-target-finder-side-tone) 6%, var(--ux-surface)) !important;
+    border-color: color-mix(in srgb, var(--ux-target-finder-side-tone) 34%, var(--ux-border)) !important;
+    color: var(--ux-text) !important;
+}
+
+.ux-target-finder-side-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ux-target-finder-side-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0.08rem 0.36rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--ux-target-finder-side-tone) 26%, var(--ux-border));
+    background: color-mix(in srgb, var(--ux-target-finder-side-tone) 10%, var(--ux-surface));
+    color: var(--ux-text);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.ux-target-finder-side.ux-target-finder-side--red {
+    --ux-target-finder-side-tone: var(--ux-danger);
+}
+
+.ux-target-finder-side.ux-target-finder-side--blue {
+    --ux-target-finder-side-tone: var(--ux-brand);
+}
+
+.ux-target-finder-side:hover {
+    background: color-mix(in srgb, var(--ux-target-finder-side-tone) 10%, var(--ux-surface)) !important;
+    border-color: color-mix(in srgb, var(--ux-target-finder-side-tone) 42%, var(--ux-border)) !important;
+    color: var(--ux-text) !important;
+}
+
+.ux-target-finder-side:not(.is-selected) .ux-target-finder-side-state {
+    display: none;
+}
+
+.ux-target-finder-side.is-selected,
+.ux-target-finder-side.is-selected:hover {
+    background: color-mix(in srgb, var(--ux-target-finder-side-tone) 18%, var(--ux-surface)) !important;
+    border-color: color-mix(in srgb, var(--ux-target-finder-side-tone) 58%, var(--ux-border)) !important;
+    box-shadow: none !important;
+    color: var(--ux-text) !important;
+}
+
+.ux-target-finder-summary {
+    margin: 0 0 0.6rem 0;
+}
+
+.ux-target-finder-customize {
+    margin-bottom: 0.6rem;
+}
+
+.ux-target-finder-customize-summary {
+    cursor: pointer;
+    list-style: revert;
+    padding: 0.1rem 0;
+}
+
+.ux-target-finder-customize-summary:hover {
+    color: var(--ux-brand);
+}
+
+.ux-target-finder-coalitions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.ux-target-finder-coalition.ux-coalition-panel {
+    margin-bottom: 0;
+    padding: 0.4rem 0.5rem;
+}
+
+.ux-target-finder-coalition-legend {
+    float: none;
+    width: auto;
+    margin: 0 0 0.35rem 0;
+    padding: 0;
+}
+
+.ux-target-finder-coalition-toolbar {
+    margin-bottom: 0.35rem;
+}
+
+.ux-target-finder-alliance-list {
+    display: grid;
+    gap: 0.05rem;
+    max-height: 11rem;
+    overflow-y: auto;
+}
+
+.ux-target-finder-alliance-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.12rem 0.25rem;
+    border-radius: var(--ux-radius-sm);
+    cursor: pointer;
+    font-size: 0.84rem;
+}
+
+.ux-target-finder-alliance-row:hover {
+    background: color-mix(in srgb, var(--ux-text) 6%, transparent);
+}
+
+.ux-target-finder-alliance-name {
+    word-break: break-word;
+}
+
+.ux-target-finder-status {
+    margin: 0 0 0.5rem 0;
+}
+
+.ux-target-finder-status:empty {
+    display: none;
+}
+
+.ux-target-finder-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.ux-target-finder-action[aria-disabled="true"] {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+@media (max-width: 540px) {
+    .ux-target-finder-coalitions {
+        grid-template-columns: 1fr;
     }
 }

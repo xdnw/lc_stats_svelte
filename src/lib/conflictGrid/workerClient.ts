@@ -27,6 +27,16 @@ import type {
 } from "./protocol";
 import { ConflictGridLayout, type ConflictGridLayoutValue } from "./rowIds";
 
+function normalizeBasePath(basePath?: string): string {
+    if (!basePath) return "";
+    return basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
+}
+
+function basePathScopeKey(basePath?: string): string {
+    const normalized = normalizeBasePath(basePath);
+    return normalized.length > 0 ? encodeURIComponent(normalized) : "root";
+}
+
 function nowMs(): number {
     return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
@@ -94,12 +104,15 @@ function createWorker(): Worker {
 function createDatasetRef(
     conflictId: string,
     version: string | number,
+    basePath?: string,
 ): ConflictGridDatasetRef {
+    const normalizedBasePath = normalizeBasePath(basePath);
     return {
-        datasetKey: `conflict-grid:${conflictId}:v${String(version)}`,
+        datasetKey: `conflict-grid:${conflictId}:v${String(version)}:base:${basePathScopeKey(normalizedBasePath)}`,
         conflictId,
         url: getConflictDataUrl(conflictId, version),
         version: String(version),
+        basePath: normalizedBasePath,
     };
 }
 
@@ -298,8 +311,13 @@ function createSharedHandle(
 function getSharedHandle(options: {
     conflictId: string;
     version: string | number;
+    basePath?: string;
 }): SharedConflictGridHandle {
-    const datasetRef = createDatasetRef(options.conflictId, options.version);
+    const datasetRef = createDatasetRef(
+        options.conflictId,
+        options.version,
+        options.basePath,
+    );
     const cached = sharedHandles.get(datasetRef.datasetKey);
     if (cached) return cached;
 
@@ -312,8 +330,13 @@ export function hasConflictGridWorkerArtifact(options: {
     conflictId: string;
     version: string | number;
     layouts?: ConflictGridLayoutValue[];
+    basePath?: string;
 }): boolean {
-    const datasetRef = createDatasetRef(options.conflictId, options.version);
+    const datasetRef = createDatasetRef(
+        options.conflictId,
+        options.version,
+        options.basePath,
+    );
     const handle = sharedHandles.get(datasetRef.datasetKey);
     if (!handle) return false;
     return handle.isArtifactReady(options.layouts);
@@ -324,6 +347,7 @@ export function warmConflictGridWorkerDataset(options: {
     version: string | number;
     layouts?: ConflictGridLayoutValue[];
     aggressive?: boolean;
+    basePath?: string;
 }): Promise<ConflictGridPrewarmResult> {
     const handle = getSharedHandle(options);
     const aggressive = options.aggressive ?? false;
@@ -349,6 +373,7 @@ export function warmConflictGridWorkerDataset(options: {
 export function createConflictGridWorkerClient(options: {
     conflictId: string;
     version: string | number;
+    basePath?: string;
 }): ConflictGridWorkerClient {
     const handle = getSharedHandle(options);
     handle.acquire();

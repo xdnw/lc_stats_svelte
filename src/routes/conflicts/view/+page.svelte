@@ -511,6 +511,7 @@
             signature: data.signature,
             conflictIds: data.conflictIds,
             version: String(config.version.conflict_data),
+            basePath: base,
         });
         compositeGridSession = session;
 

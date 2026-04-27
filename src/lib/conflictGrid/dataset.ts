@@ -19,6 +19,7 @@ import type {
 import type { MetricCard, RankingCard, ScopeSnapshot, WidgetScope } from "../kpi";
 import { buildSelectionSnapshot } from "../kpiSnapshot";
 import { formatAllianceName, formatNationName } from "../formatting";
+import { buildTabHref } from "../conflictTabs";
 import { encodeGridSelectionFilterValue, parseGridSelectionFilterValue } from "../grid/filterValue";
 import { formatMoneyValue, formatNumberValue } from "../numberFormatting";
 import { buildCoalitionAllianceItems } from "../selectionModalHelpers";
@@ -79,6 +80,18 @@ type ConflictLayoutDataset = {
     rows: ConflictRowMeta[];
     rowMetaById: Map<GridRowId, ConflictRowMeta>;
 };
+
+type ConflictGridAavaRouteContext =
+    | {
+          routeKind: "single";
+          basePath?: string;
+      }
+    | {
+          routeKind: "composite";
+          compositeIds: string[];
+          selectedAllianceId: number;
+          basePath?: string;
+      };
 
 const ROW_CLASS_BY_COALITION: Record<0 | 1, string> = {
     0: "ux-conflict-row-c1",
@@ -170,13 +183,82 @@ function uniqueNumericIds(values: Array<number | null | undefined>): number[] {
     return next;
 }
 
+function buildConflictGridAavaHref(options: {
+    conflictId: string;
+    coalitionIndex: 0 | 1;
+    allianceId: number;
+    routeContext?: ConflictGridAavaRouteContext;
+}): string | null {
+    const { allianceId, coalitionIndex, conflictId, routeContext } = options;
+    if (!routeContext) return null;
+
+    const baseHref =
+        routeContext.routeKind === "composite"
+            ? buildTabHref("aava", {
+                  routeKind: "composite",
+                  compositeIds: routeContext.compositeIds,
+                  selectedAllianceId: routeContext.selectedAllianceId,
+                  basePath: routeContext.basePath,
+              })
+            : buildTabHref("aava", {
+                  routeKind: "single",
+                  conflictId,
+                  basePath: routeContext.basePath,
+              });
+
+    if (!baseHref) return null;
+
+    const [pathname, rawSearch = ""] = baseHref.split("?");
+    const query = new URLSearchParams(rawSearch);
+    query.delete("pc");
+    query.delete("c0");
+    query.delete("c1");
+    query.delete("pids");
+    query.delete("vids");
+    query.set("pc", String(coalitionIndex));
+    query.set(coalitionIndex === 0 ? "c0" : "c1", String(allianceId));
+    const serialized = query.toString();
+    return serialized ? `${pathname}?${serialized}` : pathname;
+}
+
+function buildAllianceLinkCell(options: {
+    text: string;
+    allianceId: number;
+    coalitionIndex: 0 | 1;
+    conflictId: string;
+    routeContext?: ConflictGridAavaRouteContext;
+}): GridCellView {
+    const href = buildConflictGridAavaHref({
+        conflictId: options.conflictId,
+        coalitionIndex: options.coalitionIndex,
+        allianceId: options.allianceId,
+        routeContext: options.routeContext,
+    });
+
+    if (href) {
+        return {
+            kind: "link",
+            text: options.text,
+            href,
+        };
+    }
+
+    return {
+        kind: "link",
+        text: options.text,
+        href: `https://politicsandwar.com/alliance/id=${options.allianceId}`,
+        external: true,
+    };
+}
+
 export function createConflictGridDataset(options: {
     datasetKey: string;
     conflictId: string;
     data: Conflict;
+    aavaRouteContext?: ConflictGridAavaRouteContext;
 }) {
     const datasetCreateStartedAt = nowMs();
-    const { data, conflictId, datasetKey } = options;
+    const { aavaRouteContext, data, conflictId, datasetKey } = options;
     const columnSpecs = buildConflictGridColumnSpecs(data);
     const columnSpecByKey = new Map<string, ConflictGridColumnSpec>(
         columnSpecs.map((column) => [column.key, column]),
@@ -439,18 +521,20 @@ export function createConflictGridDataset(options: {
                     allianceName,
                     nationId: null,
                     nationName: null,
-                    nameCell: {
-                        kind: "link",
+                    nameCell: buildAllianceLinkCell({
                         text: allianceName,
-                        href: `https://politicsandwar.com/alliance/id=${allianceId}`,
-                        external: true,
-                    },
-                    allianceCell: {
-                        kind: "link",
+                        allianceId,
+                        coalitionIndex: index,
+                        conflictId,
+                        routeContext: aavaRouteContext,
+                    }),
+                    allianceCell: buildAllianceLinkCell({
                         text: allianceName,
-                        href: `https://politicsandwar.com/alliance/id=${allianceId}`,
-                        external: true,
-                    },
+                        allianceId,
+                        coalitionIndex: index,
+                        conflictId,
+                        routeContext: aavaRouteContext,
+                    }),
                     nameFilterText: normalizeText(allianceName),
                     nameSortText: normalizeText(allianceName),
                     allianceFilterText: normalizeText(allianceName),
@@ -501,12 +585,13 @@ export function createConflictGridDataset(options: {
                         href: `https://politicsandwar.com/nation/id=${nationId}`,
                         external: true,
                     },
-                    allianceCell: {
-                        kind: "link",
+                    allianceCell: buildAllianceLinkCell({
                         text: allianceName,
-                        href: `https://politicsandwar.com/alliance/id=${allianceId}`,
-                        external: true,
-                    },
+                        allianceId,
+                        coalitionIndex: index,
+                        conflictId,
+                        routeContext: aavaRouteContext,
+                    }),
                     nameFilterText: normalizeText(`${nationName} ${allianceName}`),
                     nameSortText: normalizeText(nationName),
                     allianceFilterText: normalizeText(allianceName),

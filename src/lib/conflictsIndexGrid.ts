@@ -1,3 +1,4 @@
+import { base } from "$app/paths";
 import { formatDate } from "./formatting";
 import {
     createInMemoryGridProvider,
@@ -75,6 +76,7 @@ function actionCell(
     actionId: string,
     args: Record<string, string | number | boolean | null>,
     title?: string,
+    href?: string,
 ): GridCellView {
     return {
         kind: "action",
@@ -82,6 +84,7 @@ function actionCell(
         actionId,
         args,
         title,
+        href,
     };
 }
 
@@ -174,6 +177,7 @@ export function createConflictsIndexGridProvider(options: {
                     "open-conflict-card",
                     { conflictId: row.id },
                     `Open conflict actions for ${row.name}`,
+                    `${base}/conflict?id=${row.id}`,
                 ),
             getFilterText: (row) => row.name,
             getExportCells: (row) => [row.name, row.id],

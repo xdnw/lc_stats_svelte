@@ -4,6 +4,16 @@ import type {
     CompositeConflictGridSourceConflict,
 } from "./protocol";
 
+function normalizeBasePath(basePath?: string): string {
+    if (!basePath) return "";
+    return basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
+}
+
+function basePathScopeKey(basePath?: string): string {
+    const normalized = normalizeBasePath(basePath);
+    return normalized.length > 0 ? encodeURIComponent(normalized) : "root";
+}
+
 export function createCompositeConflictGridSourceConflicts(
     conflictIds: string[],
     version: string,
@@ -19,9 +29,11 @@ export function createCompositeConflictGridDatasetRef(options: {
     conflictIds: string[];
     selectedAllianceId: number;
     version: string;
+    basePath?: string;
 }): CompositeConflictGridDatasetRef {
+    const basePath = normalizeBasePath(options.basePath);
     return {
-        datasetKey: `composite-grid:${options.signature}:aid:${options.selectedAllianceId}:v${options.version}`,
+        datasetKey: `composite-grid:${options.signature}:aid:${options.selectedAllianceId}:v${options.version}:base:${basePathScopeKey(basePath)}`,
         signature: options.signature,
         conflicts: createCompositeConflictGridSourceConflicts(
             options.conflictIds,
@@ -29,5 +41,6 @@ export function createCompositeConflictGridDatasetRef(options: {
         ),
         selectedAllianceId: options.selectedAllianceId,
         version: options.version,
+        basePath,
     };
 }

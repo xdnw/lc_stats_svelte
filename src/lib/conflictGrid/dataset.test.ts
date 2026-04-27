@@ -277,6 +277,76 @@ describe("conflictGrid dataset", () => {
         expect(dataset.getMetricCardValue(metricCard)).toBe(60);
     });
 
+    it("builds AAvA alliance links for alliance and nation layouts when route context is available", () => {
+        const singleDataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-aava-single",
+            conflictId: "test",
+            data: createConflictFixture(),
+            aavaRouteContext: {
+                routeKind: "single",
+                basePath: "/base",
+            },
+        });
+
+        const alliancePage = singleDataset.query(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({
+                visibleColumnKeys: ["name", "dealt:damage"],
+            }),
+        );
+        expect(alliancePage.rows[0]?.cells.name).toMatchObject({
+            kind: "link",
+            text: "Red Alliance",
+            href: "/base/aava?id=test&pc=0&c0=101",
+        });
+
+        const nationPage = singleDataset.query(
+            ConflictGridLayout.NATION,
+            createQueryState({
+                visibleColumnKeys: ["alliance", "name", "dealt:damage"],
+                columnOrderKeys: [
+                    "alliance",
+                    "name",
+                    "dealt:damage",
+                    "loss:damage",
+                    "net:damage",
+                    "off:wars",
+                    "def:wars",
+                    "both:wars",
+                ],
+            }),
+        );
+        expect(nationPage.rows[0]?.cells.alliance).toMatchObject({
+            kind: "link",
+            text: "Red Alliance",
+            href: "/base/aava?id=test&pc=0&c0=101",
+        });
+
+        const compositeDataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-aava-composite",
+            conflictId: "merged-signature",
+            data: createConflictFixture(),
+            aavaRouteContext: {
+                routeKind: "composite",
+                compositeIds: ["11", "22"],
+                selectedAllianceId: 9,
+                basePath: "/base",
+            },
+        });
+
+        const compositeAlliancePage = compositeDataset.query(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({
+                visibleColumnKeys: ["name", "dealt:damage"],
+            }),
+        );
+        expect(compositeAlliancePage.rows[1]?.cells.name).toMatchObject({
+            kind: "link",
+            text: "Blue Alliance",
+            href: "/base/aava?ids=11%2C22&aid=9&pc=1&c1=202",
+        });
+    });
+
     it("defers nation layout construction until the nation layout is actually requested", () => {
         const fixture = createConflictFixture();
 

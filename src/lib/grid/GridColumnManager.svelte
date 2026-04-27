@@ -271,7 +271,7 @@
                 >
                     <label class="ux-grid-colmgr-toggle">
                         <input
-                            class="ux-grid-colmgr-checkbox"
+                            class="form-check-input ux-grid-colmgr-checkbox"
                             type="checkbox"
                             checked={visibleKeySet.has(column.key)}
                             disabled={column.alwaysVisible}
@@ -368,51 +368,6 @@
         margin: 0;
         width: 0.95rem;
         height: 0.95rem;
-        cursor: pointer;
-        appearance: none;
-        border: 1px solid color-mix(in srgb, var(--ux-border) 88%, var(--ux-text-muted));
-        border-radius: 0.22rem;
-        background: color-mix(in srgb, var(--ux-surface) 96%, transparent);
-        display: inline-grid;
-        place-items: center;
-        transition:
-            background-color 120ms ease,
-            border-color 120ms ease,
-            box-shadow 120ms ease;
-    }
-
-    .ux-grid-colmgr-checkbox::after {
-        content: "";
-        width: 0.46rem;
-        height: 0.26rem;
-        border-inline-start: 0.12rem solid #ffffff;
-        border-block-end: 0.12rem solid #ffffff;
-        transform: rotate(-45deg) scale(0.7);
-        opacity: 0;
-        transition: opacity 120ms ease;
-    }
-
-    .ux-grid-colmgr-checkbox:hover {
-        border-color: color-mix(in srgb, var(--ux-brand) 48%, var(--ux-border));
-    }
-
-    .ux-grid-colmgr-checkbox:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--ux-brand) 22%, transparent);
-    }
-
-    .ux-grid-colmgr-checkbox:checked {
-        border-color: color-mix(in srgb, var(--ux-brand) 70%, var(--ux-border));
-        background: color-mix(in srgb, var(--ux-brand) 82%, #ffffff);
-    }
-
-    .ux-grid-colmgr-checkbox:checked::after {
-        opacity: 1;
-    }
-
-    .ux-grid-colmgr-checkbox:disabled {
-        cursor: not-allowed;
-        opacity: 0.72;
     }
 
     .ux-grid-colmgr-label {

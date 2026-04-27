@@ -73,6 +73,7 @@ function createSharedHandle(options: {
     signature: string;
     conflictIds: string[];
     version: string;
+    basePath?: string;
 }): SharedCompositeGridHandle {
     let worker: Worker | null;
     try {
@@ -210,6 +211,7 @@ function getSharedHandle(options: {
     signature: string;
     conflictIds: string[];
     version: string;
+    basePath?: string;
 }): SharedCompositeGridHandle {
     const workerKey = `composite-grid:${options.signature}:v${options.version}`;
     const cached = sharedHandles.get(workerKey);
@@ -223,6 +225,7 @@ export function createWorkerCompositeConflictGridSession(options: {
     signature: string;
     conflictIds: string[];
     version: string;
+    basePath?: string;
 }): CompositeConflictGridSession {
     const handle = getSharedHandle(options);
     handle.acquire();
@@ -240,6 +243,7 @@ export function createWorkerCompositeConflictGridSession(options: {
             conflictIds: options.conflictIds,
             selectedAllianceId,
             version: options.version,
+            basePath: options.basePath,
         });
         let clientReleased = false;
 

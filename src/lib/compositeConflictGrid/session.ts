@@ -9,6 +9,7 @@ export function createCompositeConflictGridSession(options: {
     signature: string;
     conflictIds: string[];
     version: string;
+    basePath?: string;
 }): CompositeConflictGridSession {
     let fallbackSession: CompositeConflictGridSession | null = null;
 

@@ -129,6 +129,7 @@ export function createLocalCompositeConflictGridSession(options: {
     signature: string;
     conflictIds: string[];
     version: string;
+    basePath?: string;
 }): CompositeConflictGridSession {
     const datasets = new Map<string, EnsuredDataset>();
     const pendingDatasets = new Map<string, Promise<EnsuredDataset>>();
@@ -181,6 +182,12 @@ export function createLocalCompositeConflictGridSession(options: {
                     datasetKey: datasetRef.datasetKey,
                     conflictId: datasetRef.signature,
                     data: merged.conflict,
+                    aavaRouteContext: {
+                        routeKind: "composite",
+                        compositeIds: datasetRef.conflicts.map((conflict) => conflict.id),
+                        selectedAllianceId: datasetRef.selectedAllianceId,
+                        basePath: datasetRef.basePath,
+                    },
                 });
                 const next: EnsuredDataset = {
                     dataset,
@@ -215,6 +222,7 @@ export function createLocalCompositeConflictGridSession(options: {
             conflictIds: options.conflictIds,
             selectedAllianceId,
             version: options.version,
+            basePath: options.basePath,
         });
         let released = false;
 

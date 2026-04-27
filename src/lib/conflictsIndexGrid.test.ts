@@ -71,6 +71,7 @@ describe("conflictsIndexGrid provider", () => {
             actionId: "open-conflict-card",
             args: { conflictId: 42 },
             title: "Open conflict actions for Example Conflict",
+            href: "/conflict?id=42",
         });
         expect(result.rows[0].cells.c1_name).toEqual({
             kind: "action",

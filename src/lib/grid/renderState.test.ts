@@ -117,12 +117,14 @@ describe("grid render state", () => {
                     text: "Open",
                     actionId: "open",
                     args: { id: 101, enabled: true },
+                    href: "/conflict?id=101",
                 },
                 {
                     kind: "action",
                     text: "Open",
                     actionId: "open",
                     args: { enabled: true, id: 101 },
+                    href: "/conflict?id=101",
                 },
             ),
         ).toBe(true);

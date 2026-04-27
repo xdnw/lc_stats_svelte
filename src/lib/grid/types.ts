@@ -16,6 +16,8 @@ export type GridCellView =
           args?: GridCellActionArgs;
           disabled?: boolean;
           title?: string;
+                    href?: string;
+                    external?: boolean;
       }
     | { kind: "stack"; items: GridCellView[] }
     | { kind: "empty" };

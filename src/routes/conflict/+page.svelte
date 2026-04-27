@@ -1186,6 +1186,7 @@
         const client = createConflictGridWorkerClient({
             conflictId: id,
             version: config.version.conflict_data,
+            basePath: base,
         });
         conflictGridClient = client;
         resetConflictGridState();
