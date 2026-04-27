@@ -32,6 +32,18 @@
     cursor: not-allowed;
 }
 
+.form-control:focus,
+.form-select:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--ux-brand) 42%, var(--ux-border));
+    box-shadow: 0 0 0 0.16rem color-mix(in srgb, var(--ux-brand) 24%, transparent);
+}
+
+html[data-bs-theme="dark"] .form-control:focus,
+html[data-bs-theme="dark"] .form-select:focus {
+    box-shadow: 0 0 0 0.12rem color-mix(in srgb, var(--ux-brand) 14%, transparent);
+}
+
 .form-select {
     appearance: none;
     padding-right: 2rem;

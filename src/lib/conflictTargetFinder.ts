@@ -1,4 +1,4 @@
-export type ConflictTargetFinderMode = "war" | "raid" | "damage";
+export type ConflictTargetFinderMode = "war" | "raid" | "damage" | "spy";
 
 export type ConflictTargetFinderAlliance = {
     id: number;
@@ -99,6 +99,10 @@ export function buildConflictTargetFinderUrl(options: {
 
     if (options.mode === "raid") {
         return `https://www.locutus.link/#/raid?selector=${enemySelector}`;
+    }
+
+    if (options.mode === "spy") {
+        return `https://www.locutus.link/#/spy?selector=${enemySelector}`;
     }
 
     return `https://www.locutus.link/#/damage?selector=${enemySelector}`;

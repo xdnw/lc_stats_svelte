@@ -32,6 +32,12 @@ const ACTION_DEFINITIONS: ConflictTargetFinderActionDefinition[] = [
         description: "Open the Locutus high-infra damage finder for these targets",
         requiresOwnSide: false,
     },
+    {
+        mode: "spy",
+        label: "Spy",
+        description: "Open the Locutus spy finder for these targets",
+        requiresOwnSide: false,
+    },
 ];
 
 // Convention used across the app (aava, tiering, chord pages): coalition 1 = red, coalition 2 = blue.

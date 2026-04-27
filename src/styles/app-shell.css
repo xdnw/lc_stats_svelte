@@ -598,30 +598,30 @@ h6 {
 .text-bg-primary,
 .text-bg-danger,
 .text-bg-info {
-    color: var(--ux-text);
-}
-
-.text-bg-light {
-    background: color-mix(in srgb, var(--ux-surface) 94%, white) !important;
-    border-color: color-mix(in srgb, var(--ux-border) 88%, white) !important;
+    --ux-text-bg-color: var(--ux-text);
+    --ux-text-bg-background: color-mix(in srgb, var(--ux-surface) 94%, white);
+    --ux-text-bg-border: color-mix(in srgb, var(--ux-border) 88%, white);
+    color: var(--ux-text-bg-color) !important;
+    background: var(--ux-text-bg-background) !important;
+    border-color: var(--ux-text-bg-border) !important;
 }
 
 .text-bg-primary {
-    color: #ffffff !important;
-    background: color-mix(in srgb, var(--ux-brand) 84%, #ffffff) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 58%, var(--ux-border)) !important;
+    --ux-text-bg-color: #ffffff;
+    --ux-text-bg-background: color-mix(in srgb, var(--ux-brand) 84%, #ffffff);
+    --ux-text-bg-border: color-mix(in srgb, var(--ux-brand) 58%, var(--ux-border));
 }
 
 .text-bg-danger {
-    color: #ffffff !important;
-    background: color-mix(in srgb, var(--ux-danger) 82%, #ffffff) !important;
-    border-color: color-mix(in srgb, var(--ux-danger) 56%, var(--ux-border)) !important;
+    --ux-text-bg-color: #ffffff;
+    --ux-text-bg-background: color-mix(in srgb, var(--ux-danger) 82%, #ffffff);
+    --ux-text-bg-border: color-mix(in srgb, var(--ux-danger) 56%, var(--ux-border));
 }
 
 .text-bg-info {
-    color: #ffffff !important;
-    background: color-mix(in srgb, var(--ux-accent) 82%, #ffffff) !important;
-    border-color: color-mix(in srgb, var(--ux-accent) 54%, var(--ux-border)) !important;
+    --ux-text-bg-color: #ffffff;
+    --ux-text-bg-background: color-mix(in srgb, var(--ux-accent) 82%, #ffffff);
+    --ux-text-bg-border: color-mix(in srgb, var(--ux-accent) 54%, var(--ux-border));
 }
 
 html[data-bs-theme="dark"] .text-bg-primary,
@@ -734,33 +734,29 @@ html[data-bs-theme="dark"] .text-bg-info {
 .btn-outline-secondary,
 .btn-outline-info,
 .btn-outline-danger {
+    --ux-btn-outline-color: var(--ux-text);
+    --ux-btn-outline-border: color-mix(in srgb, var(--ux-border) 94%, var(--ux-text-muted));
+    --ux-btn-outline-hover-bg: color-mix(in srgb, var(--ux-text-muted) 8%, var(--ux-surface));
     background: transparent;
-}
-
-.btn-outline-secondary {
-    border-color: color-mix(in srgb, var(--ux-border) 94%, var(--ux-text-muted));
-}
-
-.btn-outline-secondary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ux-text-muted) 8%, var(--ux-surface));
+    border-color: var(--ux-btn-outline-border);
+    color: var(--ux-btn-outline-color);
 }
 
 .btn-outline-info {
-    border-color: color-mix(in srgb, var(--ux-border) 92%, var(--ux-text-muted));
-    color: var(--ux-text);
-}
-
-.btn-outline-info:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ux-brand) 8%, var(--ux-surface));
+    --ux-btn-outline-border: color-mix(in srgb, var(--ux-border) 92%, var(--ux-text-muted));
+    --ux-btn-outline-hover-bg: color-mix(in srgb, var(--ux-brand) 8%, var(--ux-surface));
 }
 
 .btn-outline-danger {
-    border-color: color-mix(in srgb, var(--ux-danger) 48%, var(--ux-border));
-    color: color-mix(in srgb, var(--ux-danger) 82%, var(--ux-text));
+    --ux-btn-outline-color: color-mix(in srgb, var(--ux-danger) 82%, var(--ux-text));
+    --ux-btn-outline-border: color-mix(in srgb, var(--ux-danger) 48%, var(--ux-border));
+    --ux-btn-outline-hover-bg: color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface));
 }
 
+.btn-outline-secondary:hover:not(:disabled),
+.btn-outline-info:hover:not(:disabled),
 .btn-outline-danger:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ux-danger) 12%, var(--ux-surface));
+    background: var(--ux-btn-outline-hover-bg);
 }
 
 .btn-link {
@@ -1027,7 +1023,6 @@ html[data-bs-theme="dark"] .text-bg-info {
 .app-shell .ux-surface,
 .app-shell .card,
 .app-shell .alert,
-.app-shell .dropdown-menu,
 .app-shell .offcanvas {
     border-color: var(--ux-border) !important;
 }
@@ -1048,10 +1043,20 @@ html[data-bs-theme="dark"] .text-bg-info {
 }
 
 .ux-btn {
+    --ux-shell-btn-color: var(--ux-text);
+    --ux-shell-btn-bg: color-mix(in srgb, var(--ux-surface) 96%, transparent);
+    --ux-shell-btn-border: color-mix(in srgb, var(--ux-border) 92%, var(--ux-text-muted));
+    --ux-shell-btn-hover-bg: color-mix(in srgb, var(--ux-brand) 9%, var(--ux-surface));
+    --ux-shell-btn-hover-border: color-mix(in srgb, var(--ux-brand) 30%, var(--ux-border));
+    --ux-shell-btn-active-color: var(--ux-text);
+    --ux-shell-btn-active-bg: color-mix(in srgb, var(--ux-brand) 18%, var(--ux-surface));
+    --ux-shell-btn-active-border: color-mix(in srgb, var(--ux-brand) 42%, var(--ux-border));
+    --ux-shell-btn-active-bg-dark: color-mix(in srgb, var(--ux-brand) 24%, var(--ux-surface-elevated));
+    --ux-shell-btn-active-border-dark: color-mix(in srgb, var(--ux-brand) 46%, var(--ux-border));
     border-radius: var(--ux-radius-sm) !important;
-    border: 1px solid color-mix(in srgb, var(--ux-border) 92%, var(--ux-text-muted)) !important;
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-surface) 96%, transparent) !important;
+    border: 1px solid var(--ux-shell-btn-border) !important;
+    color: var(--ux-shell-btn-color) !important;
+    background: var(--ux-shell-btn-bg) !important;
     font-weight: 600 !important;
 }
 
@@ -1063,67 +1068,57 @@ html[data-bs-theme="dark"] .text-bg-info {
 }
 
 .ux-btn:hover {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-brand) 9%, var(--ux-surface)) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 30%, var(--ux-border)) !important;
+    color: var(--ux-shell-btn-color) !important;
+    background: var(--ux-shell-btn-hover-bg) !important;
+    border-color: var(--ux-shell-btn-hover-border) !important;
 }
 
 .ux-btn-success {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-success) 10%, var(--ux-surface)) !important;
-    border-color: color-mix(in srgb, var(--ux-success) 26%, var(--ux-border)) !important;
-}
-
-.ux-btn-success:hover {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-success) 14%, var(--ux-surface)) !important;
-    border-color: color-mix(in srgb, var(--ux-success) 34%, var(--ux-border)) !important;
+    --ux-shell-btn-bg: color-mix(in srgb, var(--ux-success) 10%, var(--ux-surface));
+    --ux-shell-btn-border: color-mix(in srgb, var(--ux-success) 26%, var(--ux-border));
+    --ux-shell-btn-hover-bg: color-mix(in srgb, var(--ux-success) 14%, var(--ux-surface));
+    --ux-shell-btn-hover-border: color-mix(in srgb, var(--ux-success) 34%, var(--ux-border));
 }
 
 .ux-btn-danger {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-danger) 10%, var(--ux-surface)) !important;
-    border-color: color-mix(in srgb, var(--ux-danger) 28%, var(--ux-border)) !important;
-}
-
-.ux-btn-danger:hover {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-danger) 14%, var(--ux-surface)) !important;
-    border-color: color-mix(in srgb, var(--ux-danger) 36%, var(--ux-border)) !important;
+    --ux-shell-btn-bg: color-mix(in srgb, var(--ux-danger) 10%, var(--ux-surface));
+    --ux-shell-btn-border: color-mix(in srgb, var(--ux-danger) 28%, var(--ux-border));
+    --ux-shell-btn-hover-bg: color-mix(in srgb, var(--ux-danger) 14%, var(--ux-surface));
+    --ux-shell-btn-hover-border: color-mix(in srgb, var(--ux-danger) 36%, var(--ux-border));
 }
 
 .ux-btn.active,
 .ux-btn:active,
 .app-shell .btn.active.ux-btn {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-brand) 18%, var(--ux-surface)) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 42%, var(--ux-border)) !important;
+    color: var(--ux-shell-btn-active-color) !important;
+    background: var(--ux-shell-btn-active-bg) !important;
+    border-color: var(--ux-shell-btn-active-border) !important;
     box-shadow: none !important;
 }
 
 html[data-bs-theme="dark"] .ux-btn.active,
 html[data-bs-theme="dark"] .ux-btn:active,
 html[data-bs-theme="dark"] .app-shell .btn.active.ux-btn {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-brand) 24%, var(--ux-surface-elevated)) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 46%, var(--ux-border)) !important;
+    color: var(--ux-shell-btn-active-color) !important;
+    background: var(--ux-shell-btn-active-bg-dark) !important;
+    border-color: var(--ux-shell-btn-active-border-dark) !important;
     box-shadow: none !important;
 }
 
 .ux-btn-primary {
-    background: color-mix(in srgb, var(--ux-brand) 84%, #ffffff) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 62%, var(--ux-border)) !important;
-    color: #fff !important;
-}
-
-.ux-btn-primary:hover {
-    background: color-mix(in srgb, var(--ux-brand) 90%, #ffffff) !important;
+    --ux-shell-btn-color: #ffffff;
+    --ux-shell-btn-bg: color-mix(in srgb, var(--ux-brand) 84%, #ffffff);
+    --ux-shell-btn-border: color-mix(in srgb, var(--ux-brand) 62%, var(--ux-border));
+    --ux-shell-btn-hover-bg: color-mix(in srgb, var(--ux-brand) 90%, #ffffff);
+    --ux-shell-btn-hover-border: var(--ux-shell-btn-border);
 }
 
 html[data-bs-theme="dark"] .ux-btn-primary {
-    color: var(--ux-text) !important;
-    background: color-mix(in srgb, var(--ux-brand) 24%, var(--ux-surface-elevated)) !important;
-    border-color: color-mix(in srgb, var(--ux-brand) 34%, var(--ux-border)) !important;
+    --ux-shell-btn-color: var(--ux-text);
+    --ux-shell-btn-bg: color-mix(in srgb, var(--ux-brand) 24%, var(--ux-surface-elevated));
+    --ux-shell-btn-border: color-mix(in srgb, var(--ux-brand) 34%, var(--ux-border));
+    --ux-shell-btn-hover-bg: var(--ux-shell-btn-bg);
+    --ux-shell-btn-hover-border: var(--ux-shell-btn-border);
 }
 
 .ux-muted {
@@ -1152,43 +1147,15 @@ html[data-bs-theme="dark"] .ux-btn-primary {
     padding-bottom: 0.18rem;
 }
 
-.app-shell .form-control,
-.app-shell .form-select,
-.app-shell .form-control-sm {
-    border-radius: var(--ux-radius-sm) !important;
-    border-color: var(--ux-border) !important;
-    background-color: color-mix(in srgb, var(--ux-surface) 90%, transparent) !important;
-    color: var(--ux-text) !important;
-}
-
-.app-shell .form-control:focus,
-.app-shell .form-select:focus,
 .app-shell .btn:focus-visible,
 .app-shell a:focus-visible {
     outline: none;
     box-shadow: 0 0 0 0.16rem color-mix(in srgb, var(--ux-brand) 24%, transparent) !important;
 }
 
-html[data-bs-theme="dark"] .app-shell .form-control:focus,
-html[data-bs-theme="dark"] .app-shell .form-select:focus,
 html[data-bs-theme="dark"] .app-shell .btn:focus-visible,
 html[data-bs-theme="dark"] .app-shell a:focus-visible {
     box-shadow: 0 0 0 0.12rem color-mix(in srgb, var(--ux-brand) 14%, transparent) !important;
-}
-
-.app-shell .dropdown-menu {
-    background: color-mix(in srgb, var(--ux-surface-elevated) 95%, transparent);
-    border-radius: var(--ux-radius-sm);
-    box-shadow: var(--ux-shadow-sm);
-    z-index: 25000;
-}
-
-.app-shell .dropdown-item {
-    color: var(--ux-text);
-}
-
-.app-shell .dropdown-item:hover {
-    background-color: color-mix(in srgb, var(--ux-brand) 14%, transparent);
 }
 
 .app-shell .table {

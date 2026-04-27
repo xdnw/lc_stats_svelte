@@ -112,9 +112,28 @@
 
   .ux-navbar-search-input {
     min-height: 2rem;
+    min-width: 0;
+    padding: 0.24rem 0.46rem;
+    border: 1px solid var(--ux-border);
+    background: color-mix(in srgb, var(--ux-surface) 90%, transparent);
+    color: var(--ux-text);
     font-size: var(--ux-text-md);
     border-top-right-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
+  }
+
+  .ux-navbar-search-input::placeholder {
+    color: var(--ux-text-muted);
+  }
+
+  .ux-navbar-search-input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--ux-brand) 42%, var(--ux-border));
+    box-shadow: 0 0 0 0.16rem color-mix(in srgb, var(--ux-brand) 24%, transparent);
+  }
+
+  :global(html[data-bs-theme="dark"]) .ux-navbar-search-input:focus {
+    box-shadow: 0 0 0 0.12rem color-mix(in srgb, var(--ux-brand) 14%, transparent);
   }
 
   .ux-navbar-search-button {

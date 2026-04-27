@@ -27,7 +27,7 @@ describe("conflict target finder urls", () => {
         );
     });
 
-    it("uses only the enemy selector for raid and damage pages", () => {
+    it("uses only the enemy selector for raid, damage, and spy pages", () => {
         expect(
             buildConflictTargetFinderUrl({
                 mode: "raid",
@@ -43,6 +43,14 @@ describe("conflict target finder urls", () => {
                 enemyAllianceIds: [999, 111],
             }),
         ).toBe("https://www.locutus.link/#/damage?selector=AA:999,AA:111");
+
+        expect(
+            buildConflictTargetFinderUrl({
+                mode: "spy",
+                sideAllianceIds: [1234, 5678],
+                enemyAllianceIds: [999, 111],
+            }),
+        ).toBe("https://www.locutus.link/#/spy?selector=AA:999,AA:111");
     });
 
     it("uses the same normalized readiness rule for cards and modal links", () => {
