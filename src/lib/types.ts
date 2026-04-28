@@ -124,5 +124,6 @@ export interface GraphData {
     metric_names: string[],
     metrics_day: number[],
     metrics_turn: number[],
+    metrics_event?: number[],
     coalitions: [GraphCoalitionData, GraphCoalitionData]
 }

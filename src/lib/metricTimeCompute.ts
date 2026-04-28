@@ -126,6 +126,7 @@ function readAllianceMetricValue(options: {
     allianceIndex: number;
     time: number;
     isTurnMetric: boolean;
+    isEventMetric: boolean;
     metricIndex: number;
     normalizeMode: MetricNormalization | null;
     cityRange: CityIndexRange;
@@ -135,6 +136,7 @@ function readAllianceMetricValue(options: {
         allianceIndex,
         time,
         isTurnMetric,
+        isEventMetric,
         metricIndex,
         normalizeMode,
         cityRange,
@@ -153,6 +155,7 @@ function readAllianceMetricValue(options: {
         coalition,
         allianceIndex,
         isTurnMetric,
+        isEventMetric,
         metricIndex,
         timeIndex,
     });
@@ -243,6 +246,7 @@ function buildAllianceSeriesSnapshot(options: {
     allianceIndex: number;
     metricIndex: number;
     isTurnMetric: boolean;
+    isEventMetric: boolean;
     normalizeMode: MetricNormalization | null;
     cumulative: boolean;
     cityRange: CityIndexRange;
@@ -252,6 +256,7 @@ function buildAllianceSeriesSnapshot(options: {
         allianceIndex,
         metricIndex,
         isTurnMetric,
+        isEventMetric,
         normalizeMode,
         cumulative,
         cityRange,
@@ -266,6 +271,7 @@ function buildAllianceSeriesSnapshot(options: {
             allianceIndex,
             time,
             isTurnMetric,
+            isEventMetric,
             metricIndex,
             normalizeMode,
             cityRange,
@@ -287,6 +293,7 @@ function buildCoalitionSeriesSnapshot(options: {
     selectedAllianceIndexes: number[];
     metricIndex: number;
     isTurnMetric: boolean;
+    isEventMetric: boolean;
     normalizeMode: MetricNormalization | null;
     cumulative: boolean;
     cityRange: CityIndexRange;
@@ -296,6 +303,7 @@ function buildCoalitionSeriesSnapshot(options: {
         selectedAllianceIndexes,
         metricIndex,
         isTurnMetric,
+        isEventMetric,
         normalizeMode,
         cumulative,
         cityRange,
@@ -315,6 +323,7 @@ function buildCoalitionSeriesSnapshot(options: {
                 allianceIndex,
                 time,
                 isTurnMetric,
+                isEventMetric,
                 metricIndex,
                 normalizeMode,
                 cityRange,
@@ -407,6 +416,7 @@ export function buildMetricTimeSeries(options: {
 
     const metricIndex = metricAccessors.metric_indexes[0] ?? -1;
     const isTurnMetric = metricAccessors.metric_is_turn[0] ?? false;
+    const isEventMetric = metricAccessors.metric_is_event[0] ?? false;
     const normalizeMode = metricAccessors.metric_normalize[0] ?? null;
     if (metricIndex < 0) {
         return null;
@@ -443,6 +453,7 @@ export function buildMetricTimeSeries(options: {
                 selectedAllianceIndexes,
                 metricIndex,
                 isTurnMetric,
+                isEventMetric,
                 normalizeMode,
                 cumulative: options.metric.cumulative,
                 cityRange: cityIndexRange,
@@ -473,6 +484,7 @@ export function buildMetricTimeSeries(options: {
                 allianceIndex,
                 metricIndex,
                 isTurnMetric,
+                isEventMetric,
                 normalizeMode,
                 cumulative: options.metric.cumulative,
                 cityRange: cityIndexRange,

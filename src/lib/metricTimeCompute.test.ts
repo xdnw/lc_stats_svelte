@@ -408,4 +408,76 @@ describe("metricTimeCompute", () => {
         expect(result.series[0]?.values).toEqual([0.4, 0.2]);
         expect(result.series[1]?.values).toEqual([0.5, 0.5]);
     });
+
+    it("does not double-count carried-forward sparse values for cumulative event metrics", () => {
+        // Alliance has loss on day 1 (1B), no loss on day 2, loss on day 3 (0.5B).
+        // Sparse encoding only emits frames at days 1 and 3. With delta semantics
+        // day 2's snapshot would carry forward day 1's value, inflating the
+        // cumulative total to 2.5B. With event semantics the running total is
+        // 1, 1, 1.5 — matching the actual losses.
+        const eventGraph: GraphData = {
+            name: "Event",
+            start: 0,
+            end: 0,
+            turn_start: 0,
+            turn_end: 0,
+            metric_names: ["nation", "loss:loss_value"],
+            metrics_day: [0, 1],
+            metrics_turn: [],
+            metrics_event: [1],
+            coalitions: [
+                {
+                    name: "Red",
+                    alliance_ids: [101],
+                    alliance_names: ["A"],
+                    cities: [10],
+                    turn: {
+                        range: [0, 0],
+                        data: [],
+                    },
+                    day: {
+                        range: [1, 3],
+                        encoding: "sparse_patch_v3",
+                        data: [
+                            [],
+                            [
+                                [
+                                    [0, 0, 1],
+                                    [2, 0, 0.5],
+                                ],
+                            ],
+                        ],
+                    },
+                },
+                {
+                    name: "Blue",
+                    alliance_ids: [201],
+                    alliance_names: ["B"],
+                    cities: [10],
+                    turn: {
+                        range: [0, 0],
+                        data: [],
+                    },
+                    day: {
+                        range: [1, 3],
+                        encoding: "sparse_patch_v3",
+                        data: [[], []],
+                    },
+                },
+            ],
+        };
+
+        const result = buildMetricTimeSeries({
+            data: eventGraph,
+            metric: {
+                name: "loss:loss_value",
+                cumulative: true,
+                normalize: false,
+            },
+            selectedAllianceIds: [101],
+            aggregationMode: "alliance",
+        });
+
+        expect(result?.series[0]?.values).toEqual([1, 1, 1.5]);
+    });
 });

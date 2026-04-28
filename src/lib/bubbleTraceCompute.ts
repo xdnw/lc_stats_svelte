@@ -23,6 +23,7 @@ type MetricTuple = [TierMetric, TierMetric, TierMetric];
 type MetricKernel = {
     metricIndexes: number[];
     metricIsTurn: boolean[];
+    metricIsEvent: boolean[];
     metricNormalize: Array<MetricNormalization | null>;
     isAnyTurn: boolean;
 };
@@ -104,6 +105,7 @@ function buildMetricKernel(
     return {
         metricIndexes: metricAccessors.metric_indexes,
         metricIsTurn: metricAccessors.metric_is_turn,
+        metricIsEvent: metricAccessors.metric_is_event,
         metricNormalize: metricAccessors.metric_normalize,
         isAnyTurn: metricAccessors.isAnyTurn,
     };
@@ -193,10 +195,12 @@ function generateAllianceTraces(options: {
                     if (!isTurnMetric && lastDay === day) continue;
 
                     const dataIndex = options.kernel.metricIndexes[metricIndex];
+                    const isEventMetric = options.kernel.metricIsEvent[metricIndex];
                     const valuesByCity = readGraphTimelineSnapshot({
                         coalition,
                         allianceIndex,
                         isTurnMetric,
+                        isEventMetric,
                         metricIndex: dataIndex,
                         timeIndex: isTurnMetric ? turn - turnStart : day - dayStart,
                     });
@@ -324,6 +328,7 @@ function generateCoalitionTraces(options: {
 
                 if (!aggregate) {
                     const dataIndex = options.kernel.metricIndexes[metricIndex];
+                    const isEventMetric = options.kernel.metricIsEvent[metricIndex];
                     let numerator = 0;
                     let denominator = 0;
 
@@ -332,6 +337,7 @@ function generateCoalitionTraces(options: {
                             coalition,
                             allianceIndex,
                             isTurnMetric,
+                            isEventMetric,
                             metricIndex: dataIndex,
                             timeIndex: isTurnMetric ? turn - turnStart : day - dayStart,
                         });

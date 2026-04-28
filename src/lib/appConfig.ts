@@ -1,6 +1,8 @@
 import * as publicEnv from "$env/static/public";
 
-const staticPublicEnv = publicEnv as Partial<Record<"PUBLIC_DATA_ORIGIN", string>>;
+const staticPublicEnv = publicEnv as Partial<
+    Record<"PUBLIC_API_ORIGIN" | "PUBLIC_DATA_ORIGIN" | "PUBLIC_LEGACY_SEARCH_PAGE_ORIGIN", string>
+>;
 
 export type AppVersion = {
     conflicts: number;
@@ -21,6 +23,8 @@ export type AppConfig = {
     application: string;
     admin_id: number;
     admin_nation: number;
+    api_origin: string;
+    legacy_search_page_origin: string;
     data_origin: string;
     discord_invite: string;
     email: string;
@@ -30,15 +34,29 @@ export type AppConfig = {
     version: AppVersion;
 };
 
+const DEFAULT_API_ORIGIN = "https://api.locutus.link/api";
+const DEFAULT_LEGACY_SEARCH_PAGE_ORIGIN = "https://api.locutus.link/page";
 const DEFAULT_DATA_ORIGIN = "https://data.locutus.link";
 
-function normalizeDataOrigin(value?: string): string {
+function normalizeOrigin(value: string | undefined, fallback: string): string {
     const trimmed = value?.trim();
     if (!trimmed) {
-        return DEFAULT_DATA_ORIGIN;
+        return fallback;
     }
 
     return trimmed.replace(/\/+$/, "");
+}
+
+function readPublicApiOrigin(): string | undefined {
+    return staticPublicEnv.PUBLIC_API_ORIGIN;
+}
+
+function readPublicLegacySearchPageOrigin(): string | undefined {
+    return staticPublicEnv.PUBLIC_LEGACY_SEARCH_PAGE_ORIGIN;
+}
+
+function normalizeDataOrigin(value?: string): string {
+    return normalizeOrigin(value, DEFAULT_DATA_ORIGIN);
 }
 
 function readPublicDataOrigin(): string | undefined {
@@ -64,6 +82,11 @@ export const appConfig: AppConfig = {
     application: "Locutus",
     admin_id: 664156861033086987,
     admin_nation: 189573,
+    api_origin: normalizeOrigin(readPublicApiOrigin(), DEFAULT_API_ORIGIN),
+    legacy_search_page_origin: normalizeOrigin(
+        readPublicLegacySearchPageOrigin(),
+        DEFAULT_LEGACY_SEARCH_PAGE_ORIGIN,
+    ),
     data_origin: normalizeDataOrigin(readPublicDataOrigin()),
     discord_invite: "cUuskPDrB7",
     email: "jessepaleg@gmail.com",

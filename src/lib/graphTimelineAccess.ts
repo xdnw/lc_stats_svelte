@@ -260,6 +260,92 @@ function advanceIndexedTimelineCursor(
     return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
 }
 
+function decodeIndexedEventFrame(
+    frame: IndexedGraphPatchFrame,
+    cityCount: number,
+): number[] {
+    const result = Array.from({ length: cityCount }, () => 0);
+    if (!Array.isArray(frame) || frame.length < 3) {
+        return result;
+    }
+
+    const patchMode = Math.trunc(Number(frame[1] ?? Number.NaN));
+    if (Number.isFinite(patchMode) && patchMode < 0) {
+        const maskWordCount = -patchMode;
+        const maskStart = 2;
+        const valueStart = maskStart + maskWordCount;
+        if (frame.length <= valueStart) return result;
+
+        let valueIndex = valueStart;
+        for (let wordIndex = 0; wordIndex < maskWordCount; wordIndex += 1) {
+            let maskWord = Math.trunc(Number(frame[maskStart + wordIndex] ?? Number.NaN));
+            if (!Number.isFinite(maskWord) || maskWord <= 0) continue;
+
+            const cityBase = wordIndex * PATCH_MASK_BITS;
+            while (maskWord !== 0 && valueIndex < frame.length) {
+                const lowestBit = maskWord & -maskWord;
+                const bitIndex = 31 - Math.clz32(lowestBit);
+                const cityIndex = cityBase + bitIndex;
+                const value = Number(frame[valueIndex]);
+                if (
+                    Number.isFinite(value) &&
+                    cityIndex >= 0 &&
+                    cityIndex < cityCount
+                ) {
+                    result[cityIndex] = value;
+                }
+                maskWord &= maskWord - 1;
+                valueIndex += 1;
+            }
+        }
+        return result;
+    }
+
+    for (let patchIndex = 1; patchIndex + 1 < frame.length; patchIndex += 2) {
+        const cityIndex = Math.trunc(Number(frame[patchIndex] ?? Number.NaN));
+        const value = Number(frame[patchIndex + 1]);
+        if (
+            Number.isFinite(cityIndex) &&
+            cityIndex >= 0 &&
+            cityIndex < cityCount &&
+            Number.isFinite(value)
+        ) {
+            result[cityIndex] = value;
+        }
+    }
+    return result;
+}
+
+function advanceIndexedEventTimelineCursor(
+    cursor: TimelineCursor,
+    timeline: IndexedGraphPatchTimeline,
+    timeIndex: number,
+    cityCount: number,
+): number[] {
+    if (timeline.length === 0) {
+        return getZeroFrame(cityCount);
+    }
+
+    while (cursor.cursor + 1 < timeline.length) {
+        const nextFrame = timeline[cursor.cursor + 1];
+        const nextFrameTimeOffset = resolveIndexedFrameTimeOffset(nextFrame);
+        if (nextFrameTimeOffset == null || nextFrameTimeOffset > timeIndex) {
+            break;
+        }
+
+        cursor.cursor += 1;
+        cursor.lastAppliedTimeIndex = nextFrameTimeOffset;
+        cursor.lastFrame = decodeIndexedEventFrame(nextFrame, cityCount);
+        cursor.snapshot = cursor.lastFrame;
+        cursor.hasSnapshot = true;
+    }
+
+    if (cursor.lastAppliedTimeIndex === timeIndex && cursor.hasSnapshot) {
+        return cursor.lastFrame;
+    }
+    return getZeroFrame(cityCount);
+}
+
 function resolveTimelineStartOffset(
     timelineRoot: GraphTimelineRoot,
     allianceIndex: number,
@@ -294,11 +380,12 @@ function usesIndexedPatchEncoding(timelineRoot: GraphTimelineRoot): boolean {
 export function readGraphTimelineSnapshot(options: {
     coalition: GraphCoalitionData;
     isTurnMetric: boolean;
+    isEventMetric?: boolean;
     metricIndex: number;
     allianceIndex: number;
     timeIndex: number;
 }): number[] | undefined {
-    const { coalition, isTurnMetric, metricIndex, allianceIndex, timeIndex } = options;
+    const { coalition, isTurnMetric, isEventMetric, metricIndex, allianceIndex, timeIndex } = options;
     if (timeIndex < 0) {
         return undefined;
     }
@@ -323,6 +410,15 @@ export function readGraphTimelineSnapshot(options: {
     if (usesIndexedPatchEncoding(timelineRoot)) {
         if (timeIndex < cursor.lastAppliedTimeIndex) {
             resetTimelineCursor(cursor, coalition.cities.length);
+        }
+
+        if (isEventMetric) {
+            return advanceIndexedEventTimelineCursor(
+                cursor,
+                timeline as IndexedGraphPatchTimeline,
+                timeIndex,
+                coalition.cities.length,
+            );
         }
 
         return advanceIndexedTimelineCursor(

@@ -32,9 +32,27 @@ export type MetricAccessors = {
     metric_ids: number[];
     metric_indexes: number[];
     metric_is_turn: boolean[];
+    metric_is_event: boolean[];
     metric_normalize: Array<MetricNormalization | null>;
     isAnyTurn: boolean;
 };
+
+const EVENT_METRIC_NAME_PREFIXES = ["loss:", "dealt:", "def:", "off:"];
+
+function isEventMetricName(name: string): boolean {
+    for (let i = 0; i < EVENT_METRIC_NAME_PREFIXES.length; i += 1) {
+        if (name.startsWith(EVENT_METRIC_NAME_PREFIXES[i]!)) return true;
+    }
+    return false;
+}
+
+function isEventMetricId(data: GraphData, metricId: number): boolean {
+    if (data.metrics_event && data.metrics_event.includes(metricId)) {
+        return true;
+    }
+    const name = data.metric_names[metricId];
+    return name != null && isEventMetricName(name);
+}
 
 function findDayMetricIndex(data: GraphData, metricName: string): number {
     const metricId = data.metric_names.indexOf(metricName);
@@ -85,6 +103,7 @@ export function resolveMetricAccessors(
     let metric_ids: number[] = [];
     let metric_indexes: number[] = [];
     let metric_is_turn: boolean[] = [];
+    let metric_is_event: boolean[] = [];
     let metric_normalize: Array<MetricNormalization | null> = [];
     const nationMetricIndex = findDayMetricIndex(data, NATION_METRIC_NAME);
     if (nationMetricIndex === -1) {
@@ -102,6 +121,7 @@ export function resolveMetricAccessors(
         metric_ids.push(metric_id);
         let is_turn = data.metrics_turn.includes(metric_id);
         metric_is_turn.push(is_turn);
+        metric_is_event.push(isEventMetricId(data, metric_id));
         metric_indexes.push(
             is_turn
                 ? data.metrics_turn.indexOf(metric_id)
@@ -147,6 +167,7 @@ export function resolveMetricAccessors(
         metric_ids,
         metric_indexes,
         metric_is_turn,
+        metric_is_event,
         metric_normalize,
         isAnyTurn,
     };

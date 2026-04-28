@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { appConfig } from "$lib/appConfig";
   import Icon from "./Icon.svelte";
 
   let searchQuery = "";
@@ -27,7 +28,7 @@
     syncThemeState();
   }
 
-  const searchUrl = "https://api.locutus.link/page/search/";
+  const searchUrl = `${appConfig.legacy_search_page_origin}/search/`;
 
   function handleSearch(event: Event) {
     event.preventDefault();

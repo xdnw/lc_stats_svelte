@@ -98,6 +98,7 @@ export function getDataSetsByTime(
 
     let metric_indexes = metricAccessors.metric_indexes;
     let metric_is_turn = metricAccessors.metric_is_turn;
+    let metric_is_event = metricAccessors.metric_is_event;
     let metric_normalize = metricAccessors.metric_normalize;
     let isAnyTurn = metricAccessors.isAnyTurn;
     let len = stackByAlliance
@@ -263,10 +264,12 @@ export function getDataSetsByTime(
                     }
 
                     let metric_index = metric_indexes[k];
+                    let is_event = metric_is_event[k];
                     let value_by_city = readGraphTimelineSnapshot({
                         coalition,
                         allianceIndex: j,
                         isTurnMetric: is_turn,
+                        isEventMetric: is_event,
                         metricIndex: metric_index,
                         timeIndex: metricI,
                     });

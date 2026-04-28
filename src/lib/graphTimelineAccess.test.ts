@@ -431,4 +431,42 @@ describe("graphTimelineAccess", () => {
         expect(result?.series[0]?.values).toEqual([5, 5, 4, 1]);
         expect(result?.series[1]?.values).toEqual([Number.NaN, 5, 5, 6]);
     });
+
+    it("event metrics do not carry forward sparse patch values across gaps", () => {
+        const coalition = sparsePatchGraphFixture.coalitions[0];
+
+        // Frame at time 0 sets [2, 3]; nothing at time 1; frame at time 2 sets city0=1.
+        // In delta mode the time-1 snapshot is [2, 3]; in event mode it must be [0, 0].
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                isEventMetric: true,
+                metricIndex: 0,
+                timeIndex: 0,
+            }),
+        ).toEqual([2, 3]);
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                isEventMetric: true,
+                metricIndex: 0,
+                timeIndex: 1,
+            }),
+        ).toEqual([0, 0]);
+        // At time 2 only city0 is in the frame, city1 must NOT carry forward.
+        expect(
+            readGraphTimelineSnapshot({
+                coalition,
+                allianceIndex: 0,
+                isTurnMetric: false,
+                isEventMetric: true,
+                metricIndex: 0,
+                timeIndex: 2,
+            }),
+        ).toEqual([1, 0]);
+    });
 });
