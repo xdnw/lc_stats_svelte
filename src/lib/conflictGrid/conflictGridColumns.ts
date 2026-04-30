@@ -1,4 +1,5 @@
 import type { GridColumnDefinition } from "../grid/types";
+import type { ConflictCustomColumnConfig } from "../conflictCustomColumns";
 import type { Conflict } from "../types";
 import { trimHeader } from "../warWeb";
 
@@ -27,10 +28,20 @@ export type ConflictGridMetricColumnSpec = GridColumnDefinition & {
     valueKind: ConflictValueKind;
 };
 
+export type ConflictGridCustomColumnSpec = GridColumnDefinition & {
+    kind: "custom";
+    config: ConflictCustomColumnConfig;
+};
+
+export type ConflictGridNumericColumnSpec =
+    | ConflictGridMetricColumnSpec
+    | ConflictGridCustomColumnSpec;
+
 export type ConflictGridColumnSpec =
     | ConflictGridNameColumnSpec
     | ConflictGridAllianceColumnSpec
-    | ConflictGridMetricColumnSpec;
+    | ConflictGridMetricColumnSpec
+    | ConflictGridCustomColumnSpec;
 
 function appendUniqueColumns(
     target: ConflictGridColumnSpec[],
@@ -70,6 +81,7 @@ function createMetricColumnSpec(
         summary: "sum-avg",
         detailsEligible: true,
         alwaysVisible: false,
+        metricEligible: true,
         kind: "metric",
         metricKind,
         headerIndex,
@@ -81,6 +93,57 @@ export function isConflictMetricColumnSpec(
     column: ConflictGridColumnSpec,
 ): column is ConflictGridMetricColumnSpec {
     return column.kind === "metric";
+}
+
+export function isConflictNumericColumnSpec(
+    column: ConflictGridColumnSpec,
+): column is ConflictGridNumericColumnSpec {
+    return column.kind === "metric" || column.kind === "custom";
+}
+
+function customColumnSummary(
+    config: ConflictCustomColumnConfig,
+): GridColumnDefinition["summary"] {
+    if (
+        config.kind === "row-formula" &&
+        config.formula.kind === "numeric" &&
+        (config.formula.display === "number" || config.formula.display === "money")
+    ) {
+        return "sum-avg";
+    }
+    if (
+        config.kind === "member-rollup" &&
+        config.reducer === "sum" &&
+        (config.display === "number" || config.display === "money")
+    ) {
+        return "sum-avg";
+    }
+    return null;
+}
+
+function createCustomColumnSpec(
+    config: ConflictCustomColumnConfig,
+): ConflictGridCustomColumnSpec {
+    return {
+        key: config.id,
+        title: config.label,
+        widthHint: "fit",
+        sortable: "number",
+        filterable: false,
+        summary: customColumnSummary(config),
+        detailsEligible: true,
+        exportLabel: config.label,
+        alwaysVisible: false,
+        metricEligible: false,
+        kind: "custom",
+        config,
+    };
+}
+
+export function buildConflictCustomGridColumnSpecs(
+    configs: ConflictCustomColumnConfig[],
+): ConflictGridCustomColumnSpec[] {
+    return configs.map((config) => createCustomColumnSpec(config));
 }
 
 export function buildConflictGridColumnSpecs(
@@ -96,6 +159,7 @@ export function buildConflictGridColumnSpecs(
             summary: null,
             detailsEligible: false,
             alwaysVisible: true,
+            metricEligible: false,
             kind: "name",
         },
         {
@@ -107,6 +171,7 @@ export function buildConflictGridColumnSpecs(
             summary: null,
             detailsEligible: false,
             alwaysVisible: false,
+            metricEligible: false,
             kind: "alliance",
         },
     ];

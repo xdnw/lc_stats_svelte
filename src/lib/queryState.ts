@@ -75,6 +75,7 @@ function createCompressedQueryCodec(): QueryParamCodec {
 const queryParamCodecs: Record<string, QueryParamCodec> = {
     kpiw: createCompressedQueryCodec(),
     grid: createCompressedQueryCodec(),
+    cc: createCompressedQueryCodec(),
 };
 
 export type SetQueryParamOptions = {

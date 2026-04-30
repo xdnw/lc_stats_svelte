@@ -56,6 +56,7 @@ export type GridColumnDefinition = {
     detailsEligible?: boolean;
     exportLabel?: string;
     alwaysVisible?: boolean;
+    metricEligible?: boolean;
 };
 
 export type GridSort = {

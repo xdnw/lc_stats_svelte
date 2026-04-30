@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { sanitizeConflictCustomColumn } from "../conflictCustomColumns";
 import { encodeGridSelectionFilterValue } from "../grid/filterValue";
 import type { GridQueryState } from "../grid/types";
 import type { MetricCard, RankingCard } from "../kpi";
+import type { ConflictGridViewConfig } from "./protocol";
 import type { Conflict } from "../types";
 import { createConflictGridDataset } from "./dataset";
 import { ConflictGridLayout } from "./rowIds";
@@ -86,6 +88,139 @@ function createConflictFixture(): Conflict {
                 ],
             ] as unknown as [][][],
         },
+    };
+}
+
+function createSyntheticConflictFixture(): Conflict {
+    return {
+        name: "Synthetic Fixture Conflict",
+        wiki: "synthetic-fixture-conflict",
+        start: 1000,
+        end: 2000,
+        cb: "Synthetic Fixture CB",
+        status: "Active",
+        posts: {},
+        coalitions: [
+            {
+                name: "Red Coalition",
+                alliance_ids: [101, 102],
+                alliance_names: ["Red Alliance", "Gold Alliance"],
+                nation_ids: [1001, 1002, 1003],
+                nation_aa: [101, 101, 102],
+                nation_names: ["Red One", "Red Two", "Gold One"],
+                counts: [[], []],
+                damage: [
+                    [23, 2],
+                    [60, 5],
+                    [15, 1],
+                    [40, 3],
+                    [8, 1],
+                    [20, 2],
+                    [10, 1],
+                    [30, 3],
+                    [5, 0],
+                    [10, 0],
+                    [8, 1],
+                    [20, 2],
+                ] as unknown as [number[], number[]],
+            },
+            {
+                name: "Blue Coalition",
+                alliance_ids: [202],
+                alliance_names: ["Blue Alliance"],
+                nation_ids: [2001, 2002],
+                nation_aa: [202, 202],
+                nation_names: ["Blue One", "Blue Two"],
+                counts: [[], []],
+                damage: [
+                    [13, 2],
+                    [40, 5],
+                    [13, 2],
+                    [40, 5],
+                    [6, 2],
+                    [15, 1],
+                    [7, 0],
+                    [25, 4],
+                ] as unknown as [number[], number[]],
+            },
+        ],
+        damage_header: ["loss_value", "wars"],
+        header_type: [0, 1],
+        war_web: {
+            headers: ["wars"],
+            data: [
+                [
+                    [0, 5],
+                    [7, 0],
+                ],
+            ] as unknown as [][][],
+        },
+    };
+}
+
+function createCustomViewConfig(): ConflictGridViewConfig {
+    return {
+        customColumns: [
+            sanitizeConflictCustomColumn({
+                kind: "member-rollup",
+                label: "Count of nations with off:wars > 1",
+                reducer: "count",
+                display: "number",
+                expr: {
+                    kind: "compare",
+                    op: "gt",
+                    left: { kind: "metric", metric: "off:wars" },
+                    right: { kind: "value", value: 1 },
+                },
+            })!,
+            sanitizeConflictCustomColumn({
+                kind: "member-rollup",
+                label: "Share of nations with off:wars > 1",
+                reducer: "share",
+                display: "percent",
+                expr: {
+                    kind: "compare",
+                    op: "gt",
+                    left: { kind: "metric", metric: "off:wars" },
+                    right: { kind: "value", value: 1 },
+                },
+            })!,
+        ],
+    };
+}
+
+function createRowFormulaViewConfig(): ConflictGridViewConfig {
+    return {
+        customColumns: [
+            sanitizeConflictCustomColumn({
+                kind: "row-formula",
+                label: "Net damage delta",
+                formula: {
+                    kind: "numeric",
+                    display: "money",
+                    expr: {
+                        kind: "binary",
+                        op: "sub",
+                        left: { kind: "metric", metric: "dealt:damage" },
+                        right: { kind: "metric", metric: "loss:damage" },
+                    },
+                },
+            })!,
+            sanitizeConflictCustomColumn({
+                kind: "row-formula",
+                label: "Off beats def",
+                formula: {
+                    kind: "flag",
+                    display: "flag",
+                    expr: {
+                        kind: "compare",
+                        op: "gt",
+                        left: { kind: "metric", metric: "off:wars" },
+                        right: { kind: "metric", metric: "def:wars" },
+                    },
+                },
+            })!,
+        ],
     };
 }
 
@@ -521,5 +656,272 @@ describe("conflictGrid dataset", () => {
         );
 
         expect(secondSummary).toBe(firstSummary);
+    });
+
+    it("adds custom member rollups to coalition and alliance bootstraps but not nation bootstraps", () => {
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-synth-bootstrap",
+            conflictId: "test",
+            data: createSyntheticConflictFixture(),
+        });
+        const viewConfig = createCustomViewConfig();
+
+        const coalitionBootstrap = dataset.bootstrap(
+            ConflictGridLayout.COALITION,
+            viewConfig,
+        );
+        const allianceBootstrap = dataset.bootstrap(
+            ConflictGridLayout.ALLIANCE,
+            viewConfig,
+        );
+        const nationBootstrap = dataset.bootstrap(
+            ConflictGridLayout.NATION,
+            viewConfig,
+        );
+
+        const countColumnId = viewConfig.customColumns[0]?.id;
+        const shareColumnId = viewConfig.customColumns[1]?.id;
+
+        expect(countColumnId).toBeTruthy();
+        expect(shareColumnId).toBeTruthy();
+        expect(coalitionBootstrap.grid.columns).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    key: countColumnId,
+                    title: "Count of nations with off:wars > 1",
+                    summary: null,
+                    metricEligible: false,
+                }),
+                expect.objectContaining({
+                    key: shareColumnId,
+                    title: "Share of nations with off:wars > 1",
+                    summary: null,
+                    metricEligible: false,
+                }),
+            ]),
+        );
+        expect(allianceBootstrap.grid.columns.map((column) => column.key)).toEqual(
+            expect.arrayContaining([countColumnId!, shareColumnId!]),
+        );
+        expect(nationBootstrap.grid.columns.map((column) => column.key)).not.toEqual(
+            expect.arrayContaining([countColumnId!, shareColumnId!]),
+        );
+    });
+
+    it("computes coalition and alliance custom count/share values for sort, summary, export, and row details", () => {
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-synth-values",
+            conflictId: "test",
+            data: createSyntheticConflictFixture(),
+        });
+        const viewConfig = createCustomViewConfig();
+        const countColumnId = viewConfig.customColumns[0]!.id;
+        const shareColumnId = viewConfig.customColumns[1]!.id;
+
+        const coalitionPage = dataset.query(
+            ConflictGridLayout.COALITION,
+            createQueryState({
+                pageSize: "all",
+                visibleColumnKeys: ["name", countColumnId, shareColumnId],
+                columnOrderKeys: [
+                    "name",
+                    countColumnId,
+                    shareColumnId,
+                    "dealt:damage",
+                    "off:wars",
+                ],
+            }),
+            viewConfig,
+        );
+
+        expect(coalitionPage.rows[0]?.cells[countColumnId]).toMatchObject({
+            kind: "number",
+            value: 2,
+        });
+        expect((coalitionPage.rows[0]?.cells[shareColumnId] as { value: number }).value).toBeCloseTo(
+            66.6666666667,
+        );
+        expect(coalitionPage.rows[1]?.cells[countColumnId]).toMatchObject({
+            kind: "number",
+            value: 1,
+        });
+        expect((coalitionPage.rows[1]?.cells[shareColumnId] as { value: number }).value).toBe(50);
+
+        const coalitionSummary = dataset.querySummary(
+            ConflictGridLayout.COALITION,
+            createQueryState({
+                visibleColumnKeys: ["name", countColumnId, shareColumnId],
+                columnOrderKeys: ["name", countColumnId, shareColumnId],
+            }),
+            viewConfig,
+        );
+        expect(coalitionSummary[countColumnId]).toBeUndefined();
+        expect(coalitionSummary[shareColumnId]).toBeUndefined();
+
+        const alliancePage = dataset.query(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({
+                sort: { key: shareColumnId, dir: "desc" },
+                pageSize: "all",
+                visibleColumnKeys: ["name", countColumnId, shareColumnId],
+                columnOrderKeys: ["name", countColumnId, shareColumnId],
+            }),
+            viewConfig,
+        );
+        expect(alliancePage.rows.map((row) => row.id)).toEqual([102, 101, 202]);
+        expect((alliancePage.rows[0]?.cells[shareColumnId] as { value: number }).value).toBe(100);
+        expect((alliancePage.rows[1]?.cells[countColumnId] as { value: number }).value).toBe(1);
+
+        const exported = dataset.exportRows(
+            ConflictGridLayout.COALITION,
+            createQueryState({
+                visibleColumnKeys: ["name", countColumnId, shareColumnId],
+                columnOrderKeys: ["name", countColumnId, shareColumnId],
+            }),
+            viewConfig,
+        );
+        expect(exported.columns).toEqual([
+            "coalition",
+            "coalition_index",
+            "Count of nations with off:wars > 1",
+            "Share of nations with off:wars > 1",
+        ]);
+        expect(exported.rows[0]?.[2]).toBe(2);
+        expect(Number(exported.rows[0]?.[3])).toBeCloseTo(66.6666666667);
+
+        const details = dataset.getRowDetails(
+            ConflictGridLayout.COALITION,
+            0,
+            createQueryState({
+                visibleColumnKeys: ["name"],
+                columnOrderKeys: ["name", countColumnId, shareColumnId],
+            }),
+            viewConfig,
+        );
+        expect((details?.cells[countColumnId] as { value: number }).value).toBe(2);
+        expect((details?.cells[shareColumnId] as { value: number }).value).toBeCloseTo(
+            66.6666666667,
+        );
+    });
+
+    it("computes != custom member comparisons against both value and metric rhs", () => {
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-synth-neq",
+            conflictId: "test",
+            data: createSyntheticConflictFixture(),
+        });
+        const countNotEqualValue = sanitizeConflictCustomColumn({
+            kind: "member-rollup",
+            label: "Count of nations with both:wars != 0",
+            reducer: "count",
+            display: "number",
+            expr: {
+                kind: "compare",
+                op: "neq",
+                left: { kind: "metric", metric: "both:wars" },
+                right: { kind: "value", value: 0 },
+            },
+        })!;
+        const shareNotEqualMetric = sanitizeConflictCustomColumn({
+            kind: "member-rollup",
+            label: "Share of nations with off:wars != def:wars",
+            reducer: "share",
+            display: "percent",
+            expr: {
+                kind: "compare",
+                op: "neq",
+                left: { kind: "metric", metric: "off:wars" },
+                right: { kind: "metric", metric: "def:wars" },
+            },
+        })!;
+        const viewConfig = {
+            customColumns: [countNotEqualValue, shareNotEqualMetric],
+        };
+
+        const coalitionPage = dataset.query(
+            ConflictGridLayout.COALITION,
+            createQueryState({
+                pageSize: "all",
+                visibleColumnKeys: ["name", countNotEqualValue.id, shareNotEqualMetric.id],
+                columnOrderKeys: ["name", countNotEqualValue.id, shareNotEqualMetric.id],
+            }),
+            viewConfig,
+        );
+
+        expect((coalitionPage.rows[0]?.cells[countNotEqualValue.id] as { value: number }).value).toBe(2);
+        expect((coalitionPage.rows[1]?.cells[countNotEqualValue.id] as { value: number }).value).toBe(2);
+        expect((coalitionPage.rows[0]?.cells[shareNotEqualMetric.id] as { value: number }).value).toBeCloseTo(66.6666666667);
+        expect((coalitionPage.rows[1]?.cells[shareNotEqualMetric.id] as { value: number }).value).toBe(100);
+    });
+
+    it("computes row formulas on nation layout and renders flags as Yes or No while sorting numerically", () => {
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v-row-formula",
+            conflictId: "test",
+            data: createConflictFixture(),
+        });
+        const viewConfig = createRowFormulaViewConfig();
+        const numericColumnId = viewConfig.customColumns[0]!.id;
+        const flagColumnId = viewConfig.customColumns[1]!.id;
+
+        const nationBootstrap = dataset.bootstrap(
+            ConflictGridLayout.NATION,
+            viewConfig,
+        );
+        expect(nationBootstrap.grid.columns).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    key: numericColumnId,
+                    title: "Net damage delta",
+                    summary: "sum-avg",
+                    metricEligible: false,
+                }),
+                expect.objectContaining({
+                    key: flagColumnId,
+                    title: "Off beats def",
+                    summary: null,
+                    metricEligible: false,
+                }),
+            ]),
+        );
+
+        const nationPage = dataset.query(
+            ConflictGridLayout.NATION,
+            createQueryState({
+                sort: { key: flagColumnId, dir: "desc" },
+                pageSize: "all",
+                visibleColumnKeys: ["name", numericColumnId, flagColumnId],
+                columnOrderKeys: ["name", numericColumnId, flagColumnId],
+            }),
+            viewConfig,
+        );
+
+        expect(nationPage.rows.map((row) => row.id)).toEqual([1001, 2002]);
+        expect(nationPage.rows[0]?.cells[numericColumnId]).toMatchObject({
+            kind: "money",
+            value: 16,
+        });
+        expect(nationPage.rows[0]?.cells[flagColumnId]).toMatchObject({
+            kind: "text",
+            text: "Yes",
+        });
+        expect(nationPage.rows[1]?.cells[flagColumnId]).toMatchObject({
+            kind: "text",
+            text: "No",
+        });
+
+        const nationSummary = dataset.querySummary(
+            ConflictGridLayout.NATION,
+            createQueryState({
+                visibleColumnKeys: ["name", numericColumnId, flagColumnId],
+                columnOrderKeys: ["name", numericColumnId, flagColumnId],
+            }),
+            viewConfig,
+        );
+        expect(nationSummary[numericColumnId]).toEqual({
+            sum: 20,
+            avg: 10,
+        });
+        expect(nationSummary[flagColumnId]).toBeUndefined();
     });
 });

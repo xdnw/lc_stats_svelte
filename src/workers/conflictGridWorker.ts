@@ -94,7 +94,7 @@ async function handleRequest(request: ConflictGridWorkerRequest): Promise<unknow
 
     switch (request.action) {
         case "bootstrap": {
-            const payload = dataset.bootstrap(request.layout);
+            const payload = dataset.bootstrap(request.layout, request.viewConfig);
             return {
                 ...payload,
                 timings: {
@@ -104,19 +104,32 @@ async function handleRequest(request: ConflictGridWorkerRequest): Promise<unknow
             };
         }
         case "tableQuery":
-            return dataset.query(request.layout, request.state);
+            return dataset.query(request.layout, request.state, request.viewConfig);
         case "summaryQuery":
-            return dataset.querySummary(request.layout, request.state);
+            return dataset.querySummary(
+                request.layout,
+                request.state,
+                request.viewConfig,
+            );
         case "rowDetails":
             return dataset.getRowDetails(
                 request.layout,
                 request.rowId,
                 request.state,
+                request.viewConfig,
             );
         case "filteredRowIds":
-            return dataset.getFilteredRowIds(request.layout, request.state);
+            return dataset.getFilteredRowIds(
+                request.layout,
+                request.state,
+                request.viewConfig,
+            );
         case "export":
-            return dataset.exportRows(request.layout, request.state);
+            return dataset.exportRows(
+                request.layout,
+                request.state,
+                request.viewConfig,
+            );
         case "selectionSnapshot":
             return dataset.getSelectionSnapshot(
                 request.layout,

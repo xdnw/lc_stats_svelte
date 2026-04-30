@@ -10,6 +10,11 @@ import type {
 } from "../grid/types";
 import { incrementPerfCounter, startPerfSpan } from "../perf";
 import type { ConflictGridProviderClient } from "./providerClient";
+import {
+    getConflictGridViewHash,
+    normalizeConflictGridViewConfig,
+    type ConflictGridViewConfig,
+} from "./protocol";
 import type { ConflictGridLayoutValue } from "./rowIds";
 
 function normalizeViewportValue(value: number): number {
@@ -65,12 +70,23 @@ export function createConflictGridProvider(options: {
     layout: ConflictGridLayoutValue;
     defaultSort?: GridSort | null;
     defaultVisibleColumnKeys?: string[];
+    getViewConfig?: (() => ConflictGridViewConfig | null | undefined) | undefined;
 }): GridDataProvider {
-    let bootstrapPromise: Promise<GridBootstrapResult> | null = null;
+    const bootstrapByView = new Map<string, Promise<GridBootstrapResult>>();
+
+    function getViewConfig(): ConflictGridViewConfig {
+        return normalizeConflictGridViewConfig(options.getViewConfig?.());
+    }
 
     function bootstrap(): Promise<GridBootstrapResult> {
-        if (!bootstrapPromise) {
-            bootstrapPromise = options.client.bootstrap(options.layout).then((payload) => ({
+        const viewConfig = getViewConfig();
+        const viewHash = getConflictGridViewHash(viewConfig);
+        const cached = bootstrapByView.get(viewHash);
+        if (cached) {
+            return cached;
+        }
+
+        const nextBootstrap = options.client.bootstrap(options.layout, viewConfig).then((payload) => ({
                 columns: payload.grid.columns,
                 defaultSort: options.defaultSort ?? null,
                 defaultVisibleColumnKeys:
@@ -79,14 +95,15 @@ export function createConflictGridProvider(options: {
                         : payload.grid.columns.map((column) => column.key),
                 rowCount: payload.grid.rowCount,
             }));
-        }
-        return bootstrapPromise;
+        bootstrapByView.set(viewHash, nextBootstrap);
+        return nextBootstrap;
     }
 
     return {
         bootstrap,
         async query(state: GridQueryState): Promise<GridPageResult> {
             await bootstrap();
+            const viewConfig = getViewConfig();
             const viewport =
                 state.pageSize === "all"
                     ? normalizeViewport(state.viewport)
@@ -101,7 +118,11 @@ export function createConflictGridProvider(options: {
             );
 
             try {
-                const result = await options.client.query(options.layout, queryState);
+                const result = await options.client.query(
+                    options.layout,
+                    queryState,
+                    viewConfig,
+                );
                 incrementPerfCounter("conflict.grid.query.success", 1, {
                     ...perfTags,
                     filteredRowCount: result.filteredRowCount,
@@ -117,22 +138,39 @@ export function createConflictGridProvider(options: {
         },
         async querySummary(state) {
             await bootstrap();
-            return options.client.querySummary(options.layout, state);
+            return options.client.querySummary(
+                options.layout,
+                state,
+                getViewConfig(),
+            );
         },
         async getRowDetails(
             rowId: GridRowId,
             state: GridQueryState,
         ): Promise<GridPageRow | null> {
             await bootstrap();
-            return options.client.getRowDetails(options.layout, rowId, state);
+            return options.client.getRowDetails(
+                options.layout,
+                rowId,
+                state,
+                getViewConfig(),
+            );
         },
         async getFilteredRowIds(state: GridQueryState): Promise<GridRowId[]> {
             await bootstrap();
-            return options.client.getFilteredRowIds(options.layout, state);
+            return options.client.getFilteredRowIds(
+                options.layout,
+                state,
+                getViewConfig(),
+            );
         },
         async exportRows(state: GridQueryState): Promise<GridExportResult> {
             await bootstrap();
-            return options.client.exportRows(options.layout, state);
+            return options.client.exportRows(
+                options.layout,
+                state,
+                getViewConfig(),
+            );
         },
     };
 }

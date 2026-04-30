@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sanitizeConflictCustomColumn } from "../conflictCustomColumns";
 
 const requestWorkerRpc = vi.fn();
 
@@ -121,5 +122,98 @@ describe("warmConflictGridWorkerDataset", () => {
 
         expect(bootstrapCalls).toHaveLength(0);
         expect(prewarmCalls).toHaveLength(1);
+    });
+
+    it("keys bootstrap reuse by layout plus custom-column view hash", async () => {
+        const workerClient = await import("./workerClient");
+        const { ConflictGridLayout } = await import("./rowIds");
+
+        const client = workerClient.createConflictGridWorkerClient({
+            conflictId: "123",
+            version: "v1",
+        });
+
+        const firstView = {
+            customColumns: [
+                sanitizeConflictCustomColumn({
+                    kind: "member-rollup",
+                    label: "Count of nations with off:wars > 5",
+                    reducer: "count",
+                    display: "number",
+                    expr: {
+                        kind: "compare",
+                        op: "gt",
+                        left: { kind: "metric", metric: "off:wars" },
+                        right: { kind: "value", value: 5 },
+                    },
+                })!,
+            ],
+        };
+        const secondView = {
+            customColumns: [
+                sanitizeConflictCustomColumn({
+                    kind: "member-rollup",
+                    label: "Share of nations with both:wars = 0",
+                    reducer: "share",
+                    display: "percent",
+                    expr: {
+                        kind: "compare",
+                        op: "eq",
+                        left: { kind: "metric", metric: "both:wars" },
+                        right: { kind: "value", value: 0 },
+                    },
+                })!,
+            ],
+        };
+
+        await client.bootstrap(ConflictGridLayout.COALITION, firstView);
+        await client.bootstrap(ConflictGridLayout.COALITION, firstView);
+        await client.bootstrap(ConflictGridLayout.COALITION, secondView);
+
+        const bootstrapCalls = requestWorkerRpc.mock.calls.filter(
+            ([, payload]) => payload.action === "bootstrap",
+        );
+
+        expect(bootstrapCalls).toHaveLength(2);
+        expect(bootstrapCalls[0]?.[1]).toMatchObject({
+            layout: ConflictGridLayout.COALITION,
+            viewConfig: {
+                customColumns: [
+                    expect.objectContaining({
+                        id: expect.stringMatching(/^cc-/),
+                        kind: "member-rollup",
+                        label: "Count of nations with off:wars > 5",
+                        reducer: "count",
+                        display: "number",
+                        expr: {
+                            kind: "compare",
+                            op: "gt",
+                            left: { kind: "metric", metric: "off:wars" },
+                            right: { kind: "value", value: 5 },
+                        },
+                    }),
+                ],
+            },
+        });
+        expect(bootstrapCalls[1]?.[1]).toMatchObject({
+            layout: ConflictGridLayout.COALITION,
+            viewConfig: {
+                customColumns: [
+                    expect.objectContaining({
+                        id: expect.stringMatching(/^cc-/),
+                        kind: "member-rollup",
+                        label: "Share of nations with both:wars = 0",
+                        reducer: "share",
+                        display: "percent",
+                        expr: {
+                            kind: "compare",
+                            op: "eq",
+                            left: { kind: "metric", metric: "both:wars" },
+                            right: { kind: "value", value: 0 },
+                        },
+                    }),
+                ],
+            },
+        });
     });
 });

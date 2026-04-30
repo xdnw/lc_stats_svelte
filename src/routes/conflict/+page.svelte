@@ -15,6 +15,12 @@
         parseConflictLayoutQuery,
         serializeConflictLayoutQuery,
     } from "$lib/conflictLayoutQueryState";
+    import {
+        filterConflictCustomColumnsForLayout,
+        getConflictCustomColumnIdsForLayout,
+        type ConflictCustomColumnConfig,
+        type ConflictCustomMetricOption,
+    } from "$lib/conflictCustomColumns";
     import type { ConflictKpiProvider } from "$lib/conflictGrid/conflictKpiProvider";
     import { createConflictGridProvider } from "$lib/conflictGrid/conflictGridProvider";
     import type {
@@ -70,6 +76,7 @@
     } from "$lib/grid/queryState";
     import type {
         GridDataProvider,
+        GridBootstrapResult,
         GridPageResult,
         GridPageSize,
         GridQueryState,
@@ -116,6 +123,10 @@
     type SelectionModalComponent =
         typeof import("../../components/SelectionModal.svelte").default;
     type DataGridComponent = typeof import("$lib/grid/DataGrid.svelte").default;
+    type ConflictCustomColumnModalComponent =
+        typeof import("../../components/ConflictCustomColumnModal.svelte").default;
+    type ConflictCustomColumnAuthoringModule =
+        typeof import("$lib/conflictCustomColumnAuthoring");
 
     type KPIWidget = ConflictKPIWidget;
     const layouts = CONFLICT_TABLE_LAYOUT_PRESETS;
@@ -184,11 +195,27 @@
     let metricNormalizeByToAdd = "";
     let metricsOptions: string[] = [];
     let metricTitleByKey: Record<string, string> = {};
+    let customMetricSourceColumns: Array<{ key: string; title: string }> = [];
+    let customMetricOptions: ConflictCustomMetricOption[] = [];
+    let customMetricKeys: string[] = [];
+    let customColumnsForGrid: ConflictCustomColumnConfig[] = [];
+    let customColumnIdsForGrid: string[] = [];
 
     let columnPresetManagerComponent: ColumnPresetManagerComponent | null = null;
     let kpiBuilderModalComponent: KpiBuilderModalComponent | null = null;
     let selectionModalComponent: SelectionModalComponent | null = null;
     let dataGridComponent: DataGridComponent | null = null;
+    let conflictCustomColumnModalComponent: ConflictCustomColumnModalComponent | null = null;
+    let buildConflictCustomMetricOptions:
+        | ConflictCustomColumnAuthoringModule["buildConflictCustomMetricOptions"]
+        | null = null;
+    let upsertConflictCustomColumnState:
+        | ConflictCustomColumnAuthoringModule["upsertConflictCustomColumnState"]
+        | null = null;
+    let deleteConflictCustomColumnState:
+        | ConflictCustomColumnAuthoringModule["deleteConflictCustomColumnState"]
+        | null = null;
+    let showConflictCustomColumnModal = false;
 
     let latestLoadToken = 0;
     let latestSelectionToken = 0;
@@ -201,6 +228,8 @@
     let layoutPresetModalLoadPromise: Promise<void> | null = null;
     let kpiBuilderModalLoadPromise: Promise<void> | null = null;
     let dataGridLoadPromise: Promise<void> | null = null;
+    let conflictCustomColumnModalLoadPromise: Promise<void> | null = null;
+    let conflictCustomColumnAuthoringLoadPromise: Promise<void> | null = null;
     let conflictCoalitionModalPromise:
         | Promise<typeof import("$lib/conflictCoalitionModal")>
         | null = null;
@@ -518,6 +547,66 @@
         await kpiBuilderModalLoadPromise;
     }
 
+    async function ensureConflictCustomColumnModalLoaded(): Promise<void> {
+        if (conflictCustomColumnModalComponent) {
+            return;
+        }
+
+        if (!conflictCustomColumnModalLoadPromise) {
+            conflictCustomColumnModalLoadPromise = import(
+                "../../components/ConflictCustomColumnModal.svelte"
+            )
+                .then((module) => {
+                    conflictCustomColumnModalComponent = module.default;
+                })
+                .catch((error) => {
+                    console.warn("Failed to load conflict custom-column modal", error);
+                })
+                .finally(() => {
+                    conflictCustomColumnModalLoadPromise = null;
+                });
+        }
+
+        await conflictCustomColumnModalLoadPromise;
+    }
+
+    async function ensureConflictCustomColumnAuthoringLoaded(): Promise<void> {
+        if (
+            buildConflictCustomMetricOptions &&
+            upsertConflictCustomColumnState &&
+            deleteConflictCustomColumnState
+        ) {
+            return;
+        }
+
+        if (!conflictCustomColumnAuthoringLoadPromise) {
+            conflictCustomColumnAuthoringLoadPromise = import(
+                "$lib/conflictCustomColumnAuthoring"
+            )
+                .then((module) => {
+                    buildConflictCustomMetricOptions = module.buildConflictCustomMetricOptions;
+                    upsertConflictCustomColumnState = module.upsertConflictCustomColumnState;
+                    deleteConflictCustomColumnState = module.deleteConflictCustomColumnState;
+                    syncConflictCustomMetricOptions();
+                })
+                .catch((error) => {
+                    console.warn("Failed to load conflict custom-column authoring helpers", error);
+                })
+                .finally(() => {
+                    conflictCustomColumnAuthoringLoadPromise = null;
+                });
+        }
+
+        await conflictCustomColumnAuthoringLoadPromise;
+    }
+
+    async function ensureConflictCustomColumnEditingLoaded(): Promise<void> {
+        await Promise.all([
+            ensureConflictCustomColumnModalLoaded(),
+            ensureConflictCustomColumnAuthoringLoaded(),
+        ]);
+    }
+
     async function ensureDataGridLoaded(): Promise<void> {
         if (dataGridComponent) {
             return;
@@ -572,6 +661,9 @@
         const normalizedColumns = normalizeConflictLayoutColumns(
             _layoutData.layout,
             _layoutData.columns,
+            {
+                customColumnIds: activeCustomColumnIds(),
+            },
         );
         return {
             sort: {
@@ -650,31 +742,51 @@
             sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
             order: "desc",
             columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
+            customColumns: [],
         });
         _layoutData.layout = nextLayoutState.layout;
         _layoutData.sort = nextLayoutState.sort;
         _layoutData.order = nextLayoutState.order;
         _layoutData.columns = nextLayoutState.columns;
+        _layoutData.customColumns = nextLayoutState.customColumns;
         selectedLayoutPresetKey = detectLayoutPresetKey();
+    }
+
+    function activeCustomColumnIds(): string[] {
+        return getConflictCustomColumnIdsForLayout(
+            _layoutData.layout,
+            _layoutData.customColumns,
+        );
+    }
+
+    function getConflictGridViewConfig() {
+        return {
+            customColumns: customColumnsForGrid,
+        };
     }
 
     function buildLayoutPresetItems(): SelectionModalItem[] {
         return buildStringSelectionItems(layoutPresetKeys);
     }
 
-    function syncMetricOptions(columns: Array<{ key: string; title: string; summary?: string | null }>): void {
+    function syncMetricOptions(columns: Array<{
+        key: string;
+        title: string;
+        summary?: string | null;
+        metricEligible?: boolean;
+    }>): void {
         const labels: Record<string, string> = {};
         columns.forEach((column) => {
             labels[column.key] = column.title;
         });
         metricTitleByKey = labels;
+        customMetricSourceColumns = columns.map(({ key, title }) => ({ key, title }));
+        syncConflictCustomMetricOptions();
 
         const nextMetricOptions = columns
             .filter(
                 (column) =>
-                    column.key !== "name" &&
-                    column.key !== "alliance" &&
-                    column.summary === "sum-avg",
+                    column.metricEligible === true,
             )
             .map((column) => column.key);
         metricsOptions = nextMetricOptions;
@@ -689,6 +801,93 @@
         if (metricNormalizeByToAdd && !nextMetricOptions.includes(metricNormalizeByToAdd)) {
             metricNormalizeByToAdd = "";
         }
+    }
+
+    function syncConflictCustomMetricOptions(): void {
+        if (!buildConflictCustomMetricOptions) {
+            return;
+        }
+
+        customMetricOptions = buildConflictCustomMetricOptions(customMetricSourceColumns);
+        customMetricKeys = customMetricOptions.map((option) => option.value);
+    }
+
+    function openConflictCustomColumnModal(): void {
+        void ensureConflictCustomColumnEditingLoaded().then(() => {
+            if (
+                !conflictCustomColumnModalComponent ||
+                !buildConflictCustomMetricOptions ||
+                !upsertConflictCustomColumnState ||
+                !deleteConflictCustomColumnState
+            ) {
+                return;
+            }
+            showConflictCustomColumnModal = true;
+        });
+    }
+
+    function closeConflictCustomColumnModal(): void {
+        showConflictCustomColumnModal = false;
+    }
+
+    async function handleConflictCustomColumnSave(
+        event: CustomEvent<{
+            previousId: string | null;
+            config: ConflictCustomColumnConfig;
+        }>,
+    ): Promise<void> {
+        if (!upsertConflictCustomColumnState) {
+            return;
+        }
+
+        const nextState = upsertConflictCustomColumnState(
+                {
+                    layout: _layoutData.layout,
+                    columns: _layoutData.columns,
+                    customColumns: _layoutData.customColumns,
+                },
+                {
+                    previousId: event.detail.previousId,
+                    config: event.detail.config,
+                    validMetricKeys: customMetricKeys,
+                },
+            );
+        if (!nextState) {
+            return;
+        }
+
+        _layoutData.columns = nextState.columns;
+        _layoutData.customColumns = nextState.customColumns;
+        selectedLayoutPresetKey = detectLayoutPresetKey();
+        resetConflictGridState();
+        syncUrlState({ replace: true, persist: true });
+    }
+
+    async function handleConflictCustomColumnDelete(
+        event: CustomEvent<{ id: string }>,
+    ): Promise<void> {
+        if (!deleteConflictCustomColumnState) {
+            return;
+        }
+
+        const nextState = deleteConflictCustomColumnState(
+            {
+                layout: _layoutData.layout,
+                columns: _layoutData.columns,
+                customColumns: _layoutData.customColumns,
+            },
+            event.detail.id,
+        );
+
+        if (!nextState) {
+            return;
+        }
+
+        _layoutData.columns = nextState.columns;
+    _layoutData.customColumns = nextState.customColumns;
+        selectedLayoutPresetKey = detectLayoutPresetKey();
+        resetConflictGridState();
+        syncUrlState({ replace: true, persist: true });
     }
 
     function metricLabel(metric: string): string {
@@ -852,11 +1051,13 @@
         sort: string;
         order: string;
         columns: string[];
+        customColumns?: ConflictCustomColumnConfig[];
     }): boolean {
         return isConflictTableLayoutStateEqual(_layoutData, {
             sort: input.sort,
             order: input.order === "asc" ? "asc" : "desc",
             columns: input.columns,
+            customColumns: input.customColumns ?? [],
         });
     }
 
@@ -968,12 +1169,16 @@
         const nextColumns = normalizeConflictLayoutColumns(
             _layoutData.layout,
             layout.columns,
+            {
+                customColumnIds: [],
+            },
         );
         if (
             isSameLayoutState({
                 sort: layout.sort,
                 order: nextOrder,
                 columns: nextColumns,
+                customColumns: [],
             })
         ) {
             return;
@@ -982,12 +1187,16 @@
         _layoutData.columns = nextColumns;
         _layoutData.sort = layout.sort;
         _layoutData.order = nextOrder;
+        _layoutData.customColumns = [];
         selectedLayoutPresetKey = key;
         resetConflictGridState();
         syncUrlState({ persist: true });
     }
 
     function handleColumnPresetLoad(preset: ColumnPreset): void {
+        const nextCustomColumns = Array.isArray(preset.customColumns)
+            ? [...preset.customColumns]
+            : [];
         const nextSort = preset.sort || _layoutData.sort;
         const nextOrder: "asc" | "desc" =
             preset.order === "asc"
@@ -996,18 +1205,30 @@
                   ? "desc"
                   : _layoutData.order;
         const nextColumns = Array.isArray(preset.columns)
-            ? normalizeConflictLayoutColumns(_layoutData.layout, preset.columns)
-            : normalizeConflictLayoutColumns(_layoutData.layout, _layoutData.columns);
+            ? normalizeConflictLayoutColumns(_layoutData.layout, preset.columns, {
+                customColumnIds: getConflictCustomColumnIdsForLayout(
+                    _layoutData.layout,
+                    nextCustomColumns,
+                ),
+            })
+            : normalizeConflictLayoutColumns(_layoutData.layout, _layoutData.columns, {
+                customColumnIds: getConflictCustomColumnIdsForLayout(
+                    _layoutData.layout,
+                    nextCustomColumns,
+                ),
+            });
 
         const noLayoutChange = isSameLayoutState({
             sort: nextSort,
             order: nextOrder,
             columns: nextColumns,
+            customColumns: nextCustomColumns,
         });
 
         _layoutData.columns = nextColumns;
         _layoutData.sort = nextSort;
         _layoutData.order = nextOrder;
+        _layoutData.customColumns = nextCustomColumns;
         selectedLayoutPresetKey = detectLayoutPresetKey();
 
         if (preset.kpiConfig) {
@@ -1028,6 +1249,7 @@
     }
 
     function handleClick(layout: number): void {
+        showConflictCustomColumnModal = false;
         _layoutData.layout =
             layout === ConflictGridLayout.ALLIANCE
                 ? ConflictGridLayout.ALLIANCE
@@ -1037,6 +1259,9 @@
         _layoutData.columns = normalizeConflictLayoutColumns(
             _layoutData.layout,
             _layoutData.columns,
+            {
+                customColumnIds: activeCustomColumnIds(),
+            },
         );
         selectedLayoutPresetKey = detectLayoutPresetKey();
         resetConflictGridState();
@@ -1051,6 +1276,8 @@
         );
         _layoutData.sort = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort;
         _layoutData.order = "desc";
+        _layoutData.customColumns = [];
+        showConflictCustomColumnModal = false;
         selectedLayoutPresetKey = DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET_KEY;
         kpiWidgetActions.setWidgets([...DEFAULT_KPI_WIDGETS]);
         conflictGridPageSizePreference = null;
@@ -1187,6 +1414,7 @@
             conflictId: id,
             version: config.version.conflict_data,
             basePath: base,
+            getViewConfig: getConflictGridViewConfig,
         });
         conflictGridClient = client;
         resetConflictGridState();
@@ -1290,6 +1518,12 @@
         event: CustomEvent<{ message: string }>,
     ): void {
         _loadError = event.detail.message;
+    }
+
+    function handleConflictGridReady(
+        event: CustomEvent<{ bootstrap: GridBootstrapResult }>,
+    ): void {
+        syncMetricOptions(event.detail.bootstrap.columns);
     }
 
     function handleConflictGridCellAction(
@@ -1398,6 +1632,9 @@
         const nextColumns = normalizeConflictLayoutColumns(
             _layoutData.layout,
             orderedVisible.length > 0 ? orderedVisible : [..._layoutData.columns],
+            {
+                customColumnIds: activeCustomColumnIds(),
+            },
         );
         const nextSort = state.sort?.key ?? DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort;
         const nextOrder: "asc" | "desc" = state.sort?.dir === "asc" ? "asc" : "desc";
@@ -1406,6 +1643,7 @@
             sort: nextSort,
             order: nextOrder,
             columns: nextColumns,
+            customColumns: _layoutData.customColumns,
         });
 
         if (!layoutChanged && conflictGridPageSizePreference === nextPageSize) {
@@ -1424,6 +1662,11 @@
     }
 
     $: currentLayoutLabel = conflictGridLayoutLabel(_layoutData.layout);
+    $: customColumnsForGrid = filterConflictCustomColumnsForLayout(
+        _layoutData.layout,
+        _layoutData.customColumns,
+    );
+    $: customColumnIdsForGrid = customColumnsForGrid.map((column) => column.id);
     $: {
         const split = splitKpiWidgets(kpiWidgets);
         presetCards = split.presetCards;
@@ -1469,6 +1712,7 @@
             : createConflictGridProvider({
                   client: conflictGridClient,
                   layout: _layoutData.layout,
+                  getViewConfig: getConflictGridViewConfig,
                   defaultSort: {
                       key: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
                       dir: "desc",
@@ -1476,6 +1720,9 @@
                   defaultVisibleColumnKeys: normalizeConflictLayoutColumns(
                       _layoutData.layout,
                       DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns,
+                      {
+                          customColumnIds: customColumnIdsForGrid,
+                      },
                   ),
               });
     $: isResetDirty = (() => {
@@ -1502,7 +1749,7 @@
         kpiCollapsed = localStorage.getItem(kpiCollapseStorageKey()) === "1";
 
         bootstrapIdRouteLifecycle({
-            restoreParams: ["layout", "sort", "order", "columns", "kpiw", "grid"],
+            restoreParams: ["layout", "sort", "order", "columns", "cc", "kpiw", "grid"],
             preserveParams: ["id"],
             onMissingId: () => {
                 _loadError = "Missing conflict id in URL";
@@ -1654,6 +1901,7 @@
                 <svelte:component
                     this={columnPresetManagerComponent}
                     currentColumns={_layoutData.columns}
+                    currentCustomColumns={_layoutData.customColumns}
                     currentSort={_layoutData.sort}
                     currentOrder={_layoutData.order}
                     currentKpis={presetCards.map((card) => card.key)}
@@ -1794,6 +2042,20 @@
         />
     {/if}
 
+    {#if conflictCustomColumnModalComponent}
+        <svelte:component
+            this={conflictCustomColumnModalComponent}
+            open={showConflictCustomColumnModal}
+            layout={_layoutData.layout}
+            existingColumns={_layoutData.customColumns}
+            metricOptions={customMetricOptions}
+            validMetricKeys={customMetricKeys}
+            on:close={closeConflictCustomColumnModal}
+            on:save={handleConflictCustomColumnSave}
+            on:delete={handleConflictCustomColumnDelete}
+        />
+    {/if}
+
     {#if !metaReady && !_loadError && !kpiCollapsed}
         <Progress />
     {/if}
@@ -1821,10 +2083,14 @@
                 exportDatasetKey="overview"
                 exportDatasetLabel="Conflict overview"
                 exportButtonLabel="Export"
+                columnFooterActionLabel="Custom columns"
+                columnFooterActionButtonClass="btn ux-btn ux-btn-danger btn-sm fw-bold"
                 emptyMessage="No rows match the current view."
                 loadingMessage={metaReady ? "Loading table..." : "Loading conflict dataset..."}
                 caption={`Conflict ${conflictName || conflictId || "conflict"} ${currentLayoutLabel} grid`}
+                on:ready={handleConflictGridReady}
                 on:stateChange={handleConflictGridStateChange}
+                on:columnAction={openConflictCustomColumnModal}
                 on:selectionChange={handleConflictGridSelectionChange}
                 on:cellAction={handleConflictGridCellAction}
                 on:queryResult={handleConflictGridQueryResult}

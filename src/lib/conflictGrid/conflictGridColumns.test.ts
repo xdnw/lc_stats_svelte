@@ -19,4 +19,26 @@ describe("buildConflictGridColumnSpecs", () => {
             "net:consume gas",
         ]);
     });
+
+    it("marks only native metric columns as KPI-eligible", () => {
+        const conflict = {
+            damage_header: ["loss_value", "wars"],
+            header_type: [0, 1],
+        } as never;
+
+        const columns = buildConflictGridColumnSpecs(conflict);
+
+        expect(columns.find((column) => column.key === "name")).toMatchObject({
+            metricEligible: false,
+        });
+        expect(columns.find((column) => column.key === "alliance")).toMatchObject({
+            metricEligible: false,
+        });
+        expect(columns.find((column) => column.key === "dealt:damage")).toMatchObject({
+            metricEligible: true,
+        });
+        expect(columns.find((column) => column.key === "off:wars")).toMatchObject({
+            metricEligible: true,
+        });
+    });
 });

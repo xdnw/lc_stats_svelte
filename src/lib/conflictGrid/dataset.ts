@@ -20,24 +20,35 @@ import type { MetricCard, RankingCard, ScopeSnapshot, WidgetScope } from "../kpi
 import { buildSelectionSnapshot } from "../kpiSnapshot";
 import { formatAllianceName, formatNationName } from "../formatting";
 import { buildTabHref } from "../conflictTabs";
+import { createConflictCustomColumnComputer } from "../conflictCustomColumnCompute";
+import { filterConflictCustomColumnsForLayout } from "../conflictCustomColumns";
 import { encodeGridSelectionFilterValue, parseGridSelectionFilterValue } from "../grid/filterValue";
 import { formatMoneyValue, formatNumberValue } from "../numberFormatting";
 import { buildCoalitionAllianceItems } from "../selectionModalHelpers";
 import type { Conflict } from "../types";
 import {
+    buildConflictCustomGridColumnSpecs,
     buildConflictGridColumnSpecs,
     isConflictMetricColumnSpec,
+    isConflictNumericColumnSpec,
     type ConflictGridAllianceColumnSpec,
     type ConflictGridColumnSpec,
+    type ConflictGridCustomColumnSpec,
     type ConflictGridMetricColumnSpec,
     type ConflictGridNameColumnSpec,
+    type ConflictGridNumericColumnSpec,
 } from "./conflictGridColumns";
+import {
+    getConflictGridViewHash,
+    normalizeConflictGridViewConfig,
+} from "./protocol";
 import type {
     ConflictGridBootstrapPayload,
     ConflictGridMeta,
     ConflictGridPrewarmResult,
     ConflictGridPresetMetrics,
     ConflictKpiRankingRow,
+    ConflictGridViewConfig,
 } from "./protocol";
 import {
     ALL_CONFLICT_GRID_LAYOUTS,
@@ -79,6 +90,19 @@ type ConflictLayoutDataset = {
     bootstrap: GridBootstrapResult;
     rows: ConflictRowMeta[];
     rowMetaById: Map<GridRowId, ConflictRowMeta>;
+};
+
+type ResolvedConflictGridView = {
+    config: ConflictGridViewConfig;
+    hash: string;
+    customColumns: ConflictGridViewConfig["customColumns"];
+};
+
+type ConflictCustomMembershipIndexes = {
+    nationRowIndexesByCoalitionIndex: number[][];
+    nationRowIndexesByAllianceIndex: number[][];
+    nationCountByCoalitionIndex: Float64Array;
+    nationCountByAllianceIndex: Float64Array;
 };
 
 type ConflictGridAavaRouteContext =
@@ -259,14 +283,14 @@ export function createConflictGridDataset(options: {
 }) {
     const datasetCreateStartedAt = nowMs();
     const { aavaRouteContext, data, conflictId, datasetKey } = options;
-    const columnSpecs = buildConflictGridColumnSpecs(data);
-    const columnSpecByKey = new Map<string, ConflictGridColumnSpec>(
-        columnSpecs.map((column) => [column.key, column]),
+    const baseColumnSpecs = buildConflictGridColumnSpecs(data);
+    const baseColumnSpecByKey = new Map<string, ConflictGridColumnSpec>(
+        baseColumnSpecs.map((column) => [column.key, column]),
     );
-    const nameColumn = columnSpecByKey.get("name") as ConflictGridNameColumnSpec;
-    const allianceColumn = columnSpecByKey.get("alliance") as ConflictGridAllianceColumnSpec;
+    const nameColumn = baseColumnSpecByKey.get("name") as ConflictGridNameColumnSpec;
+    const allianceColumn = baseColumnSpecByKey.get("alliance") as ConflictGridAllianceColumnSpec;
     const metricColumnByKey = new Map<string, ConflictGridMetricColumnSpec>(
-        columnSpecs
+        baseColumnSpecs
             .filter(isConflictMetricColumnSpec)
             .map((column) => [column.key, column]),
     );
@@ -293,8 +317,19 @@ export function createConflictGridDataset(options: {
     const pageResultCache = new Map<string, GridPageResult>();
     const summaryCache = new Map<string, GridSummaryByColumnKey>();
     const metricVectorCache = new Map<string, Float64Array>();
+    const bootstrapCache = new Map<string, GridBootstrapResult>();
+    const customColumnSpecCache = new Map<string, ConflictGridCustomColumnSpec[]>();
+    const customColumnSpecByKeyCache = new Map<
+        string,
+        Map<string, ConflictGridCustomColumnSpec>
+    >();
+    const customComputerCache = new Map<
+        string,
+        ReturnType<typeof createConflictCustomColumnComputer>
+    >();
     const rankingCache = new Map<string, ConflictKpiRankingRow[]>();
     const metricCardCache = new Map<string, number | null>();
+    let customMembershipIndexes: ConflictCustomMembershipIndexes | null = null;
 
     data.coalitions.forEach((coalition) => {
         coalition.alliance_ids.forEach((allianceId, index) => {
@@ -320,16 +355,102 @@ export function createConflictGridDataset(options: {
             detailsEligible: column.detailsEligible,
             exportLabel: column.exportLabel,
             alwaysVisible: column.alwaysVisible,
+            metricEligible: column.metricEligible,
             ...overrides,
         };
     }
 
+    function resolveView(
+        layout: ConflictGridLayoutValue,
+        viewConfig?: ConflictGridViewConfig,
+    ): ResolvedConflictGridView {
+        const normalized = normalizeConflictGridViewConfig(viewConfig);
+        const customColumns = filterConflictCustomColumnsForLayout(
+            layout,
+            normalized.customColumns,
+        );
+        const config =
+            customColumns === normalized.customColumns
+                ? normalized
+                : { customColumns };
+        return {
+            config,
+            hash: getConflictGridViewHash(config),
+            customColumns,
+        };
+    }
+
+    function buildViewCacheKey(
+        layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
+    ): string {
+        return `${layout}::${view.hash}`;
+    }
+
+    function getCustomColumnSpecs(
+        layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
+    ): ConflictGridCustomColumnSpec[] {
+        if (view.customColumns.length === 0) {
+            return [];
+        }
+
+        const cacheKey = buildViewCacheKey(layout, view);
+        const cached = customColumnSpecCache.get(cacheKey);
+        if (cached) return cached;
+
+        const next = buildConflictCustomGridColumnSpecs(view.customColumns);
+        customColumnSpecCache.set(cacheKey, next);
+        customColumnSpecByKeyCache.set(
+            cacheKey,
+            new Map(next.map((column) => [column.key, column])),
+        );
+        return next;
+    }
+
+    function getCustomColumnSpec(
+        layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
+        columnKey: string,
+    ): ConflictGridCustomColumnSpec | null {
+        const cacheKey = buildViewCacheKey(layout, view);
+        if (!customColumnSpecByKeyCache.has(cacheKey)) {
+            void getCustomColumnSpecs(layout, view);
+        }
+        return customColumnSpecByKeyCache.get(cacheKey)?.get(columnKey) ?? null;
+    }
+
+    function getColumnSpec(
+        layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
+        columnKey: string,
+    ): ConflictGridColumnSpec | null {
+        return (
+            baseColumnSpecByKey.get(columnKey) ??
+            getCustomColumnSpec(layout, view, columnKey) ??
+            null
+        );
+    }
+
+    function getNumericColumnSpec(
+        layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
+        columnKey: string,
+    ): ConflictGridNumericColumnSpec | null {
+        const column = getColumnSpec(layout, view, columnKey);
+        return column && isConflictNumericColumnSpec(column) ? column : null;
+    }
+
     function buildLayoutColumns(
         layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
     ): GridBootstrapResult["columns"] {
-        const metricColumns = columnSpecs
+        const metricColumns = baseColumnSpecs
             .filter(isConflictMetricColumnSpec)
             .map((column) => toBootstrapColumn(column));
+        const customColumns = getCustomColumnSpecs(layout, view).map((column) =>
+            toBootstrapColumn(column)
+        );
 
         if (layout === ConflictGridLayout.COALITION) {
             return [
@@ -338,6 +459,7 @@ export function createConflictGridDataset(options: {
                     alwaysVisible: true,
                 }),
                 ...metricColumns,
+                ...customColumns,
             ];
         }
 
@@ -349,6 +471,7 @@ export function createConflictGridDataset(options: {
                     filterUi: allianceSelectionFilterUi,
                 }),
                 ...metricColumns,
+                ...customColumns,
             ];
         }
 
@@ -363,6 +486,7 @@ export function createConflictGridDataset(options: {
                 alwaysVisible: true,
             }),
             ...metricColumns,
+            ...customColumns,
         ];
     }
 
@@ -442,20 +566,190 @@ export function createConflictGridDataset(options: {
         return vector;
     }
 
-    function getCell(row: ConflictRowMeta, columnKey: string): GridCellView {
-        const column = columnSpecByKey.get(columnKey);
+    function buildCustomMembershipIndexes(): ConflictCustomMembershipIndexes {
+        const coalitionRows = getLayoutDataset(ConflictGridLayout.COALITION).rows;
+        const allianceRows = getLayoutDataset(ConflictGridLayout.ALLIANCE).rows;
+        const nationRows = getLayoutDataset(ConflictGridLayout.NATION).rows;
+        const coalitionMembers = coalitionRows.map(() => [] as number[]);
+        const allianceMembers = allianceRows.map(() => [] as number[]);
+        const allianceRowIndexByParent = new Map<string, number>();
+
+        allianceRows.forEach((row) => {
+            if (row.allianceId == null) return;
+            allianceRowIndexByParent.set(
+                `${row.coalitionIndex}:${row.allianceId}`,
+                row.index,
+            );
+        });
+
+        nationRows.forEach((row) => {
+            coalitionMembers[row.coalitionIndex]?.push(row.index);
+            if (row.allianceId == null) return;
+            const allianceRowIndex = allianceRowIndexByParent.get(
+                `${row.coalitionIndex}:${row.allianceId}`,
+            );
+            if (allianceRowIndex == null) return;
+            allianceMembers[allianceRowIndex]?.push(row.index);
+        });
+
+        return {
+            nationRowIndexesByCoalitionIndex: coalitionMembers,
+            nationRowIndexesByAllianceIndex: allianceMembers,
+            nationCountByCoalitionIndex: Float64Array.from(
+                coalitionMembers.map((members) => members.length),
+            ),
+            nationCountByAllianceIndex: Float64Array.from(
+                allianceMembers.map((members) => members.length),
+            ),
+        };
+    }
+
+    function getCustomMembershipIndexes(): ConflictCustomMembershipIndexes {
+        if (customMembershipIndexes) {
+            return customMembershipIndexes;
+        }
+        customMembershipIndexes = buildCustomMembershipIndexes();
+        return customMembershipIndexes;
+    }
+
+    function getCustomComputer(
+        layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
+    ): ReturnType<typeof createConflictCustomColumnComputer> | null {
+        if (view.customColumns.length === 0) {
+            return null;
+        }
+
+        const cacheKey = buildViewCacheKey(layout, view);
+        const cached = customComputerCache.get(cacheKey);
+        if (cached) return cached;
+
+        const memberships = getCustomMembershipIndexes();
+        const next = createConflictCustomColumnComputer({
+            layout,
+            membership:
+                layout === ConflictGridLayout.NATION
+                    ? null
+                    : layout === ConflictGridLayout.COALITION
+                      ? {
+                            nationRowIndexesByParent:
+                                memberships.nationRowIndexesByCoalitionIndex,
+                            totalNationCountByParent:
+                                memberships.nationCountByCoalitionIndex,
+                        }
+                      : {
+                            nationRowIndexesByParent:
+                                memberships.nationRowIndexesByAllianceIndex,
+                            totalNationCountByParent:
+                                memberships.nationCountByAllianceIndex,
+                        },
+            getMetricVector(metricLayout, metricKey) {
+                const metricColumn = metricColumnByKey.get(metricKey);
+                if (!metricColumn) {
+                    return new Float64Array(
+                        getLayoutDataset(metricLayout).rows.length,
+                    );
+                }
+                return getMetricVector(metricLayout, metricColumn);
+            },
+            getRowCount(metricLayout) {
+                return getLayoutDataset(metricLayout).rows.length;
+            },
+        });
+        customComputerCache.set(cacheKey, next);
+        return next;
+    }
+
+    function getCustomVector(
+        layout: ConflictGridLayoutValue,
+        column: ConflictGridCustomColumnSpec,
+        view: ResolvedConflictGridView,
+    ): Float64Array {
+        const computer = getCustomComputer(layout, view);
+        if (!computer) {
+            return new Float64Array(getLayoutDataset(layout).rows.length);
+        }
+        return computer.getColumnVector(column.config);
+    }
+
+    function getNumericVector(
+        layout: ConflictGridLayoutValue,
+        column: ConflictGridNumericColumnSpec,
+        view: ResolvedConflictGridView,
+    ): Float64Array {
+        return column.kind === "metric"
+            ? getMetricVector(layout, column)
+            : getCustomVector(layout, column, view);
+    }
+
+    function getNumericValue(
+        row: ConflictRowMeta,
+        column: ConflictGridNumericColumnSpec,
+        view: ResolvedConflictGridView,
+    ): number {
+        return getNumericVector(row.layout, column, view)[row.index] ?? 0;
+    }
+
+    function buildCustomCell(
+        row: ConflictRowMeta,
+        column: ConflictGridCustomColumnSpec,
+        view: ResolvedConflictGridView,
+    ): GridCellView {
+        const value = getNumericValue(row, column, view);
+        if (column.config.kind === "row-formula" && column.config.formula.kind === "flag") {
+            return {
+                kind: "text",
+                text: value > 0 ? "Yes" : "No",
+            };
+        }
+        if (
+            (column.config.kind === "row-formula" &&
+                column.config.formula.kind === "numeric" &&
+                column.config.formula.display === "money") ||
+            (column.config.kind === "member-rollup" && column.config.display === "money")
+        ) {
+            return {
+                kind: "money",
+                text: formatMoneyValue(value),
+                value,
+            };
+        }
+        return {
+            kind: "number",
+            text:
+                (column.config.kind === "row-formula" &&
+                    column.config.formula.kind === "numeric" &&
+                    column.config.formula.display === "percent") ||
+                (column.config.kind === "member-rollup" && column.config.display === "percent")
+                    ? `${formatNumberValue(value)}%`
+                    : formatNumberValue(value),
+            value,
+        };
+    }
+
+    function getCell(
+        row: ConflictRowMeta,
+        columnKey: string,
+        view: ResolvedConflictGridView,
+    ): GridCellView {
+        const column = getColumnSpec(row.layout, view, columnKey);
         if (!column) return { kind: "empty" };
         if (column.kind === "name") return row.nameCell;
         if (column.kind === "alliance") return row.allianceCell;
-        return buildMetricCell(row, column);
+        if (column.kind === "metric") return buildMetricCell(row, column);
+        return buildCustomCell(row, column, view);
     }
 
-    function getSortValue(row: ConflictRowMeta, columnKey: string): SortValue {
-        const column = columnSpecByKey.get(columnKey);
+    function getSortValue(
+        row: ConflictRowMeta,
+        columnKey: string,
+        view: ResolvedConflictGridView,
+    ): SortValue {
+        const column = getColumnSpec(row.layout, view, columnKey);
         if (!column) return null;
         if (column.kind === "name") return row.nameSortText;
         if (column.kind === "alliance") return row.allianceSortText;
-        return getMetricValue(row, column);
+        return getNumericValue(row, column, view);
     }
 
     function buildCoalitionRows(): ConflictRowMeta[] {
@@ -612,7 +906,10 @@ export function createConflictGridDataset(options: {
         layout: ConflictGridLayoutValue,
         rows: ConflictRowMeta[],
     ): ConflictLayoutDataset {
-        const bootstrap = buildInternalBootstrap(buildLayoutColumns(layout), rows.length);
+        const bootstrap = buildInternalBootstrap(
+            buildLayoutColumns(layout, resolveView(layout)),
+            rows.length,
+        );
         return {
             layout,
             bootstrap,
@@ -652,22 +949,42 @@ export function createConflictGridDataset(options: {
         return created;
     }
 
+    function getLayoutBootstrap(
+        layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
+    ): GridBootstrapResult {
+        const cacheKey = buildViewCacheKey(layout, view);
+        const cached = bootstrapCache.get(cacheKey);
+        if (cached) return cached;
+
+        const bootstrap = buildInternalBootstrap(
+            buildLayoutColumns(layout, view),
+            getLayoutDataset(layout).rows.length,
+        );
+        bootstrapCache.set(cacheKey, bootstrap);
+        return bootstrap;
+    }
+
     function normalizeState(
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        view: ResolvedConflictGridView,
     ): GridQueryState {
         return toGridQueryState(
-            normalizeGridControllerState(getLayoutDataset(layout).bootstrap, state),
+            normalizeGridControllerState(getLayoutBootstrap(layout, view), state),
         );
     }
 
-    function buildFilterSortCacheKey(state: GridQueryState): string {
+    function buildFilterSortCacheKey(
+        state: GridQueryState,
+        view: ResolvedConflictGridView,
+    ): string {
         const filters = Object.entries(state.filters)
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([key, value]) => `${key}:${normalizeFilterCacheValue(value)}`)
             .join("|");
         const sort = state.sort ? `${state.sort.key}:${state.sort.dir}` : "none";
-        return `${sort}::${filters}`;
+        return `${view.hash}::${sort}::${filters}`;
     }
 
     function matchesAllianceSelectionFilter(
@@ -697,10 +1014,11 @@ export function createConflictGridDataset(options: {
 
     function getFilteredRowSequenceKey(
         layout: ConflictGridLayoutValue,
+        view: ResolvedConflictGridView,
         state: GridQueryState,
         filteredRows: ConflictRowMeta[],
     ): string {
-        const filterSortCacheKey = `${layout}::${buildFilterSortCacheKey(state)}`;
+        const filterSortCacheKey = `${layout}::${buildFilterSortCacheKey(state, view)}`;
         const cached = filteredRowSequenceKeyCache.get(filterSortCacheKey);
         if (cached) return cached;
 
@@ -714,13 +1032,14 @@ export function createConflictGridDataset(options: {
     function buildSummaryCacheKey(
         filteredRowSequenceKey: string,
         state: GridQueryState,
+        view: ResolvedConflictGridView,
     ): string {
         const selected = [...state.selectedRowIds]
             .map(serializeRowId)
             .sort()
             .join("|");
         const visible = [...state.visibleColumnKeys].join("|");
-        return `${filteredRowSequenceKey}::${visible}::${selected}`;
+        return `${view.hash}::${filteredRowSequenceKey}::${visible}::${selected}`;
     }
 
     function buildPageResultCacheKey(options: {
@@ -729,20 +1048,22 @@ export function createConflictGridDataset(options: {
         state: GridQueryState;
         filteredRowCount: number;
         allFilteredRowsSelected: boolean;
+        view: ResolvedConflictGridView;
     }): string {
         const visibleColumns = options.state.visibleColumnKeys.join("|");
         const visibleRowSequenceKey = buildRowIdSequenceKey(
             options.visibleRows.map((row) => row.id),
         );
-        return `${options.layout}::${options.filteredRowCount}::${options.allFilteredRowsSelected ? 1 : 0}::${visibleColumns}::${visibleRowSequenceKey}`;
+        return `${options.layout}::${options.view.hash}::${options.filteredRowCount}::${options.allFilteredRowsSelected ? 1 : 0}::${visibleColumns}::${visibleRowSequenceKey}`;
     }
 
     function getFilteredSortedRows(
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        view: ResolvedConflictGridView,
     ): ConflictRowMeta[] {
-        const normalized = normalizeState(layout, state);
-        const cacheKey = `${layout}::${buildFilterSortCacheKey(normalized)}`;
+        const normalized = normalizeState(layout, state, view);
+        const cacheKey = `${layout}::${buildFilterSortCacheKey(normalized, view)}`;
         const cached = filteredRowsCache.get(cacheKey);
         if (cached) return cached;
         const dataset = getLayoutDataset(layout);
@@ -786,7 +1107,7 @@ export function createConflictGridDataset(options: {
 
         const decorated = filtered.map((row) => ({
             row,
-            sortValue: getSortValue(row, normalized.sort?.key ?? "name"),
+            sortValue: getSortValue(row, normalized.sort?.key ?? "name", view),
         }));
 
         decorated.sort((left, right) => {
@@ -821,15 +1142,16 @@ export function createConflictGridDataset(options: {
         layout: ConflictGridLayoutValue,
         rows: ConflictRowMeta[],
         state: GridQueryState,
+        view: ResolvedConflictGridView,
     ): GridPageRow[] {
         const visibleColumns = getVisibleColumns(
-            getLayoutDataset(layout).bootstrap,
+            getLayoutBootstrap(layout, view),
             state,
         );
         return rows.map((row) => {
             const cells: Record<string, GridCellView> = {};
             visibleColumns.forEach((column) => {
-                cells[column.key] = getCell(row, column.key);
+                cells[column.key] = getCell(row, column.key, view);
             });
             return {
                 id: row.id,
@@ -843,15 +1165,17 @@ export function createConflictGridDataset(options: {
         layout: ConflictGridLayoutValue,
         filteredRows: ConflictRowMeta[],
         state: GridQueryState,
+        view: ResolvedConflictGridView,
     ): GridSummaryByColumnKey {
         const cacheKey = `${layout}::${buildSummaryCacheKey(
-            getFilteredRowSequenceKey(layout, state, filteredRows),
+            getFilteredRowSequenceKey(layout, view, state, filteredRows),
             state,
+            view,
         )}`;
         const cached = summaryCache.get(cacheKey);
         if (cached) return cached;
         const visibleColumns = getVisibleColumns(
-            getLayoutDataset(layout).bootstrap,
+            getLayoutBootstrap(layout, view),
             state,
         );
         const selected = new Set(state.selectedRowIds);
@@ -861,9 +1185,9 @@ export function createConflictGridDataset(options: {
 
         const summaryByColumnKey: GridSummaryByColumnKey = {};
         visibleColumns.forEach((column) => {
-            const metricColumn = metricColumnByKey.get(column.key);
-            if (!metricColumn || column.summary !== "sum-avg") return;
-            const vector = getMetricVector(layout, metricColumn);
+            const numericColumn = getNumericColumnSpec(layout, view, column.key);
+            if (!numericColumn || column.summary !== "sum-avg") return;
+            const vector = getNumericVector(layout, numericColumn, view);
 
             let count = 0;
             let sum = 0;
@@ -1072,16 +1396,18 @@ export function createConflictGridDataset(options: {
 
     function bootstrap(
         layout: ConflictGridLayoutValue,
+        viewConfig?: ConflictGridViewConfig,
     ): ConflictGridBootstrapPayload {
         const bootstrapStartedAt = nowMs();
-        const dataset = getLayoutDataset(layout);
+        const view = resolveView(layout, viewConfig);
+        const bootstrap = getLayoutBootstrap(layout, view);
         return {
             datasetKey,
             meta,
             layout,
             grid: {
-                columns: dataset.bootstrap.columns,
-                rowCount: dataset.bootstrap.rowCount,
+                columns: bootstrap.columns,
+                rowCount: bootstrap.rowCount,
             },
             presetMetrics,
             timings: {
@@ -1094,9 +1420,11 @@ export function createConflictGridDataset(options: {
     function query(
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ): GridPageResult {
-        const normalized = normalizeState(layout, state);
-        const filteredRows = getFilteredSortedRows(layout, normalized);
+        const view = resolveView(layout, viewConfig);
+        const normalized = normalizeState(layout, state, view);
+        const filteredRows = getFilteredSortedRows(layout, normalized, view);
         const visibleRows = sliceRows(filteredRows, normalized);
         const allFilteredRowsSelected = areAllFilteredRowsSelected(
             filteredRows,
@@ -1108,6 +1436,7 @@ export function createConflictGridDataset(options: {
             state: normalized,
             filteredRowCount: filteredRows.length,
             allFilteredRowsSelected,
+            view,
         });
         const cached = pageResultCache.get(pageResultCacheKey);
         if (cached) return cached;
@@ -1116,7 +1445,7 @@ export function createConflictGridDataset(options: {
             totalRowCount: getLayoutDataset(layout).rows.length,
             filteredRowCount: filteredRows.length,
             allFilteredRowsSelected,
-            rows: buildPageRows(layout, visibleRows, normalized),
+            rows: buildPageRows(layout, visibleRows, normalized, view),
             summaryByColumnKey: {},
         };
         pageResultCache.set(pageResultCacheKey, result);
@@ -1126,23 +1455,27 @@ export function createConflictGridDataset(options: {
     function querySummary(
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ): GridSummaryByColumnKey {
-        const normalized = normalizeState(layout, state);
-        const filteredRows = getFilteredSortedRows(layout, normalized);
-        return buildSummary(layout, filteredRows, normalized);
+        const view = resolveView(layout, viewConfig);
+        const normalized = normalizeState(layout, state, view);
+        const filteredRows = getFilteredSortedRows(layout, normalized, view);
+        return buildSummary(layout, filteredRows, normalized, view);
     }
 
     function getRowDetails(
         layout: ConflictGridLayoutValue,
         rowId: GridRowId,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ): GridPageRow | null {
         const dataset = getLayoutDataset(layout);
         const row = dataset.rowMetaById.get(rowId);
         if (!row) return null;
-        const normalized = normalizeState(layout, state);
+        const view = resolveView(layout, viewConfig);
+        const normalized = normalizeState(layout, state, view);
         const visibleKeys = new Set(normalized.visibleColumnKeys);
-        const detailColumns = getOrderedColumns(dataset.bootstrap, normalized).filter(
+        const detailColumns = getOrderedColumns(getLayoutBootstrap(layout, view), normalized).filter(
             (column) =>
                 !visibleKeys.has(column.key) && column.detailsEligible !== false,
         );
@@ -1150,7 +1483,7 @@ export function createConflictGridDataset(options: {
 
         const cells: Record<string, GridCellView> = {};
         detailColumns.forEach((column) => {
-            cells[column.key] = getCell(row, column.key);
+            cells[column.key] = getCell(row, column.key, view);
         });
 
         return {
@@ -1163,12 +1496,14 @@ export function createConflictGridDataset(options: {
     function getFilteredRowIds(
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ): GridRowId[] {
-        const normalized = normalizeState(layout, state);
-        const cacheKey = `${layout}::${buildFilterSortCacheKey(normalized)}`;
+        const view = resolveView(layout, viewConfig);
+        const normalized = normalizeState(layout, state, view);
+        const cacheKey = `${layout}::${buildFilterSortCacheKey(normalized, view)}`;
         const cached = filteredRowIdsCache.get(cacheKey);
         if (cached) return cached;
-        return getFilteredSortedRows(layout, normalized).map((row) => row.id);
+        return getFilteredSortedRows(layout, normalized, view).map((row) => row.id);
     }
 
     function buildRankingCacheKey(card: RankingCard): string {
@@ -1212,7 +1547,8 @@ export function createConflictGridDataset(options: {
         let metricVectorsWarmed = 0;
 
         warmedLayouts.forEach((layout) => {
-            void bootstrap(layout);
+            const baseView = resolveView(layout);
+            void bootstrap(layout, baseView.config);
             metricColumnByKey.forEach((column) => {
                 const cacheKey = `${layout}:${column.key}`;
                 if (metricVectorCache.has(cacheKey)) return;
@@ -1233,8 +1569,8 @@ export function createConflictGridDataset(options: {
                 columnOrderKeys: dataset.bootstrap.columns.map((column) => column.key),
                 expandedRowIds: [],
                 selectedRowIds: [],
-            });
-            void getFilteredSortedRows(layout, warmState);
+            }, baseView);
+            void getFilteredSortedRows(layout, warmState, baseView);
         });
 
         const endedAt = typeof performance !== "undefined"
@@ -1252,13 +1588,15 @@ export function createConflictGridDataset(options: {
     function exportRows(
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ): GridExportResult {
-        const normalized = normalizeState(layout, state);
+        const view = resolveView(layout, viewConfig);
+        const normalized = normalizeState(layout, state, view);
         const visibleColumns = getVisibleColumns(
-            getLayoutDataset(layout).bootstrap,
+            getLayoutBootstrap(layout, view),
             normalized,
         );
-        const filteredRows = getFilteredSortedRows(layout, normalized);
+        const filteredRows = getFilteredSortedRows(layout, normalized, view);
         const exportColumns: string[] = [];
 
         visibleColumns.forEach((column) => {
@@ -1284,9 +1622,9 @@ export function createConflictGridDataset(options: {
                     exported.push(...row.exportAllianceCells);
                     return;
                 }
-                const metricColumn = metricColumnByKey.get(column.key);
-                if (!metricColumn) return;
-                exported.push(getMetricValue(row, metricColumn));
+                const numericColumn = getNumericColumnSpec(layout, view, column.key);
+                if (!numericColumn) return;
+                exported.push(getNumericValue(row, numericColumn, view));
             });
             return exported;
         });

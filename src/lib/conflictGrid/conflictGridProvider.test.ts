@@ -8,7 +8,9 @@ import type {
     GridSummaryByColumnKey,
 } from "../grid/types";
 import type { ScopeSnapshot } from "../kpi";
+import { sanitizeConflictCustomColumn } from "../conflictCustomColumns";
 import { createConflictGridProvider } from "./conflictGridProvider";
+import type { ConflictGridViewConfig } from "./protocol";
 import { ConflictGridLayout } from "./rowIds";
 import type { ConflictGridWorkerClient } from "./workerClient";
 
@@ -147,6 +149,7 @@ describe("conflictGridProvider", () => {
             expect.objectContaining({
                 viewport: { start: 0, end: 196 },
             }),
+            { customColumns: [] },
         );
         expect(state.viewport).toEqual({ start: -12.5, end: 196.9 });
     });
@@ -170,6 +173,7 @@ describe("conflictGridProvider", () => {
             expect.objectContaining({
                 viewport: undefined,
             }),
+            { customColumns: [] },
         );
     });
 
@@ -190,5 +194,72 @@ describe("conflictGridProvider", () => {
             "name",
             "dealt:damage",
         ]);
+    });
+
+    it("passes the current view config through bootstrap and query calls", async () => {
+        const viewConfig: ConflictGridViewConfig = {
+            customColumns: [
+                sanitizeConflictCustomColumn({
+                    kind: "member-rollup",
+                    label: "Count of nations with off:wars > 5",
+                    reducer: "count",
+                    display: "number",
+                    expr: {
+                        kind: "compare",
+                        op: "gt",
+                        left: { kind: "metric", metric: "off:wars" },
+                        right: { kind: "value", value: 5 },
+                    },
+                })!,
+            ],
+        };
+        const bootstrap = vi.fn(async (layout) =>
+            createWorkerClient(async () => createPageResult("ignored")).bootstrap(layout),
+        );
+        const query = vi.fn(async (_layout, _state) => createPageResult("view"));
+        const provider = createConflictGridProvider({
+            client: {
+                ...createWorkerClient(query),
+                bootstrap,
+            },
+            layout: ConflictGridLayout.COALITION,
+            getViewConfig: () => viewConfig,
+        });
+
+        await provider.bootstrap();
+        await provider.query(createQueryState());
+
+        expect(bootstrap).toHaveBeenCalledWith(
+            ConflictGridLayout.COALITION,
+            expect.objectContaining({
+                customColumns: [
+                    expect.objectContaining({
+                        id: expect.stringMatching(/^cc-/),
+                        kind: "member-rollup",
+                        label: "Count of nations with off:wars > 5",
+                        reducer: "count",
+                        display: "number",
+                        expr: {
+                            kind: "compare",
+                            op: "gt",
+                            left: { kind: "metric", metric: "off:wars" },
+                            right: { kind: "value", value: 5 },
+                        },
+                    }),
+                ],
+            }),
+        );
+        expect(query).toHaveBeenCalledWith(
+            ConflictGridLayout.COALITION,
+            expect.any(Object),
+            expect.objectContaining({
+                customColumns: [
+                    expect.objectContaining({
+                        id: expect.stringMatching(/^cc-/),
+                        reducer: "count",
+                    }),
+                ],
+            }),
+        );
     });
 });

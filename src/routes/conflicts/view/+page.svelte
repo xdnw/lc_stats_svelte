@@ -42,6 +42,10 @@
         serializeConflictLayoutQuery,
     } from "$lib/conflictLayoutQueryState";
     import {
+        filterConflictCustomColumnsForLayout,
+        getConflictCustomColumnIdsForLayout,
+    } from "$lib/conflictCustomColumns";
+    import {
         layoutTabFromIndex,
     } from "$lib/conflictTabs";
     import type { ColumnPreset } from "$lib/columnPresets";
@@ -139,7 +143,13 @@
                   defaultVisibleColumnKeys: normalizeConflictLayoutColumns(
                       layoutState.layout,
                       DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns,
+                      {
+                          customColumnIds: activeCustomColumnIds(),
+                      },
                   ),
+                  getViewConfig: () => ({
+                      customColumns: getCustomColumnsForGrid(),
+                  }),
               });
 
     function scopedStorageKey(aid: number | null): string {
@@ -159,10 +169,27 @@
         loadErrorDetails = [];
     }
 
+    function activeCustomColumnIds(): string[] {
+        return getConflictCustomColumnIdsForLayout(
+            layoutState.layout,
+            layoutState.customColumns,
+        );
+    }
+
+    function getCustomColumnsForGrid() {
+        return filterConflictCustomColumnsForLayout(
+            layoutState.layout,
+            layoutState.customColumns,
+        );
+    }
+
     function buildCompositeGridInitialState(): Partial<GridQueryState> {
         const normalizedColumns = normalizeConflictLayoutColumns(
             layoutState.layout,
             layoutState.columns,
+            {
+                customColumnIds: activeCustomColumnIds(),
+            },
         );
         return {
             sort: {
@@ -190,6 +217,7 @@
             sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
             order: "desc",
             columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
+            customColumns: [],
         });
         layoutState = nextLayoutState;
     }
@@ -230,11 +258,13 @@
         sort: string;
         order: string;
         columns: string[];
+        customColumns?: typeof layoutState.customColumns;
     }): boolean {
         return isConflictTableLayoutStateEqual(layoutState, {
             sort: input.sort,
             order: input.order === "asc" ? "asc" : "desc",
             columns: input.columns,
+            customColumns: input.customColumns ?? [],
         });
     }
 
@@ -248,6 +278,9 @@
         layoutState.columns = normalizeConflictLayoutColumns(
             layoutState.layout,
             layoutState.columns,
+            {
+                customColumnIds: activeCustomColumnIds(),
+            },
         );
         resetCompositeGridState();
         syncQueryAndStorage(true);
@@ -260,12 +293,16 @@
         const nextColumns = normalizeConflictLayoutColumns(
             layoutState.layout,
             preset.columns,
+            {
+                customColumnIds: [],
+            },
         );
         if (
             isSameLayoutState({
                 sort: preset.sort,
                 order: nextOrder,
                 columns: nextColumns,
+                customColumns: [],
             })
         ) {
             return;
@@ -274,12 +311,16 @@
         layoutState.columns = nextColumns;
         layoutState.sort = preset.sort;
         layoutState.order = nextOrder;
+        layoutState.customColumns = [];
         selectedLayoutPresetKey = key;
         resetCompositeGridState();
         syncQueryAndStorage(true);
     }
 
     function handleColumnPresetLoad(preset: ColumnPreset): void {
+        const nextCustomColumns = Array.isArray(preset.customColumns)
+            ? [...preset.customColumns]
+            : [];
         const nextSort = preset.sort || layoutState.sort;
         const nextOrder: "asc" | "desc" =
             preset.order === "asc"
@@ -288,18 +329,30 @@
                   ? "desc"
                   : layoutState.order;
         const nextColumns = Array.isArray(preset.columns)
-            ? normalizeConflictLayoutColumns(layoutState.layout, preset.columns)
-            : normalizeConflictLayoutColumns(layoutState.layout, layoutState.columns);
+            ? normalizeConflictLayoutColumns(layoutState.layout, preset.columns, {
+                customColumnIds: getConflictCustomColumnIdsForLayout(
+                    layoutState.layout,
+                    nextCustomColumns,
+                ),
+            })
+            : normalizeConflictLayoutColumns(layoutState.layout, layoutState.columns, {
+                customColumnIds: getConflictCustomColumnIdsForLayout(
+                    layoutState.layout,
+                    nextCustomColumns,
+                ),
+            });
 
         const noLayoutChange = isSameLayoutState({
             sort: nextSort,
             order: nextOrder,
             columns: nextColumns,
+            customColumns: nextCustomColumns,
         });
 
         layoutState.columns = nextColumns;
         layoutState.sort = nextSort;
         layoutState.order = nextOrder;
+        layoutState.customColumns = nextCustomColumns;
         selectedLayoutPresetKey = detectConflictTableLayoutPresetKey(layoutState);
         resetCompositeGridState();
 
@@ -469,6 +522,9 @@
         const nextColumns = normalizeConflictLayoutColumns(
             layoutState.layout,
             orderedVisible.length > 0 ? orderedVisible : layoutState.columns,
+            {
+                customColumnIds: activeCustomColumnIds(),
+            },
         );
         const nextSort = state.sort?.key ?? DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort;
         const nextOrder: "asc" | "desc" = state.sort?.dir === "asc" ? "asc" : "desc";
@@ -477,6 +533,7 @@
             sort: nextSort,
             order: nextOrder,
             columns: nextColumns,
+            customColumns: layoutState.customColumns,
         });
 
         if (!layoutChanged && compositeGridPageSizePreference === nextPageSize) {
@@ -496,7 +553,7 @@
 
     onMount(() => {
         applySavedQueryParamsIfMissing(
-            ["aid", "layout", "sort", "order", "columns", "grid"],
+            ["aid", "layout", "sort", "order", "columns", "cc", "grid"],
             ["ids"],
             scopedStorageKey(data.selectedAllianceId),
         );
@@ -670,6 +727,7 @@
                 <li>
                     <ColumnPresetManager
                         currentColumns={layoutState.columns}
+                        currentCustomColumns={layoutState.customColumns}
                         currentSort={layoutState.sort}
                         currentOrder={layoutState.order}
                         currentKpis={[]}

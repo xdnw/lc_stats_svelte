@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-04-28 22:38:46.
+// Generated using typescript-generator version 3.2.1263 on 2026-04-29 10:30:13.
 
 export interface WebError {
     error: string;
@@ -488,6 +488,7 @@ export interface BlitzPlanRequest {
     sideModeOrdinal: number;
     rebuyModeOrdinal: number;
     objectiveOrdinal: number;
+    turn1DeclarePolicyOrdinal: number;
     horizonTurns: number;
     includeExistingWars: boolean;
     assume5553Buildings: boolean;

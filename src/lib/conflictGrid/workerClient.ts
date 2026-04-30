@@ -9,6 +9,10 @@ import type {
 import type { MetricCard, RankingCard, ScopeSnapshot } from "../kpi";
 import { getConflictDataUrl } from "../runtime";
 import { requestWorkerRpc } from "../workerRpc";
+import {
+    getConflictGridViewHash,
+    normalizeConflictGridViewConfig,
+} from "./protocol";
 import type {
     ConflictGridBootstrapPayload,
     ConflictGridBootstrapRequest,
@@ -23,6 +27,7 @@ import type {
     ConflictGridSelectionSnapshotRequest,
     ConflictGridSummaryQueryRequest,
     ConflictGridTableQueryRequest,
+    ConflictGridViewConfig,
     ConflictKpiRankingRow,
 } from "./protocol";
 import { ConflictGridLayout, type ConflictGridLayoutValue } from "./rowIds";
@@ -59,27 +64,33 @@ export type ConflictGridWorkerClient = {
     readonly datasetRef: ConflictGridDatasetRef;
     bootstrap: (
         layout: ConflictGridLayoutValue,
+        viewConfig?: ConflictGridViewConfig,
     ) => Promise<ConflictGridBootstrapPayload>;
     query: (
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ) => Promise<GridPageResult>;
     querySummary: (
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ) => Promise<GridSummaryByColumnKey>;
     getRowDetails: (
         layout: ConflictGridLayoutValue,
         rowId: GridRowId,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ) => Promise<GridPageRow | null>;
     getFilteredRowIds: (
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ) => Promise<GridRowId[]>;
     exportRows: (
         layout: ConflictGridLayoutValue,
         state: GridQueryState,
+        viewConfig?: ConflictGridViewConfig,
     ) => Promise<GridExportResult>;
     prewarmLayouts: (
         layouts?: ConflictGridLayoutValue[],
@@ -131,6 +142,7 @@ type SharedConflictGridHandle = {
     ) => Promise<Result>;
     bootstrap: (
         layout: ConflictGridLayoutValue,
+        viewConfig?: ConflictGridViewConfig,
     ) => Promise<ConflictGridBootstrapPayload>;
     prewarm: (
         layouts?: ConflictGridLayoutValue[],
@@ -171,7 +183,7 @@ function createSharedHandle(
     datasetRef: ConflictGridDatasetRef,
 ): SharedConflictGridHandle {
     const worker = createWorker();
-    const bootstrapByLayout = new Map<ConflictGridLayoutValue, CachedBootstrapEntry>();
+    const bootstrapByLayoutView = new Map<string, CachedBootstrapEntry>();
     const warmedLayouts = new Set<ConflictGridLayoutValue>();
     let datasetReady = false;
     let refCount = 0;
@@ -194,7 +206,7 @@ function createSharedHandle(
         if (released) return;
         released = true;
         clearReleaseTimer();
-        bootstrapByLayout.clear();
+        bootstrapByLayoutView.clear();
         sharedHandles.delete(datasetRef.datasetKey);
         worker.terminate();
     }
@@ -222,8 +234,11 @@ function createSharedHandle(
 
     function bootstrap(
         layout: ConflictGridLayoutValue,
+        viewConfig?: ConflictGridViewConfig,
     ): Promise<ConflictGridBootstrapPayload> {
-        const cached = bootstrapByLayout.get(layout);
+        const normalizedViewConfig = normalizeConflictGridViewConfig(viewConfig);
+        const cacheKey = `${layout}::${getConflictGridViewHash(normalizedViewConfig)}`;
+        const cached = bootstrapByLayoutView.get(cacheKey);
         if (cached) {
             if (cached.settled && cached.value) {
                 return Promise.resolve(cloneBootstrapPayload(cached.value, true));
@@ -245,6 +260,7 @@ function createSharedHandle(
                 action: "bootstrap",
                 dataset: datasetRef,
                 layout,
+                viewConfig: normalizedViewConfig,
             },
             `conflict grid bootstrap (${layout})`,
             45_000,
@@ -256,11 +272,11 @@ function createSharedHandle(
                 return cloneBootstrapPayload(result);
             })
             .catch((error) => {
-                bootstrapByLayout.delete(layout);
+                bootstrapByLayoutView.delete(cacheKey);
                 throw error;
             });
 
-        bootstrapByLayout.set(layout, entry);
+        bootstrapByLayoutView.set(cacheKey, entry);
         return entry.promise;
     }
 
@@ -374,6 +390,7 @@ export function createConflictGridWorkerClient(options: {
     conflictId: string;
     version: string | number;
     basePath?: string;
+    getViewConfig?: (() => ConflictGridViewConfig | null | undefined) | undefined;
 }): ConflictGridWorkerClient {
     const handle = getSharedHandle(options);
     handle.acquire();
@@ -386,14 +403,20 @@ export function createConflictGridWorkerClient(options: {
         }
     }
 
+    function resolveViewConfig(
+        viewConfig?: ConflictGridViewConfig | null,
+    ): ConflictGridViewConfig {
+        return normalizeConflictGridViewConfig(viewConfig ?? options.getViewConfig?.());
+    }
+
     return {
         conflictId: options.conflictId,
         datasetRef,
-        bootstrap(layout) {
+        bootstrap(layout, viewConfig) {
             ensureOwned();
-            return handle.bootstrap(layout);
+            return handle.bootstrap(layout, resolveViewConfig(viewConfig));
         },
-        query(layout, state) {
+        query(layout, state, viewConfig) {
             ensureOwned();
             return handle.request<GridPageResult, ConflictGridTableQueryRequest>(
                 {
@@ -401,11 +424,12 @@ export function createConflictGridWorkerClient(options: {
                     dataset: datasetRef,
                     layout,
                     state,
+                    viewConfig: resolveViewConfig(viewConfig),
                 },
                 `conflict grid query (${layout})`,
             );
         },
-        querySummary(layout, state) {
+        querySummary(layout, state, viewConfig) {
             ensureOwned();
             return handle.request<GridSummaryByColumnKey, ConflictGridSummaryQueryRequest>(
                 {
@@ -413,11 +437,12 @@ export function createConflictGridWorkerClient(options: {
                     dataset: datasetRef,
                     layout,
                     state,
+                    viewConfig: resolveViewConfig(viewConfig),
                 },
                 `conflict grid summary (${layout})`,
             );
         },
-        getRowDetails(layout, rowId, state) {
+        getRowDetails(layout, rowId, state, viewConfig) {
             ensureOwned();
             return handle.request<GridPageRow | null, ConflictGridRowDetailsRequest>(
                 {
@@ -426,11 +451,12 @@ export function createConflictGridWorkerClient(options: {
                     layout,
                     rowId,
                     state,
+                    viewConfig: resolveViewConfig(viewConfig),
                 },
                 `conflict grid row details (${layout})`,
             );
         },
-        getFilteredRowIds(layout, state) {
+        getFilteredRowIds(layout, state, viewConfig) {
             ensureOwned();
             return handle.request<GridRowId[], ConflictGridFilteredRowIdsRequest>(
                 {
@@ -438,11 +464,12 @@ export function createConflictGridWorkerClient(options: {
                     dataset: datasetRef,
                     layout,
                     state,
+                    viewConfig: resolveViewConfig(viewConfig),
                 },
                 `conflict grid filtered row ids (${layout})`,
             );
         },
-        exportRows(layout, state) {
+        exportRows(layout, state, viewConfig) {
             ensureOwned();
             return handle.request<GridExportResult, ConflictGridExportRequest>(
                 {
@@ -450,6 +477,7 @@ export function createConflictGridWorkerClient(options: {
                     dataset: datasetRef,
                     layout,
                     state,
+                    viewConfig: resolveViewConfig(viewConfig),
                 },
                 `conflict grid export (${layout})`,
                 45_000,

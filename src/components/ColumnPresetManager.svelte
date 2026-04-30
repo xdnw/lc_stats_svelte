@@ -8,9 +8,11 @@
         deleteColumnPreset,
         type ColumnPreset,
     } from "$lib";
+    import type { ConflictCustomColumnConfig } from "$lib/conflictCustomColumns";
     import type { SharedKpiConfig } from "$lib/kpi";
 
     export let currentColumns: string[] = [];
+    export let currentCustomColumns: ConflictCustomColumnConfig[] = [];
     export let currentSort: string = "";
     export let currentOrder: string = "desc";
     export let currentKpis: string[] = [];
@@ -52,6 +54,7 @@
         }
         saveColumnPreset(nm, {
             columns: currentColumns,
+            customColumns: currentCustomColumns,
             sort: currentSort,
             order: currentOrder,
             kpis: currentKpis,

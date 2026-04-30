@@ -63,6 +63,8 @@
     export let exportDatasetLabel = "Current table";
     export let exportButtonLabel = "Export data";
     export let columnButtonLabel = "Customize Columns";
+    export let columnFooterActionLabel = "";
+    export let columnFooterActionButtonClass = "btn ux-btn btn-sm";
     export let emptyMessage = "No rows match the current view.";
     export let loadingMessage = "Loading table...";
     export let caption = "Data grid";
@@ -75,6 +77,7 @@
         queryResult: { result: GridPageResult };
         stateChange: { state: GridQueryState };
         selectionChange: { selectedRowIds: GridRowId[] };
+        columnAction: undefined;
         cellAction: {
             rowId: GridRowId;
             columnKey: string;
@@ -1183,11 +1186,14 @@
             exportDatasets={exportDatasets}
             exportButtonLabel={exportButtonLabel}
             columnButtonLabel={columnButtonLabel}
+            columnFooterActionLabel={columnFooterActionLabel}
+            columnFooterActionButtonClass={columnFooterActionButtonClass}
             on:export={handleExport}
             on:toggleColumn={handleToggleColumn}
             on:showAllColumns={handleShowAllColumns}
             on:hideAllColumns={handleHideAllColumns}
             on:reorderColumn={handleReorderColumn}
+            on:columnAction={() => dispatch("columnAction", undefined)}
         />
     {/if}
 

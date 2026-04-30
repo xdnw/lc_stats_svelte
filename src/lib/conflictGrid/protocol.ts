@@ -2,6 +2,11 @@ import type {
     OffWarsPerNationStats,
     CoalitionSummaryRow,
 } from "../conflictKpiPresetComputations";
+import {
+    sanitizeConflictCustomColumns,
+    serializeConflictCustomColumnsForQuery,
+    type ConflictCustomColumnConfig,
+} from "../conflictCustomColumns";
 import type {
     GridBootstrapResult,
     GridExportResult,
@@ -21,6 +26,40 @@ export type ConflictGridDatasetRef = {
     version: string;
     basePath?: string;
 };
+
+export type ConflictGridViewConfig = {
+    customColumns: ConflictCustomColumnConfig[];
+};
+
+function hashConflictGridViewKey(input: string): string {
+    let hash = 2166136261;
+    for (let index = 0; index < input.length; index += 1) {
+        hash ^= input.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+
+export function normalizeConflictGridViewConfig(
+    viewConfig?: ConflictGridViewConfig | null,
+): ConflictGridViewConfig {
+    return {
+        customColumns: sanitizeConflictCustomColumns(
+            viewConfig?.customColumns ?? [],
+        ),
+    };
+}
+
+export function getConflictGridViewHash(
+    viewConfig?: ConflictGridViewConfig | null,
+): string {
+    const normalized = normalizeConflictGridViewConfig(viewConfig);
+    const serialized = serializeConflictCustomColumnsForQuery(
+        normalized.customColumns,
+    );
+    if (!serialized) return "base";
+    return `cc-${hashConflictGridViewKey(serialized)}`;
+}
 
 export type ConflictGridMeta = {
     conflictId: string;
@@ -87,6 +126,7 @@ export type ConflictGridBootstrapRequest = {
     action: "bootstrap";
     dataset: ConflictGridDatasetRef;
     layout: ConflictGridLayoutValue;
+    viewConfig: ConflictGridViewConfig;
 };
 
 export type ConflictGridTableQueryRequest = {
@@ -95,6 +135,7 @@ export type ConflictGridTableQueryRequest = {
     dataset: ConflictGridDatasetRef;
     layout: ConflictGridLayoutValue;
     state: GridQueryState;
+    viewConfig: ConflictGridViewConfig;
 };
 
 export type ConflictGridSummaryQueryRequest = {
@@ -103,6 +144,7 @@ export type ConflictGridSummaryQueryRequest = {
     dataset: ConflictGridDatasetRef;
     layout: ConflictGridLayoutValue;
     state: GridQueryState;
+    viewConfig: ConflictGridViewConfig;
 };
 
 export type ConflictGridRowDetailsRequest = {
@@ -112,6 +154,7 @@ export type ConflictGridRowDetailsRequest = {
     layout: ConflictGridLayoutValue;
     rowId: GridRowId;
     state: GridQueryState;
+    viewConfig: ConflictGridViewConfig;
 };
 
 export type ConflictGridFilteredRowIdsRequest = {
@@ -120,6 +163,7 @@ export type ConflictGridFilteredRowIdsRequest = {
     dataset: ConflictGridDatasetRef;
     layout: ConflictGridLayoutValue;
     state: GridQueryState;
+    viewConfig: ConflictGridViewConfig;
 };
 
 export type ConflictGridExportRequest = {
@@ -128,6 +172,7 @@ export type ConflictGridExportRequest = {
     dataset: ConflictGridDatasetRef;
     layout: ConflictGridLayoutValue;
     state: GridQueryState;
+    viewConfig: ConflictGridViewConfig;
 };
 
 export type ConflictGridSelectionSnapshotRequest = {

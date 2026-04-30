@@ -13,6 +13,8 @@
     export let exportDatasets: ExportMenuDataset[] = [];
     export let exportButtonLabel = "Export data";
     export let columnButtonLabel = "Customize Columns";
+    export let columnFooterActionLabel = "";
+    export let columnFooterActionButtonClass = "btn ux-btn btn-sm";
 
     const dispatch = createEventDispatcher<{
         export: ExportMenuAction;
@@ -20,6 +22,7 @@
         showAllColumns: undefined;
         hideAllColumns: undefined;
         reorderColumn: { key: string; targetIndex: number };
+        columnAction: undefined;
     }>();
 
     let selectedDatasetKey = "";
@@ -83,10 +86,13 @@
         {visibleColumnKeys}
         {columnOrderKeys}
         buttonLabel={columnButtonLabel}
+        footerActionLabel={columnFooterActionLabel}
+        footerActionButtonClass={columnFooterActionButtonClass}
         on:toggleColumn={(event) => dispatch("toggleColumn", event.detail)}
         on:showAllColumns={() => dispatch("showAllColumns", undefined)}
         on:hideAllColumns={() => dispatch("hideAllColumns", undefined)}
         on:reorderColumn={(event) => dispatch("reorderColumn", event.detail)}
+        on:footerAction={() => dispatch("columnAction", undefined)}
     />
 </div>
 

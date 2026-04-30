@@ -12,12 +12,15 @@
     export let visibleColumnKeys: string[] = [];
     export let columnOrderKeys: string[] = [];
     export let buttonLabel = "Customize Columns";
+    export let footerActionLabel = "";
+    export let footerActionButtonClass = "btn ux-btn btn-sm";
 
     const dispatch = createEventDispatcher<{
         toggleColumn: { key: string };
         showAllColumns: undefined;
         hideAllColumns: undefined;
         reorderColumn: { key: string; targetIndex: number };
+        footerAction: undefined;
     }>();
 
     let open = false;
@@ -91,6 +94,11 @@
 
     function closeMenu(): void {
         open = false;
+    }
+
+    function handleFooterAction(): void {
+        closeMenu();
+        dispatch("footerAction", undefined);
     }
 
     async function ensureModalShellLoaded(): Promise<void> {
@@ -291,7 +299,14 @@
                 ></div>
             {/if}
         </div>
-        <div class="d-flex justify-content-end pt-2">
+        <div class="d-flex justify-content-between align-items-center gap-2 pt-2">
+            {#if footerActionLabel}
+                <button class={footerActionButtonClass} type="button" on:click={handleFooterAction}>
+                    {footerActionLabel}
+                </button>
+            {:else}
+                <span></span>
+            {/if}
             <button class="btn btn-outline-secondary btn-sm" type="button" on:click={closeMenu}>
                 Close
             </button>

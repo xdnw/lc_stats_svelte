@@ -1,4 +1,5 @@
 import { normalizeConflictLayoutColumns } from "./conflictLayoutQueryState";
+import type { ConflictCustomColumnConfig } from "./conflictCustomColumns";
 
 export type ConflictTableLayoutPreset = {
     sort: string;
@@ -11,6 +12,7 @@ export type ConflictTableLayoutState = {
     sort: string;
     order: "asc" | "desc";
     columns: string[];
+    customColumns: ConflictCustomColumnConfig[];
 };
 
 const BREAKDOWN_COLUMNS = [
@@ -126,28 +128,55 @@ export function createDefaultConflictTableLayoutState(): ConflictTableLayoutStat
         sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
         order: "desc",
         columns: [...DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns],
+        customColumns: [],
     };
 }
 
+function areConflictCustomColumnsEqual(
+    left: ConflictCustomColumnConfig[] | undefined,
+    right: ConflictCustomColumnConfig[] | undefined,
+): boolean {
+    const leftColumns = left ?? [];
+    const rightColumns = right ?? [];
+    return JSON.stringify(leftColumns) === JSON.stringify(rightColumns);
+}
+
 export function isConflictTableLayoutStateEqual(
-    state: Pick<ConflictTableLayoutState, "layout" | "sort" | "order" | "columns">,
-    input: Pick<ConflictTableLayoutState, "sort" | "order" | "columns">,
+    state: Pick<
+        ConflictTableLayoutState,
+        "layout" | "sort" | "order" | "columns" | "customColumns"
+    >,
+    input: Pick<
+        ConflictTableLayoutState,
+        "sort" | "order" | "columns" | "customColumns"
+    >,
 ): boolean {
     const normalizedInputColumns = normalizeConflictLayoutColumns(
         state.layout,
         input.columns,
+        {
+            customColumnIds: input.customColumns.map((column) => column.id),
+        },
     );
     return (
         state.sort === input.sort &&
         state.order === input.order &&
+        areConflictCustomColumnsEqual(state.customColumns, input.customColumns) &&
         state.columns.length === normalizedInputColumns.length &&
         state.columns.every((value, index) => value === normalizedInputColumns[index])
     );
 }
 
 export function detectConflictTableLayoutPresetKey(
-    state: Pick<ConflictTableLayoutState, "layout" | "sort" | "order" | "columns">,
+    state: Pick<
+        ConflictTableLayoutState,
+        "layout" | "sort" | "order" | "columns" | "customColumns"
+    >,
 ): string | null {
+    if (state.customColumns.length > 0) {
+        return null;
+    }
+
     return (
         CONFLICT_TABLE_LAYOUT_PRESET_KEYS.find((key) => {
             const preset = CONFLICT_TABLE_LAYOUT_PRESETS[key];
@@ -155,17 +184,22 @@ export function detectConflictTableLayoutPresetKey(
                 sort: preset.sort,
                 order: preset.order ?? "desc",
                 columns: preset.columns,
+                customColumns: [],
             });
         }) ?? null
     );
 }
 
 export function isConflictTableDefaultPresetState(
-    state: Pick<ConflictTableLayoutState, "layout" | "sort" | "order" | "columns">,
+    state: Pick<
+        ConflictTableLayoutState,
+        "layout" | "sort" | "order" | "columns" | "customColumns"
+    >,
 ): boolean {
     return isConflictTableLayoutStateEqual(state, {
         sort: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.sort,
         order: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.order ?? "desc",
         columns: DEFAULT_CONFLICT_TABLE_LAYOUT_PRESET.columns,
+        customColumns: [],
     });
 }

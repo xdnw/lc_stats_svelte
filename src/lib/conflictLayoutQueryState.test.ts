@@ -3,12 +3,17 @@ import {
     parseConflictLayoutQuery,
     serializeConflictLayoutQuery,
 } from "./conflictLayoutQueryState";
+import {
+    parseConflictCustomColumnsFromQuery,
+    serializeConflictCustomColumnsForQuery,
+} from "./conflictCustomColumns";
 
 const DEFAULTS = {
     layout: 0 as const,
     sort: "off:wars",
     order: "desc" as const,
     columns: ["name", "net:damage", "off:wars"],
+    customColumns: [],
 };
 
 describe("conflictLayoutQueryState", () => {
@@ -29,6 +34,7 @@ describe("conflictLayoutQueryState", () => {
                 "loss:infra",
                 "off:wars",
             ],
+            customColumns: [],
         });
     });
 
@@ -45,7 +51,55 @@ describe("conflictLayoutQueryState", () => {
             sort: "net:damage",
             order: "asc",
             columns: ["alliance", "name", "net:damage", "off:wars"],
+            customColumns: [],
         });
+    });
+
+    it("drops stale custom column ids when cc is missing", () => {
+        const query = new URLSearchParams({
+            layout: "alliance",
+            columns: "name.cc-stale.loss:infra.off:wars",
+        });
+
+        expect(parseConflictLayoutQuery(query, DEFAULTS)).toEqual({
+            layout: 1,
+            sort: "off:wars",
+            order: "desc",
+            columns: ["name", "loss:infra", "off:wars"],
+            customColumns: [],
+        });
+    });
+
+    it("round-trips cc query state before columns normalization", () => {
+        const cc = serializeConflictCustomColumnsForQuery([
+            {
+                kind: "member-rollup",
+                label: "War-heavy nations",
+                reducer: "count",
+                display: "number",
+                expr: {
+                    kind: "compare",
+                    op: "gt",
+                    left: { kind: "metric", metric: "off:wars" },
+                    right: { kind: "value", value: 5 },
+                },
+            },
+        ]);
+        const parsedCustomColumns = parseConflictCustomColumnsFromQuery(cc);
+        const query = new URLSearchParams({
+            layout: "alliance",
+            columns: `name.${parsedCustomColumns[0]?.id ?? "cc-missing"}.loss:infra.off:wars.cc-stale`,
+            cc: cc ?? "",
+        });
+
+        const parsed = parseConflictLayoutQuery(query, DEFAULTS);
+        expect(parsed.customColumns).toEqual(parsedCustomColumns);
+        expect(parsed.columns).toEqual([
+            "name",
+            parsed.customColumns[0].id,
+            "loss:infra",
+            "off:wars",
+        ]);
     });
 
     it("serializes normalized layout state without changing query shape", () => {
@@ -55,12 +109,41 @@ describe("conflictLayoutQueryState", () => {
                 sort: "off:wars",
                 order: "desc",
                 columns: ["name", "loss:infra", "off:wars"],
+                customColumns: [],
             }),
         ).toEqual({
             layout: "alliance",
             sort: "off:wars",
             order: "desc",
             columns: "name.loss:infra.off:wars",
+            cc: null,
         });
+    });
+
+    it("drops member-rollup ids from nation layout normalization", () => {
+        const cc = serializeConflictCustomColumnsForQuery([
+            {
+                kind: "member-rollup",
+                label: "War-heavy nations",
+                reducer: "count",
+                display: "number",
+                expr: {
+                    kind: "compare",
+                    op: "gt",
+                    left: { kind: "metric", metric: "off:wars" },
+                    right: { kind: "value", value: 5 },
+                },
+            },
+        ]);
+        const parsedCustomColumns = parseConflictCustomColumnsFromQuery(cc);
+        const query = new URLSearchParams({
+            layout: "nation",
+            columns: `alliance.name.${parsedCustomColumns[0]?.id ?? "cc-missing"}.off:wars`,
+            cc: cc ?? "",
+        });
+
+        const parsed = parseConflictLayoutQuery(query, DEFAULTS);
+        expect(parsed.customColumns).toEqual(parsedCustomColumns);
+        expect(parsed.columns).toEqual(["alliance", "name", "off:wars"]);
     });
 });

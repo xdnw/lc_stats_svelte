@@ -38,9 +38,47 @@
     }>();
 
     let closeButton: HTMLButtonElement | null = null;
+    let backdropPointerDown = false;
+    let bodyScrollLocked = false;
+
+    function queueCloseButtonFocus(): void {
+        void tick().then(() => {
+            closeButton?.focus();
+        });
+    }
+
+    function syncBodyScrollLock(nextOpen: boolean): void {
+        if (nextOpen) {
+            if (!bodyScrollLocked) {
+                lockBodyScroll();
+                bodyScrollLocked = true;
+            }
+            queueCloseButtonFocus();
+            return;
+        }
+
+        if (!bodyScrollLocked) {
+            return;
+        }
+
+        unlockBodyScroll();
+        bodyScrollLocked = false;
+    }
 
     function close(): void {
         dispatch("close");
+    }
+
+    function handleBackdropPointerDown(event: PointerEvent): void {
+        backdropPointerDown = event.target === event.currentTarget;
+    }
+
+    function handleBackdropPointerUp(event: PointerEvent): void {
+        const releasedOnBackdrop = event.target === event.currentTarget;
+        if (closeOnBackdrop && backdropPointerDown && releasedOnBackdrop) {
+            close();
+        }
+        backdropPointerDown = false;
     }
 
     function portal(node: HTMLElement): { destroy(): void } | void {
@@ -80,15 +118,20 @@
     ].join("; ");
 
     onMount(() => {
-        lockBodyScroll();
-        void tick().then(() => {
-            closeButton?.focus();
-        });
+        syncBodyScrollLock(open);
     });
 
     onDestroy(() => {
-        unlockBodyScroll();
+        if (bodyScrollLocked) {
+            unlockBodyScroll();
+            bodyScrollLocked = false;
+        }
     });
+
+    $: if (!open) {
+        backdropPointerDown = false;
+    }
+    $: syncBodyScrollLock(open);
 </script>
 
 {#if open}
@@ -101,9 +144,8 @@
         aria-label={title}
         data-ux-modal-size={size}
         style={shellVars}
-        on:click|self={() => {
-            if (closeOnBackdrop) close();
-        }}
+        on:pointerdown={handleBackdropPointerDown}
+        on:pointerup={handleBackdropPointerUp}
         on:keydown={(event) => {
             if (event.key === "Escape") close();
         }}
