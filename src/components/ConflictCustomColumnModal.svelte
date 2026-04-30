@@ -137,7 +137,7 @@
     ];
 
     export let open = false;
-    export let title = "Custom columns";
+    export let title = "Conditional columns";
     export let layout: ConflictLayoutValue = 0;
     export let existingColumns: ConflictCustomColumnConfig[] = [];
     export let metricOptions: ConflictCustomMetricOption[] = [];

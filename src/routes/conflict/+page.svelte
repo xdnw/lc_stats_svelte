@@ -2083,7 +2083,7 @@
                 exportDatasetKey="overview"
                 exportDatasetLabel="Conflict overview"
                 exportButtonLabel="Export"
-                columnFooterActionLabel="Custom columns"
+                columnFooterActionLabel="Conditional columns"
                 columnFooterActionButtonClass="btn ux-btn ux-btn-danger btn-sm fw-bold"
                 emptyMessage="No rows match the current view."
                 loadingMessage={metaReady ? "Loading table..." : "Loading conflict dataset..."}
