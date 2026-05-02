@@ -11,3 +11,8 @@ export type SelectionModalItem = {
     group?: string;
     groupTone?: SelectionModalGroupTone;
 };
+
+export type SelectionModalQuickAction = {
+    label: string;
+    ids: SelectionId[];
+};

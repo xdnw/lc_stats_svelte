@@ -3,7 +3,10 @@ import { getCompositeConflictSignature } from "./conflictIds";
 
 function isRouterNotInitializedError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
-    return message.includes("before router is initialized");
+    return (
+        message.includes("before router is initialized") ||
+        message.includes("reading '$set'")
+    );
 }
 
 function safeReplaceState(url: string, pageState: App.PageState): void {

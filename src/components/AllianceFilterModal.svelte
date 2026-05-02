@@ -2,6 +2,7 @@
     import { createEventDispatcher } from "svelte";
     import { formatAllianceName } from "$lib/formatting";
     import {
+        buildCoalitionQuickActions,
         buildCoalitionAllianceItems,
         getSelectedAllianceIdsForCoalition,
         mergeCoalitionAllianceSelection,
@@ -129,6 +130,11 @@
                     selectionSet,
                 )
             : normalizedSelectedIds;
+    $: quickActions =
+        mode === "all-coalitions"
+            ? buildCoalitionQuickActions(coalitions)
+            : [];
+    $: visibleQuickActions = quickActions.length > 1 ? quickActions : [];
 </script>
 
 <SelectionModal
@@ -152,6 +158,7 @@
     {showActiveIndicator}
     {size}
     {disabled}
+    quickActions={visibleQuickActions}
     validateSelection={validateSelection}
     on:apply={handleApply}
 />

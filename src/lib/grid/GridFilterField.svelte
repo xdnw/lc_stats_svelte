@@ -67,6 +67,7 @@
             title={selectionFilterUi.title ?? `Filter ${column.title}`}
             description={selectionFilterUi.description ?? ""}
             items={selectionFilterUi.items}
+            quickActions={selectionFilterUi.quickActions ?? []}
             selectedIds={selectedSelectionIds}
             searchPlaceholder={
                 selectionFilterUi.searchPlaceholder ??

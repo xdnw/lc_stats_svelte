@@ -2,7 +2,11 @@
     import { createEventDispatcher } from "svelte";
     import type { AppIconName } from "$lib/icons";
     import DeferredModalTrigger from "./DeferredModalTrigger.svelte";
-    import type { SelectionId, SelectionModalItem } from "$lib/selection/types";
+    import type {
+        SelectionId,
+        SelectionModalItem,
+        SelectionModalQuickAction,
+    } from "$lib/selection/types";
 
     type SelectionPickerPanelComponent = typeof import("./SelectionPickerPanel.svelte").default;
 
@@ -19,6 +23,7 @@
     export let validateSelection:
         | ((ids: SelectionId[]) => string | null)
         | null = null;
+    export let quickActions: SelectionModalQuickAction[] = [];
     export let buttonLabel = "Open";
     export let buttonClass = "btn ux-btn btn-sm";
     export let buttonTitle = "";
@@ -107,6 +112,7 @@
             {singleSelect}
             {maxSelectedCount}
             {validateSelection}
+            {quickActions}
             on:cancel={close}
             on:apply={handleApply}
         />

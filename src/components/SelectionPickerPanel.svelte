@@ -5,7 +5,9 @@
         SelectionModalGroupTone,
         SelectionId,
         SelectionModalItem,
+        SelectionModalQuickAction,
     } from "$lib/selection/types";
+    import { applyRangeToggle } from "$lib/selection/rangeToggle";
 
     export let items: SelectionModalItem[] = [];
     export let selectedIds: SelectionId[] = [];
@@ -18,6 +20,7 @@
     export let validateSelection:
         | ((ids: SelectionId[]) => string | null)
         | null = null;
+    export let quickActions: SelectionModalQuickAction[] = [];
 
     const dispatch = createEventDispatcher<{
         cancel: void;
@@ -27,6 +30,31 @@
     let search = "";
     let draftKeys = new Set<string>();
     let searchInputEl: HTMLInputElement | null = null;
+    let anchorKey: string | null = null;
+    let pendingShiftToggle = false;
+
+    function capSelectionToMax(
+        candidate: ReadonlySet<string>,
+        existing: ReadonlySet<string>,
+        orderedKeys: readonly string[],
+        maxCount: number,
+    ): Set<string> {
+        const capped = new Set<string>();
+
+        for (const key of orderedKeys) {
+            if (!candidate.has(key)) continue;
+            capped.add(key);
+            if (capped.size >= maxCount) return capped;
+        }
+
+        for (const key of existing) {
+            if (capped.size >= maxCount) break;
+            if (!candidate.has(key) || capped.has(key)) continue;
+            capped.add(key);
+        }
+
+        return capped;
+    }
 
     function toKey(id: SelectionId): string {
         return `${typeof id}:${id}`;
@@ -59,34 +87,89 @@
         }
     }
 
-    function toggleDraft(id: SelectionId): void {
+    function toggleDraft(id: SelectionId, shiftKey = false): void {
+        pendingShiftToggle = false;
         const key = toKey(id);
-        const next = singleSelect ? new Set<string>() : new Set(draftKeys);
-        if (next.has(key)) {
-            next.delete(key);
-        } else if (
-            !singleSelect &&
-            normalizedMaxSelectedCount != null &&
-            draftKeys.size >= normalizedMaxSelectedCount
-        ) {
+        if (singleSelect) {
+            draftKeys = new Set([key]);
+            anchorKey = key;
             return;
-        } else {
-            next.add(key);
-            if (singleSelect) {
-                for (const existing of Array.from(next)) {
-                    if (existing !== key) next.delete(existing);
-                }
-            }
         }
-        draftKeys = next;
+
+        const current = new Set(draftKeys);
+        const targetAlreadySelected = current.has(key);
+        const shouldSelect = !targetAlreadySelected;
+        const hasCapacityForSingleToggle =
+            shouldSelect &&
+            normalizedMaxSelectedCount != null &&
+            current.size >= normalizedMaxSelectedCount;
+
+        if (hasCapacityForSingleToggle && !shiftKey) return;
+
+        const nextToggle = applyRangeToggle(
+            filteredItemKeys,
+            current,
+            anchorKey,
+            key,
+            shiftKey,
+        );
+
+        // Cap expansion when max selection is enforced. Keep deterministic visual order.
+        if (normalizedMaxSelectedCount != null && nextToggle.selected.size > normalizedMaxSelectedCount) {
+            if (targetAlreadySelected) {
+                draftKeys = nextToggle.selected;
+                anchorKey = nextToggle.anchor;
+                return;
+            }
+
+            draftKeys = capSelectionToMax(
+                nextToggle.selected,
+                current,
+                filteredItemKeys,
+                normalizedMaxSelectedCount,
+            );
+            anchorKey = nextToggle.anchor;
+            return;
+        }
+
+        draftKeys = nextToggle.selected;
+        anchorKey = nextToggle.anchor;
     }
 
     function selectAll(): void {
-        draftKeys = new Set(normalizedItems.map((item) => toKey(item.id)));
+        const allKeys = normalizedItems.map((item) => toKey(item.id));
+        if (normalizedMaxSelectedCount == null) {
+            draftKeys = new Set(allKeys);
+        } else {
+            draftKeys = new Set(allKeys.slice(0, normalizedMaxSelectedCount));
+        }
+        anchorKey = null;
     }
 
     function clearAll(): void {
         draftKeys = new Set();
+        anchorKey = null;
+    }
+
+    function applyQuickAction(actionIds: SelectionId[]): void {
+        const actionKeys = new Set(actionIds.map((id) => toKey(id)));
+        const candidate = new Set(
+            allItemKeys.filter((key) => actionKeys.has(key)),
+        );
+
+        if (normalizedMaxSelectedCount == null) {
+            draftKeys = candidate;
+            anchorKey = null;
+            return;
+        }
+
+        draftKeys = capSelectionToMax(
+            candidate,
+            new Set<string>(),
+            allItemKeys,
+            normalizedMaxSelectedCount,
+        );
+        anchorKey = null;
     }
 
     function cancel(): void {
@@ -99,7 +182,6 @@
     }
 
     onMount(() => {
-        draftKeys = new Set(normalizedSelectedIds.map((id) => toKey(id)));
         void tick().then(() => {
             searchInputEl?.focus();
         });
@@ -107,16 +189,28 @@
 
     $: normalizedItems = Array.isArray(items) ? items : [];
     $: normalizedSelectedIds = Array.isArray(selectedIds) ? selectedIds : [];
-    $: draftKeys = new Set(normalizedSelectedIds.map((id) => toKey(id)));
+    $: {
+        draftKeys = new Set(normalizedSelectedIds.map((id) => toKey(id)));
+        anchorKey = null;
+    }
     $: normalizedMaxSelectedCount =
         typeof maxSelectedCount === "number" &&
         Number.isFinite(maxSelectedCount) &&
         maxSelectedCount > 0
             ? Math.floor(maxSelectedCount)
             : null;
-    $: idByKey = new Map(normalizedItems.map((item) => [toKey(item.id), item.id]));
+    $: normalizedQuickActions = Array.isArray(quickActions) ? quickActions : [];
+    $: quickActionIds = normalizedQuickActions.flatMap((action) => action.ids);
+    $: idByKey = new Map(
+        [
+            ...normalizedItems.map((item) => [toKey(item.id), item.id] as const),
+            ...quickActionIds.map((id) => [toKey(id), id] as const),
+        ],
+    );
     $: normalizedSearch = search.trim().toLowerCase();
     $: filteredItems = normalizedItems.filter((item) => itemMatchesSearch(item, normalizedSearch));
+    $: allItemKeys = normalizedItems.map((item) => toKey(item.id));
+    $: filteredItemKeys = filteredItems.map((item) => toKey(item.id));
     $: selectedCount = draftKeys.size;
     $: draftIds = Array.from(draftKeys)
         .map((key) => idByKey.get(key))
@@ -147,6 +241,15 @@
             <button class="btn ux-btn btn-sm selection-picker-action" type="button" on:click={clearAll}>
                 Clear
             </button>
+            {#each normalizedQuickActions as action}
+                <button
+                    class="btn ux-btn btn-sm selection-picker-action"
+                    type="button"
+                    on:click={() => applyQuickAction(action.ids)}
+                >
+                    {action.label}
+                </button>
+            {/each}
             <span class="small ux-muted">
                 {selectedCountLabel}: {selectedCount}
                 {#if normalizedMaxSelectedCount != null}
@@ -175,7 +278,10 @@
                         type={singleSelect ? "radio" : "checkbox"}
                         name={singleSelect ? "selection-picker-single" : undefined}
                         checked={draftKeys.has(toKey(item.id))}
-                        on:change={() => toggleDraft(item.id)}
+                        on:click={(event) => {
+                            pendingShiftToggle = (event as MouseEvent).shiftKey;
+                        }}
+                        on:change={() => toggleDraft(item.id, pendingShiftToggle)}
                     />
                     <span class="selection-picker-item-label">{itemLabel(item)}</span>
                     {#if item.group}

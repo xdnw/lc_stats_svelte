@@ -1,4 +1,9 @@
-import type { SelectionId, SelectionModalGroupTone, SelectionModalItem } from "./selection/types";
+import type {
+    SelectionId,
+    SelectionModalGroupTone,
+    SelectionModalItem,
+    SelectionModalQuickAction,
+} from "./selection/types";
 
 type CoalitionAllianceShape = {
     alliance_ids?: Array<number | string> | Record<string, number | string | null | undefined>;
@@ -155,6 +160,34 @@ export function buildCoalitionAllianceItems(
         });
     }
     return items;
+}
+
+export function buildCoalitionQuickActions(
+    coalitions: CoalitionAllianceShape[],
+): SelectionModalQuickAction[] {
+    const actions: SelectionModalQuickAction[] = [];
+    const labelCounts = new Map<string, number>();
+
+    for (const [index, coalition] of (coalitions ?? []).entries()) {
+        const ids = Array.from(
+            new Set(extractCoalitionAlliancePairs(coalition).map((entry) => entry.id)),
+        );
+        if (ids.length === 0) continue;
+
+        const baseLabel =
+            typeof coalition?.name === "string" && coalition.name.trim().length > 0
+                ? coalition.name.trim()
+                : `Coalition ${index + 1}`;
+        const seenCount = labelCounts.get(baseLabel) ?? 0;
+        labelCounts.set(baseLabel, seenCount + 1);
+
+        actions.push({
+            label: seenCount === 0 ? baseLabel : `${baseLabel} (${seenCount + 1})`,
+            ids,
+        });
+    }
+
+    return actions;
 }
 
 export function validateAtLeastOnePerCoalition(

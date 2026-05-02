@@ -1,4 +1,7 @@
-import type { SelectionModalItem } from "../selection/types";
+import type {
+    SelectionModalItem,
+    SelectionModalQuickAction,
+} from "../selection/types";
 
 export type GridRowId = string | number;
 export type GridCellActionArgs = Record<string, string | number | boolean | null>;
@@ -38,6 +41,7 @@ export type GridColumnSelectionFilterUi = {
     selectedCountLabel?: string;
     applyLabel?: string;
     items: SelectionModalItem[];
+    quickActions?: SelectionModalQuickAction[];
 };
 
 export type GridColumnFilterUi =

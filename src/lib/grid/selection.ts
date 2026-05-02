@@ -1,4 +1,5 @@
 import type { GridControllerState, GridRowId } from "./types";
+import { applyRangeToggle } from "$lib/selection/rangeToggle";
 
 function uniqueRowIds(values: GridRowId[]): GridRowId[] {
     const seen = new Set<GridRowId>();
@@ -17,42 +18,18 @@ export function toggleRowSelection(
     rowId: GridRowId,
     shiftKey: boolean,
 ): GridControllerState {
-    const selected = new Set(state.selectedRowIds);
-    const rowAlreadySelected = selected.has(rowId);
-
-    if (
-        shiftKey &&
-        state.selectionAnchorRowId != null &&
-        orderedRowIds.length > 0
-    ) {
-        const anchorIndex = orderedRowIds.indexOf(state.selectionAnchorRowId);
-        const nextIndex = orderedRowIds.indexOf(rowId);
-        if (anchorIndex >= 0 && nextIndex >= 0) {
-            const [start, end] =
-                anchorIndex <= nextIndex
-                    ? [anchorIndex, nextIndex]
-                    : [nextIndex, anchorIndex];
-            const shouldSelect = !rowAlreadySelected;
-            for (let index = start; index <= end; index += 1) {
-                const currentRowId = orderedRowIds[index];
-                if (shouldSelect) selected.add(currentRowId);
-                else selected.delete(currentRowId);
-            }
-            return {
-                ...state,
-                selectedRowIds: uniqueRowIds(Array.from(selected)),
-                selectionAnchorRowId: rowId,
-            };
-        }
-    }
-
-    if (rowAlreadySelected) selected.delete(rowId);
-    else selected.add(rowId);
+    const nextToggle = applyRangeToggle(
+        orderedRowIds,
+        new Set(state.selectedRowIds),
+        state.selectionAnchorRowId,
+        rowId,
+        shiftKey,
+    );
 
     return {
         ...state,
-        selectedRowIds: uniqueRowIds(Array.from(selected)),
-        selectionAnchorRowId: rowId,
+        selectedRowIds: uniqueRowIds(Array.from(nextToggle.selected)),
+        selectionAnchorRowId: nextToggle.anchor,
     };
 }
 

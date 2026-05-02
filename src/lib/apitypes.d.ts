@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-04-29 10:30:13.
+// Generated using typescript-generator version 3.2.1263 on 2026-05-01 16:08:55.
 
 export interface WebError {
     error: string;
@@ -352,14 +352,6 @@ export interface WebSimAdHocTarget {
     scoreSummary: ScoreSummary;
 }
 
-export interface BlitzAssignedWar {
-    declarerNationId: number;
-    targetNationId: number;
-    warTypeOrdinal: number;
-    sourceOrdinal: number;
-    initialAttackTypeOrdinal: number;
-}
-
 export interface BlitzDraftEdit {
     nationId: number;
     forceActive: boolean;
@@ -374,26 +366,6 @@ export interface BlitzDraftEdit {
     resetHour: number;
     clearBeige: boolean;
     clearVacationMode: boolean;
-}
-
-export interface BlitzExistingWar {
-    warId: number;
-    attackerNationId: number;
-    defenderNationId: number;
-    warTypeOrdinal: number;
-    warStatusOrdinal: number;
-    attackerMap: number;
-    defenderMap: number;
-    attackerResistance: number;
-    defenderResistance: number;
-    turnsLeft: number;
-}
-
-export interface BlitzLegalEdge {
-    declarerNationId: number;
-    targetNationId: number;
-    legal: boolean;
-    blockedReasonOrdinals: number[];
 }
 
 export interface BlitzMilitaryRules {
@@ -437,47 +409,12 @@ export interface BlitzMilitaryRules {
     unitScoreCappedAt50ByOrdinal: boolean[];
 }
 
-export interface BlitzNationRow {
-    nationId: number;
-    nationName: string;
-    allianceId: number;
-    allianceName: string;
-    cities: number;
-    unitsByMilitaryUnitOrdinal: number[];
-    unitCapsByMilitaryUnitOrdinal: number[];
-    unitsBoughtTodayByMilitaryUnitOrdinal: number[];
-    avgInfraCents: number;
-    beigeTurns: number;
-    vmTurns: number;
-    inactiveMinutes: number;
-    activityBp: number;
-    loginDayChangeBp: number;
-    weeklyActivityBp: number;
-    freeOffensiveSlots: number;
-    freeDefensiveSlots: number;
-    maxOffensiveSlots: number;
-    policyOrdinal: number;
-    projectBits: number;
-    researchBits: number;
-    activeOrdinal: number;
-    resetHourUtc: number;
-    resetHourUtcFallback: boolean;
-    colorOrdinal: number;
-}
-
 export interface BlitzObjectiveSummary {
     scoreMean: number;
     scoreP10: number;
     scoreP50: number;
     scoreP90: number;
     sampleCount: number;
-}
-
-export interface BlitzPairLockout {
-    declarerNationId: number;
-    targetNationId: number;
-    warId: number;
-    active: boolean;
 }
 
 export interface BlitzPlanRequest {
@@ -502,19 +439,25 @@ export interface BlitzPlanRequest {
 export interface BlitzPlanResponse {
     currentTurn: number;
     horizonTurns: number;
-    attackerNationIds: number[];
-    defenderNationIds: number[];
-    nations: BlitzNationRow[];
-    outsiderNations: BlitzOutsiderNation[];
-    existingWars: BlitzExistingWar[];
-    pairLockouts: BlitzPairLockout[];
-    legalEdges: BlitzLegalEdge[];
-    assignments: BlitzAssignedWar[];
-    warnings: BlitzPlanWarning[];
-    diagnostics: PlannerDiagnostic[];
+    plannerNationCount: number;
+    allianceIds: number[];
+    allianceNames: string[];
+    participantIds: number[];
+    participantNames: string[];
+    participantAllianceIndexes: number[];
+    plannerScalarLanes: number[];
+    plannerBitLanes: number[];
+    plannerUnitLanes: number[];
+    existingWarPairs: number[];
+    existingWarLanes: number[];
+    pairLockoutPairs: number[];
+    pairLockoutLanes: number[];
+    assignmentPairs: number[];
+    assignmentLanes: number[];
+    warningLanes: number[];
+    diagnosticLanes: number[];
     objective: BlitzObjectiveSummary;
     trace: BlitzReplayTrace;
-    rules: BlitzMilitaryRules;
 }
 
 export interface BlitzPlanWarning {
@@ -531,63 +474,23 @@ export interface BlitzPlannedWar {
     userPinned: boolean;
 }
 
-export interface BlitzReplayConcludedWar {
-    declarerNationId: number;
-    targetNationId: number;
-    endStatusOrdinal: number;
-}
-
-export interface BlitzReplayDeclaredWar {
-    declarerNationId: number;
-    targetNationId: number;
-    warTypeOrdinal: number;
-    startTurn: number;
-}
-
-export interface BlitzReplayDelta {
-    turn: number;
-    nations: BlitzNationReplayState[];
-    wars: BlitzWarReplayState[];
-    declaredWars: BlitzReplayDeclaredWar[];
-    concludedWars: BlitzReplayConcludedWar[];
-}
-
-export interface BlitzReplayFrame {
-    currentTurn: number;
-    nations: BlitzNationReplayState[];
-    wars: BlitzWarReplayState[];
-}
-
-export interface BlitzNationReplayState {
-    nationId: number;
-    unitsByMilitaryUnitOrdinal: number[];
-    cityInfra: number[];
-    score: number;
-    beigeTurns: number;
-    resources: number[];
-}
-
 export interface BlitzReplayTrace {
-    initialFrame: BlitzReplayFrame;
-    deltas: BlitzReplayDelta[];
-    warnings: BlitzPlanWarning[];
-}
-
-export interface BlitzWarReplayState {
-    declarerNationId: number;
-    targetNationId: number;
-    warTypeOrdinal: number;
     startTurn: number;
-    statusOrdinal: number;
-    attackerMaps: number;
-    defenderMaps: number;
-    attackerResistance: number;
-    defenderResistance: number;
-    groundControlOwnerOrdinal: number;
-    airSuperiorityOwnerOrdinal: number;
-    blockadeOwnerOrdinal: number;
-    attackerFortified: boolean;
-    defenderFortified: boolean;
+    turnMetaLanes: number[];
+    changedNationIndexes: number[];
+    changedNationMasks: number[];
+    changedNationLanes: number[];
+    changedWarIndexes: number[];
+    changedWarMasks: number[];
+    changedWarLanes: number[];
+    declaredWarPairs: number[];
+    declaredWarLanes: number[];
+    concludedWarLanes: number[];
+    summaryScalarLanes: number[];
+    summaryWarTypeCounts: number[];
+    summaryAttackOutcomeCounts: number[];
+    summaryUnitLossCounts: number[];
+    summaryInfraLossCents: number[];
 }
 
 export interface WebTransferResult {
@@ -1002,13 +905,6 @@ export interface PlannerDiagnostic {
 export interface AdHocPlanMetadata {
     exactValidationDefault: boolean;
     runtimePreviewApplied: boolean;
-}
-
-export interface BlitzOutsiderNation {
-    nationId: number;
-    nationName: string;
-    allianceId: number;
-    allianceName: string;
 }
 
 export interface DBNationSnapshot {

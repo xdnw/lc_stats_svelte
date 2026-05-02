@@ -24,7 +24,10 @@ import { createConflictCustomColumnComputer } from "../conflictCustomColumnCompu
 import { filterConflictCustomColumnsForLayout } from "../conflictCustomColumns";
 import { encodeGridSelectionFilterValue, parseGridSelectionFilterValue } from "../grid/filterValue";
 import { formatMoneyValue, formatNumberValue } from "../numberFormatting";
-import { buildCoalitionAllianceItems } from "../selectionModalHelpers";
+import {
+    buildCoalitionAllianceItems,
+    buildCoalitionQuickActions,
+} from "../selectionModalHelpers";
 import type { Conflict } from "../types";
 import {
     buildConflictCustomGridColumnSpecs,
@@ -299,6 +302,7 @@ export function createConflictGridDataset(options: {
         data.coalitions,
         formatAllianceName,
     );
+    const allianceFilterQuickActions = buildCoalitionQuickActions(data.coalitions);
     const allianceSelectionFilterUi = allianceFilterItems.length > 0
         ? {
               kind: "selection" as const,
@@ -309,6 +313,10 @@ export function createConflictGridDataset(options: {
               selectedCountLabel: "Alliances selected",
               applyLabel: "Apply filter",
               items: allianceFilterItems,
+              quickActions:
+                  allianceFilterQuickActions.length > 1
+                      ? allianceFilterQuickActions
+                      : [],
           }
         : null;
     const filteredRowsCache = new Map<string, ConflictRowMeta[]>();

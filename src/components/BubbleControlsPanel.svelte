@@ -106,10 +106,11 @@
                 {#if rawData}
                     <AllianceFilterModal
                         title="Filter alliances"
-                        description="Choose which alliances to include in the bubble timeline. Keep at least one alliance selected in each coalition."
+                        description="Choose which alliances to include in the bubble timeline."
                         coalitions={rawData.coalitions}
                         selectedIds={normalizedAllowedAllianceIds}
                         mode="all-coalitions"
+                        validationMode="at-least-one"
                         buttonLabel={allianceSelectionSummary()}
                         size="sm"
                         on:commit={(event) =>

@@ -249,6 +249,10 @@ describe("conflictGrid dataset", () => {
         expect(allianceBootstrap.grid.columns[0]?.filterUi).toMatchObject({
             kind: "selection",
             title: "Filter Alliances",
+            quickActions: [
+                { label: "Red Coalition", ids: [101] },
+                { label: "Blue Coalition", ids: [202] },
+            ],
         });
         expect(
             bootstrap.grid.columns.map((column: { key: string }) => column.key),
