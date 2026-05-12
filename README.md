@@ -1,4 +1,4 @@
-Frontend for https://wars.locutus.link.
+Frontend for https://wars.locutus.link | https://xdnw.github.io/lc_stats_svelte/
 
 This repo is a prerendered SvelteKit + Vite application for exploring Locutus conflict data. The app ships as static assets and reads its versioned payloads from `https://data.locutus.link`.
 
