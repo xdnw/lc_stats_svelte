@@ -25,7 +25,7 @@ const timelineCursorCache = new WeakMap<GraphTimeline, TimelineCursor>();
 function getZeroFrame(cityCount: number): number[] {
     let frame = zeroFrameByCityCount.get(cityCount);
     if (!frame) {
-        frame = Array.from({ length: cityCount }, () => 0);
+        frame = new Array(cityCount).fill(0);
         zeroFrameByCityCount.set(cityCount, frame);
     }
     return frame;
@@ -37,7 +37,7 @@ function resetTimelineCursor(
 ): void {
     cursor.cityCount = cityCount;
     cursor.cursor = -1;
-    cursor.snapshot = Array.from({ length: cityCount }, () => null);
+    cursor.snapshot = new Array(cityCount).fill(null);
     cursor.hasSnapshot = false;
     cursor.lastFrame = EMPTY_FRAME;
     cursor.lastAppliedTimeIndex = -1;
@@ -77,7 +77,6 @@ function applyDenseTimelineFrame(
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
     }
 
-    let nextSnapshot = cursor.snapshot;
     let hasFrameValue = false;
     for (let cityIndex = 0; cityIndex < cursor.cityCount; cityIndex += 1) {
         const value = frame[cityIndex];
@@ -85,20 +84,16 @@ function applyDenseTimelineFrame(
             continue;
         }
 
-        if (!hasFrameValue) {
-            nextSnapshot = [...cursor.snapshot];
-            hasFrameValue = true;
-        }
-        nextSnapshot[cityIndex] = value;
+        cursor.snapshot[cityIndex] = value;
+        hasFrameValue = true;
     }
 
     if (!hasFrameValue) {
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
     }
 
-    cursor.snapshot = nextSnapshot;
     cursor.hasSnapshot = true;
-    return nextSnapshot as number[];
+    return cursor.snapshot as number[];
 }
 
 function advanceDenseTimelineCursor(
@@ -143,39 +138,56 @@ function applyIndexedPatchFrame(
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
     }
 
-    const patchMode = Math.trunc(frame[1] ?? Number.NaN);
-    if (Number.isFinite(patchMode) && patchMode < 0) {
-        return applyMaskedPatchFrame(cursor, frame, -patchMode);
+    const rawFirstCityIndex = frame[1];
+    const firstCityIndex = Number.isFinite(rawFirstCityIndex)
+        ? Math.trunc(rawFirstCityIndex)
+        : Number.NaN;
+    if (Number.isFinite(firstCityIndex) && firstCityIndex < 0) {
+        return applyMaskedPatchFrame(cursor, frame, -firstCityIndex);
     }
 
-    let nextSnapshot = cursor.snapshot;
     let hasFrameValue = false;
-    for (let patchIndex = 1; patchIndex + 1 < frame.length; patchIndex += 2) {
-        const cityIndex = Math.trunc(frame[patchIndex] ?? Number.NaN);
-        const value = Number(frame[patchIndex + 1]);
+    const firstValue = frame[2];
+    if (
+        Number.isFinite(firstCityIndex) &&
+        Number.isFinite(firstValue) &&
+        firstCityIndex >= 0 &&
+        firstCityIndex < cursor.cityCount
+    ) {
+        cursor.snapshot[firstCityIndex] = firstValue;
+        hasFrameValue = true;
+    }
+
+    for (let patchIndex = 3; patchIndex + 1 < frame.length; patchIndex += 2) {
+        const rawCityIndex = frame[patchIndex];
+        const value = frame[patchIndex + 1];
         if (
-            !Number.isFinite(cityIndex) ||
-            cityIndex < 0 ||
-            cityIndex >= cursor.cityCount ||
-            !Number.isFinite(value)
+            !Number.isFinite(rawCityIndex) ||
+            !Number.isFinite(value) ||
+            rawCityIndex < 0 ||
+            rawCityIndex >= cursor.cityCount
         ) {
             continue;
         }
 
-        if (!hasFrameValue) {
-            nextSnapshot = [...cursor.snapshot];
-            hasFrameValue = true;
+        const cityIndex = Math.trunc(rawCityIndex);
+        if (
+            cityIndex < 0 ||
+            cityIndex >= cursor.cityCount
+        ) {
+            continue;
         }
-        nextSnapshot[cityIndex] = value;
+
+        cursor.snapshot[cityIndex] = value;
+        hasFrameValue = true;
     }
 
     if (!hasFrameValue) {
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
     }
 
-    cursor.snapshot = nextSnapshot;
     cursor.hasSnapshot = true;
-    return nextSnapshot as number[];
+    return cursor.snapshot as number[];
 }
 
 function applyMaskedPatchFrame(
@@ -193,33 +205,31 @@ function applyMaskedPatchFrame(
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
     }
 
-    let nextSnapshot = cursor.snapshot;
     let hasFrameValue = false;
     let valueIndex = valueStart;
 
     for (let wordIndex = 0; wordIndex < maskWordCount; wordIndex += 1) {
-        let maskWord = Math.trunc(Number(frame[maskStart + wordIndex] ?? Number.NaN));
-        if (!Number.isFinite(maskWord) || maskWord <= 0) {
+        const rawMaskWord = frame[maskStart + wordIndex];
+        if (!Number.isFinite(rawMaskWord) || rawMaskWord <= 0) {
             continue;
         }
+
+        let maskWord = Math.trunc(rawMaskWord);
 
         const cityBase = wordIndex * PATCH_MASK_BITS;
         while (maskWord !== 0 && valueIndex < frame.length) {
             const lowestBit = maskWord & -maskWord;
             const bitIndex = 31 - Math.clz32(lowestBit);
             const cityIndex = cityBase + bitIndex;
-            const value = Number(frame[valueIndex]);
+            const value = frame[valueIndex];
 
             if (
                 Number.isFinite(value) &&
                 cityIndex >= 0 &&
                 cityIndex < cursor.cityCount
             ) {
-                if (!hasFrameValue) {
-                    nextSnapshot = [...cursor.snapshot];
-                    hasFrameValue = true;
-                }
-                nextSnapshot[cityIndex] = value;
+                cursor.snapshot[cityIndex] = value;
+                hasFrameValue = true;
             }
 
             maskWord &= maskWord - 1;
@@ -231,9 +241,8 @@ function applyMaskedPatchFrame(
         return cursor.hasSnapshot ? (cursor.snapshot as number[]) : EMPTY_FRAME;
     }
 
-    cursor.snapshot = nextSnapshot;
     cursor.hasSnapshot = true;
-    return nextSnapshot as number[];
+    return cursor.snapshot as number[];
 }
 
 function advanceIndexedTimelineCursor(
@@ -264,12 +273,15 @@ function decodeIndexedEventFrame(
     frame: IndexedGraphPatchFrame,
     cityCount: number,
 ): number[] {
-    const result = Array.from({ length: cityCount }, () => 0);
+    const result = new Array(cityCount).fill(0);
     if (!Array.isArray(frame) || frame.length < 3) {
         return result;
     }
 
-    const patchMode = Math.trunc(Number(frame[1] ?? Number.NaN));
+    const rawPatchMode = frame[1];
+    const patchMode = Number.isFinite(rawPatchMode)
+        ? Math.trunc(rawPatchMode)
+        : Number.NaN;
     if (Number.isFinite(patchMode) && patchMode < 0) {
         const maskWordCount = -patchMode;
         const maskStart = 2;
@@ -278,15 +290,16 @@ function decodeIndexedEventFrame(
 
         let valueIndex = valueStart;
         for (let wordIndex = 0; wordIndex < maskWordCount; wordIndex += 1) {
-            let maskWord = Math.trunc(Number(frame[maskStart + wordIndex] ?? Number.NaN));
-            if (!Number.isFinite(maskWord) || maskWord <= 0) continue;
+            const rawMaskWord = frame[maskStart + wordIndex];
+            if (!Number.isFinite(rawMaskWord) || rawMaskWord <= 0) continue;
+            let maskWord = Math.trunc(rawMaskWord);
 
             const cityBase = wordIndex * PATCH_MASK_BITS;
             while (maskWord !== 0 && valueIndex < frame.length) {
                 const lowestBit = maskWord & -maskWord;
                 const bitIndex = 31 - Math.clz32(lowestBit);
                 const cityIndex = cityBase + bitIndex;
-                const value = Number(frame[valueIndex]);
+                const value = frame[valueIndex];
                 if (
                     Number.isFinite(value) &&
                     cityIndex >= 0 &&
@@ -302,15 +315,21 @@ function decodeIndexedEventFrame(
     }
 
     for (let patchIndex = 1; patchIndex + 1 < frame.length; patchIndex += 2) {
-        const cityIndex = Math.trunc(Number(frame[patchIndex] ?? Number.NaN));
-        const value = Number(frame[patchIndex + 1]);
+        const rawCityIndex = frame[patchIndex];
+        const value = frame[patchIndex + 1];
         if (
-            Number.isFinite(cityIndex) &&
-            cityIndex >= 0 &&
-            cityIndex < cityCount &&
-            Number.isFinite(value)
+            Number.isFinite(rawCityIndex) &&
+            Number.isFinite(value) &&
+            rawCityIndex >= 0 &&
+            rawCityIndex < cityCount
         ) {
-            result[cityIndex] = value;
+            const cityIndex = Math.trunc(rawCityIndex);
+            if (
+                cityIndex >= 0 &&
+                cityIndex < cityCount
+            ) {
+                result[cityIndex] = value;
+            }
         }
     }
     return result;

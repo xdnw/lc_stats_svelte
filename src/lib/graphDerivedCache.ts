@@ -8,7 +8,7 @@ export type Trace = {
     customdata: number[];
     id: number[];
     text: string[];
-    marker: { size: number[] };
+    marker?: { size: number[] };
 };
 
 export type Range = {
@@ -53,6 +53,7 @@ type GraphDerivedFamily = GraphCacheEntry<unknown>["family"];
 
 const MAX_GRAPH_DERIVED_ENTRIES = 60;
 const GRAPH_DERIVED_TTL_MS = 8 * 60 * 1000;
+const GRAPH_DERIVED_EXPIRED_SWEEP_INTERVAL_MS = 5 * 1000;
 
 const graphDerivedByKey = createTtlCache<
     string,
@@ -60,6 +61,7 @@ const graphDerivedByKey = createTtlCache<
 >({
     ttlMs: GRAPH_DERIVED_TTL_MS,
     maxEntries: MAX_GRAPH_DERIVED_ENTRIES,
+    expiredSweepIntervalMs: GRAPH_DERIVED_EXPIRED_SWEEP_INTERVAL_MS,
     hooks: {
         onEvict() {
             incrementPerfCounter("graph.derived.cache.evict", 1, {
@@ -351,34 +353,25 @@ export function invalidateGraphDerived(options?: {
     const keyPrefix = options?.keyPrefix;
     const reason = options?.reason ?? "manual";
 
-    if (!family || family === "bubble") {
-        for (const key of graphDerivedByKey.keys()) {
-            if (!key.startsWith("bubble:")) continue;
-            const cacheKey = key.slice("bubble:".length);
-            if (keyPrefix && !cacheKey.startsWith(keyPrefix)) continue;
-            graphDerivedByKey.delete(key);
-            incrementPerfCounter("graph.bubble.cache.invalidate", 1, { reason });
-        }
-    }
+    for (const key of graphDerivedByKey.keys()) {
+        const separatorIndex = key.indexOf(":");
+        if (separatorIndex <= 0) continue;
 
-    if (!family || family === "tiering") {
-        for (const key of graphDerivedByKey.keys()) {
-            if (!key.startsWith("tiering:")) continue;
-            const cacheKey = key.slice("tiering:".length);
-            if (keyPrefix && !cacheKey.startsWith(keyPrefix)) continue;
-            graphDerivedByKey.delete(key);
-            incrementPerfCounter("graph.tiering.cache.invalidate", 1, { reason });
+        const keyFamily = key.slice(0, separatorIndex) as GraphDerivedFamily;
+        if (
+            keyFamily !== "bubble" &&
+            keyFamily !== "tiering" &&
+            keyFamily !== "metric-time"
+        ) {
+            continue;
         }
-    }
+        if (family && keyFamily !== family) continue;
 
-    if (!family || family === "metric-time") {
-        for (const key of graphDerivedByKey.keys()) {
-            if (!key.startsWith("metric-time:")) continue;
-            const cacheKey = key.slice("metric-time:".length);
-            if (keyPrefix && !cacheKey.startsWith(keyPrefix)) continue;
-            graphDerivedByKey.delete(key);
-            incrementPerfCounter("graph.metric-time.cache.invalidate", 1, { reason });
-        }
+        const cacheKey = key.slice(separatorIndex + 1);
+        if (keyPrefix && !cacheKey.startsWith(keyPrefix)) continue;
+
+        graphDerivedByKey.delete(key);
+        incrementPerfCounter(`graph.${keyFamily}.cache.invalidate`, 1, { reason });
     }
 }
 

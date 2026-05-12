@@ -70,19 +70,19 @@ function normalizeSelectedAllianceIds(
 ): Set<number> | null {
     if (!selectedAllianceIds) return null;
 
-    const ids = Array.from(
-        new Set(
-            Array.from(selectedAllianceIds)
-                .map((id) => Math.trunc(Number(id)))
-                .filter((id) => Number.isFinite(id) && id > 0),
-        ),
-    );
+    const ids = new Set<number>();
+    for (const rawId of selectedAllianceIds) {
+        const id = Math.trunc(Number(rawId));
+        if (Number.isFinite(id) && id > 0) {
+            ids.add(id);
+        }
+    }
 
-    return ids.length > 0 ? new Set(ids) : null;
+    return ids.size > 0 ? ids : null;
 }
 
 function createValueArray(length: number): number[] {
-    return Array.from({ length }, () => Number.NaN);
+    return new Array(length).fill(Number.NaN);
 }
 
 function createSnapshot(
@@ -434,15 +434,13 @@ export function buildMetricTimeSeries(options: {
     for (let coalitionIndex = 0; coalitionIndex < options.data.coalitions.length; coalitionIndex += 1) {
         const coalition = options.data.coalitions[coalitionIndex];
         const cityIndexRange = resolveCityIndexRange(coalition.cities, cityRange);
-        const selectedAllianceIndexes = coalition.alliance_ids.reduce<number[]>(
-            (indexes, allianceId, allianceIndex) => {
-                if (!selectedAllianceIdSet || selectedAllianceIdSet.has(allianceId)) {
-                    indexes.push(allianceIndex);
-                }
-                return indexes;
-            },
-            [],
-        );
+        const selectedAllianceIndexes: number[] = [];
+        for (let allianceIndex = 0; allianceIndex < coalition.alliance_ids.length; allianceIndex += 1) {
+            const allianceId = coalition.alliance_ids[allianceIndex];
+            if (!selectedAllianceIdSet || selectedAllianceIdSet.has(allianceId)) {
+                selectedAllianceIndexes.push(allianceIndex);
+            }
+        }
         if (selectedAllianceIndexes.length === 0) {
             continue;
         }

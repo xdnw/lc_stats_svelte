@@ -174,7 +174,45 @@ describe("loadConflictContext", () => {
         expect(mocks.getConflictDataUrl).toHaveBeenNthCalledWith(1, "1", 7);
         expect(mocks.getConflictDataUrl).toHaveBeenNthCalledWith(2, "2", 7);
         expect(mocks.decompressBson).toHaveBeenCalledTimes(2);
+        expect(mocks.decompressBson).toHaveBeenNthCalledWith(
+            1,
+            "https://example.test/1?v=7",
+            { strategy: "worker-bytes" },
+        );
+        expect(mocks.decompressBson).toHaveBeenNthCalledWith(
+            2,
+            "https://example.test/2?v=7",
+            { strategy: "worker-bytes" },
+        );
         expect(mocks.mergeCompositeConflict).toHaveBeenCalledOnce();
         expect(resolved.conflict).toBe(MERGED_CONFLICT);
+    });
+
+    it("loads single-conflict context with the byte-worker decode strategy", async () => {
+        const singleContext: Extract<ConflictRouteContext, { mode: "single" }> = {
+            mode: "single",
+            conflictId: "161",
+            conflictSignature: "161",
+            compositeIds: null,
+            selectedAllianceId: null,
+        };
+        const singleConflict = createConflict("161");
+        mocks.decompressBson.mockResolvedValue(singleConflict);
+
+        const resolved = await loadConflictContext(singleContext, "v-single");
+
+        expect(mocks.getConflictDataUrl).toHaveBeenCalledWith("161", "v-single");
+        expect(mocks.decompressBson).toHaveBeenCalledWith(
+            "https://example.test/161?v=v-single",
+            { strategy: "worker-bytes" },
+        );
+        expect(resolved).toMatchObject({
+            mode: "single",
+            conflict: singleConflict,
+            conflictId: "161",
+            signature: "161",
+            sourceConflictIds: ["161"],
+            selectedAllianceId: null,
+        });
     });
 });

@@ -155,7 +155,6 @@ export function createInMemoryGridProvider<Row>(
     const filterCache = new Map<GridRowId, Map<string, string>>();
     const filteredRowsCache = new Map<string, InMemoryRowMeta<Row>[]>();
     const filteredRowIdsCache = new Map<string, GridRowId[]>();
-    const filteredRowSequenceKeyCache = new Map<string, string>();
     const pageResultCache = new Map<string, GridPageResult>();
     const summaryCache = new Map<string, GridPageResult["summaryByColumnKey"]>();
 
@@ -200,17 +199,9 @@ export function createInMemoryGridProvider<Row>(
 
     function getFilteredRowSequenceKey(
         state: GridQueryState,
-        filteredRows: InMemoryRowMeta<Row>[],
     ): string {
-        const filterSortCacheKey = buildFilterSortCacheKey(state);
-        const cached = filteredRowSequenceKeyCache.get(filterSortCacheKey);
-        if (cached) return cached;
-
-        const rowIds = filteredRowIdsCache.get(filterSortCacheKey) ??
-            filteredRows.map((row) => row.id);
-        const rowSequenceKey = buildRowIdSequenceKey(rowIds);
-        filteredRowSequenceKeyCache.set(filterSortCacheKey, rowSequenceKey);
-        return rowSequenceKey;
+        // Filter+sort parameters already define the ordered filtered row set.
+        return buildFilterSortCacheKey(state);
     }
 
     function buildSummaryCacheKey(
@@ -312,14 +303,18 @@ export function createInMemoryGridProvider<Row>(
         const cached = filteredRowsCache.get(cacheKey);
         if (cached) return cached;
 
-        const filtered = rowMetas.filter((row) => {
-            for (const [columnKey, rawTerm] of Object.entries(normalized.filters)) {
-                const term = lowerCase(rawTerm);
-                if (!term) continue;
-                if (!getFilterValue(row, columnKey).includes(term)) return false;
-            }
-            return true;
-        });
+        const activeFilters = Object.entries(normalized.filters)
+            .map(([columnKey, rawTerm]) => [columnKey, lowerCase(rawTerm)] as const)
+            .filter(([, term]) => term.length > 0);
+
+        const filtered = activeFilters.length === 0
+            ? rowMetas
+            : rowMetas.filter((row) => {
+                for (const [columnKey, term] of activeFilters) {
+                    if (!getFilterValue(row, columnKey).includes(term)) return false;
+                }
+                return true;
+            });
 
         if (!normalized.sort) {
             filteredRowsCache.set(cacheKey, filtered);
@@ -364,7 +359,7 @@ export function createInMemoryGridProvider<Row>(
         state: GridQueryState,
     ): GridSummaryByColumnKey {
         const cacheKey = buildSummaryCacheKey(
-            getFilteredRowSequenceKey(state, filteredRows),
+            getFilteredRowSequenceKey(state),
             state,
         );
         const cached = summaryCache.get(cacheKey);

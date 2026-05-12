@@ -18,7 +18,7 @@
     import type { GraphData, TierMetric } from "$lib/types";
     import { setQueryParam, resetQueryParams } from "$lib/queryState";
     import { bootstrapIdRouteLifecycle } from "$lib/routeBootstrap";
-    import { arrayEquals } from "$lib/misc";
+    import { arrayEquals, scheduleWhenIdle } from "$lib/misc";
     import { saveCurrentQueryParams } from "$lib/queryStorage";
     import { formatDatasetProvenance } from "$lib/runtime";
     import { incrementPerfCounter, startPerfSpan } from "$lib/perf";
@@ -102,6 +102,7 @@
     let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
     let bubbleControlsPanelPromise: Promise<BubbleControlsPanelComponent> | null =
         null;
+    let finishBubbleControlsPanelLoadSpan: (() => void) | null = null;
 
     function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
         if (!prefetchArtifactsPromise) {
@@ -116,9 +117,17 @@
             return bubbleControlsPanelPromise;
         }
 
+        finishBubbleControlsPanelLoadSpan ??= startPerfSpan(
+            "journey.conflict_to_bubble.controlsPanelLoad",
+        );
         bubbleControlsPanelPromise = import(
             "../../components/BubbleControlsPanel.svelte"
-        ).then((module) => module.default);
+        )
+            .then((module) => module.default)
+            .finally(() => {
+                finishBubbleControlsPanelLoadSpan?.();
+                finishBubbleControlsPanelLoadSpan = null;
+            });
         return bubbleControlsPanelPromise;
     }
 
@@ -830,7 +839,9 @@
                 _loaded = true;
                 endJourneySpan("journey.conflict_to_bubble.routeTransition");
                 saveCurrentQueryParams();
-                warmBubbleSecondaryArtifacts(conflictId);
+                scheduleWhenIdle(() => {
+                    warmBubbleSecondaryArtifacts(conflictId);
+                });
             })
             .catch((error) => {
                 console.error("Failed to load bubble graph data", error);
@@ -1146,11 +1157,15 @@
         bubbleCanvasRenderResult =
             event.detail as BubbleCanvasRenderResult;
         finishBubbleRenderMeasurement();
-        void ensureBubbleControlsPanel();
         if (!hasCompletedFirstBubbleMount) {
             hasCompletedFirstBubbleMount = true;
             endJourneySpan("journey.conflict_to_bubble.firstMount");
+            queueMicrotask(() => {
+                void ensureBubbleControlsPanel();
+            });
+            return;
         }
+        void ensureBubbleControlsPanel();
     }
 
     async function setupGraphData() {
@@ -1564,54 +1579,52 @@
                 {/if}
             </div>
             <div class="bubble-chart-container">
-                {#if bubbleChartModel && bubbleCanvasConfig}
-                    <div class="bubble-chart-toolbar ux-control-strip">
-                        <div class="bubble-chart-toolbar-scale">
-                            <label for="bubbleSizeScale" class="bubble-chart-toolbar-label">
-                                Bubble size
-                            </label>
-                            <input
-                                id="bubbleSizeScale"
-                                class="bubble-chart-toolbar-range"
-                                type="range"
-                                min="50"
-                                max="200"
-                                step="5"
-                                value={Math.round(bubbleSizeScale * 100)}
-                                on:input={handleBubbleSizeScaleInput}
-                                disabled={!bubbleChartModel}
-                                aria-label="Bubble size scale"
-                            />
-                            <output class="bubble-chart-toolbar-value" for="bubbleSizeScale">
-                                {Math.round(bubbleSizeScale * 100)}%
-                            </output>
-                        </div>
-
-                        <div class="bubble-chart-toolbar-actions">
-                            <span class="bubble-chart-toolbar-hint">
-                                Wheel to zoom • drag to pan • double-click to reset
-                            </span>
-
-                            <button
-                                type="button"
-                                class="btn btn-sm ux-btn"
-                                on:click={resetBubbleView}
-                                disabled={!bubbleChartModel}
-                            >
-                                Reset view
-                            </button>
-
-                            <button
-                                type="button"
-                                class="btn btn-sm ux-btn"
-                                on:click={downloadBubblePng}
-                                disabled={!bubbleChartModel}
-                            >
-                                Download PNG
-                            </button>
-                        </div>
+                <div class="bubble-chart-toolbar ux-control-strip">
+                    <div class="bubble-chart-toolbar-scale">
+                        <label for="bubbleSizeScale" class="bubble-chart-toolbar-label">
+                            Bubble size
+                        </label>
+                        <input
+                            id="bubbleSizeScale"
+                            class="bubble-chart-toolbar-range"
+                            type="range"
+                            min="50"
+                            max="200"
+                            step="5"
+                            value={Math.round(bubbleSizeScale * 100)}
+                            on:input={handleBubbleSizeScaleInput}
+                            disabled={!bubbleChartModel}
+                            aria-label="Bubble size scale"
+                        />
+                        <output class="bubble-chart-toolbar-value" for="bubbleSizeScale">
+                            {Math.round(bubbleSizeScale * 100)}%
+                        </output>
                     </div>
-                {/if}
+
+                    <div class="bubble-chart-toolbar-actions">
+                        <span class="bubble-chart-toolbar-hint">
+                            Wheel to zoom • drag to pan • double-click to reset
+                        </span>
+
+                        <button
+                            type="button"
+                            class="btn btn-sm ux-btn"
+                            on:click={resetBubbleView}
+                            disabled={!bubbleChartModel}
+                        >
+                            Reset view
+                        </button>
+
+                        <button
+                            type="button"
+                            class="btn btn-sm ux-btn"
+                            on:click={downloadBubblePng}
+                            disabled={!bubbleChartModel}
+                        >
+                            Download PNG
+                        </button>
+                    </div>
+                </div>
                 <div class="bubble-chart-stage">
                     {#if bubbleChartModel && bubbleCanvasConfig}
                         <BubbleCanvas

@@ -28,6 +28,62 @@ export type AavaSelectionSource = {
 
 const aavaIndexCache = new WeakMap<Conflict, AavaSelectionSource>();
 
+function sanitizeAavaMatrices(matrices: number[][][]): number[][][] {
+    let sanitizedMatrices: number[][][] | null = null;
+
+    function ensureSanitizedRow(headerIndex: number, rowIndex: number): number[] {
+        if (!sanitizedMatrices) {
+            sanitizedMatrices = matrices.slice();
+        }
+
+        let matrix = sanitizedMatrices[headerIndex];
+        if (matrix === matrices[headerIndex]) {
+            matrix = matrices[headerIndex].slice();
+            sanitizedMatrices[headerIndex] = matrix;
+        }
+
+        let row = matrix[rowIndex];
+        if (row === matrices[headerIndex][rowIndex]) {
+            row = row.slice();
+            matrix[rowIndex] = row;
+        }
+
+        return row;
+    }
+
+    for (let h = 0; h < matrices.length; h++) {
+        const matrix = matrices[h];
+        if (!Array.isArray(matrix)) continue;
+
+        for (let r = 0; r < matrix.length; r++) {
+            const row = matrix[r];
+            if (!Array.isArray(row)) continue;
+
+            for (let c = 0; c < row.length; c++) {
+                const value = row[c];
+                if (typeof value === "number" && Number.isFinite(value)) continue;
+                ensureSanitizedRow(h, r)[c] = 0;
+            }
+        }
+    }
+
+    return sanitizedMatrices ?? matrices;
+}
+
+function collectMatrixIndices(
+    allianceIds: number[],
+    indexByAllianceId: Map<number, number>,
+): number[] {
+    const indices: number[] = [];
+    for (let i = 0; i < allianceIds.length; i++) {
+        const index = indexByAllianceId.get(allianceIds[i]);
+        if (index != null && index >= 0) {
+            indices.push(index);
+        }
+    }
+    return indices;
+}
+
 export function createAavaSelectionSource(data: Conflict): AavaSelectionSource {
     const c1Ids = data.coalitions[0].alliance_ids;
     const c2Ids = data.coalitions[1].alliance_ids;
@@ -72,9 +128,11 @@ export function createAavaSelectionSource(data: Conflict): AavaSelectionSource {
         });
     });
 
+    const matrices = sanitizeAavaMatrices(data.war_web.data as number[][][]);
+
     return {
         headers: [...data.war_web.headers],
-        matrices: data.war_web.data as number[][][],
+        matrices,
         indexByCoalitionAndAllianceId,
         allianceByMatrixIndex,
     };
@@ -107,32 +165,30 @@ export function buildAavaSelectionRowsFromSource(
 
     const matrix = matrices[headerIndex] as number[][];
 
-    const pIndices = snapshot.primaryIds
-        .map(
-            (id) =>
-                indexByCoalitionAndAllianceId[primaryCoalitionIndex].get(id) ??
-                -1,
-        )
-        .filter((i) => i >= 0);
-    const vIndices = snapshot.vsIds
-        .map(
-            (id) =>
-                indexByCoalitionAndAllianceId[vsCoalitionIndex].get(id) ?? -1,
-        )
-        .filter((i) => i >= 0);
+    const pIndices = collectMatrixIndices(
+        snapshot.primaryIds,
+        indexByCoalitionAndAllianceId[primaryCoalitionIndex],
+    );
+    const vIndices = collectMatrixIndices(
+        snapshot.vsIds,
+        indexByCoalitionAndAllianceId[vsCoalitionIndex],
+    );
+    const pRows = pIndices.map((pIndex) => matrix[pIndex]);
 
     const rows: AavaSelectionRow[] = [];
     let sumPrimaryToRow = 0;
     let sumRowToPrimary = 0;
 
     for (const rIndex of vIndices) {
+        const rowR = matrix[rIndex];
         let p2r = 0;
         let r2p = 0;
-        for (const pIndex of pIndices) {
-            const a = matrix[pIndex]?.[rIndex] ?? 0;
-            const b = matrix[rIndex]?.[pIndex] ?? 0;
-            p2r += Number.isFinite(a) ? a : 0;
-            r2p += Number.isFinite(b) ? b : 0;
+        for (let i = 0; i < pIndices.length; i++) {
+            const pIndex = pIndices[i];
+            const a = pRows[i]?.[rIndex] ?? 0;
+            const b = rowR?.[pIndex] ?? 0;
+            p2r += a;
+            r2p += b;
         }
         sumPrimaryToRow += p2r;
         sumRowToPrimary += r2p;
@@ -151,12 +207,13 @@ export function buildAavaSelectionRowsFromSource(
         });
     }
 
-    rows.forEach((row) => {
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
         row.primary_share_pct =
             sumPrimaryToRow > 0 ? (row.primary_to_row / sumPrimaryToRow) * 100 : 0;
         row.row_share_pct =
             sumRowToPrimary > 0 ? (row.row_to_primary / sumRowToPrimary) * 100 : 0;
-    });
+    }
 
     return rows;
 }

@@ -81,7 +81,15 @@ function cloneMetricArray(values: unknown, expectedLength: number, context: stri
             [...context, `Expected ${expectedLength}, got ${values.length}`],
         );
     }
-    return values.map((value) => Number(value) || 0);
+    const cloned = new Array<number>(expectedLength);
+    for (let i = 0; i < expectedLength; i += 1) {
+        const value = values[i];
+        cloned[i] =
+            typeof value === "number" && Number.isFinite(value)
+                ? value
+                : Number(value) || 0;
+    }
+    return cloned;
 }
 
 function remapMetricArray(values: number[], indexMap: number[]): number[] {
@@ -359,17 +367,19 @@ function buildSideAllianceIndex(
     };
 }
 
-function normalizeWarWebMatrix(raw: unknown, expectedSize: number): number[][] | null {
+function getWarWebMatrix(raw: unknown, expectedSize: number): number[][] | null {
     if (!Array.isArray(raw) || raw.length !== expectedSize) return null;
-    const normalized = new Array(expectedSize);
     for (let row = 0; row < expectedSize; row += 1) {
         const rowValues = raw[row];
         if (!Array.isArray(rowValues) || rowValues.length !== expectedSize) {
             return null;
         }
-        normalized[row] = rowValues.map((value) => Number(value) || 0);
     }
-    return normalized;
+    return raw as number[][];
+}
+
+function readMergedNumber(value: unknown): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0;
 }
 
 function mergeWarWeb(
@@ -473,11 +483,11 @@ function mergeWarWeb(
             const localHeaderIndex = headerIndexMap[mergedHeaderIndex] ?? -1;
             if (localHeaderIndex < 0) continue;
 
-            const normalizedMatrix = normalizeWarWebMatrix(
+            const sourceMatrix = getWarWebMatrix(
                 warWebData[localHeaderIndex],
                 localAllianceIds.length,
             );
-            if (!normalizedMatrix) {
+            if (!sourceMatrix) {
                 warnings.push(
                     `Conflict ${conflict.id} has malformed war-web matrix for header "${headers.headers[mergedHeaderIndex]}"; contribution was skipped.`,
                 );
@@ -486,13 +496,14 @@ function mergeWarWeb(
 
             mergedSourceMatrixCount += 1;
             const targetMatrix = mergedData[mergedHeaderIndex];
-            for (let row = 0; row < normalizedMatrix.length; row += 1) {
+            for (let row = 0; row < sourceMatrix.length; row += 1) {
                 const targetRow = localToMergedIndex[row];
                 if (targetRow < 0) continue;
-                for (let col = 0; col < normalizedMatrix[row].length; col += 1) {
+                const sourceRow = sourceMatrix[row];
+                for (let col = 0; col < sourceRow.length; col += 1) {
                     const targetCol = localToMergedIndex[col];
                     if (targetCol < 0) continue;
-                    targetMatrix[targetRow][targetCol] += normalizedMatrix[row][col];
+                    targetMatrix[targetRow][targetCol] += readMergedNumber(sourceRow[col]);
                 }
             }
         }
@@ -723,15 +734,15 @@ function toCoalitionPayload(accumulator: CoalitionAccumulator): any {
     const nationAas = nationEntries.map(([, entry]) => entry.allianceId);
 
     const damage: number[][] = [
-        [...accumulator.coalitionDamageTaken],
-        [...accumulator.coalitionDamageDealt],
+        accumulator.coalitionDamageTaken,
+        accumulator.coalitionDamageDealt,
     ];
 
     for (const [, entry] of allianceEntries) {
-        damage.push([...entry.damageTaken], [...entry.damageDealt]);
+        damage.push(entry.damageTaken, entry.damageDealt);
     }
     for (const [, entry] of nationEntries) {
-        damage.push([...entry.damageTaken], [...entry.damageDealt]);
+        damage.push(entry.damageTaken, entry.damageDealt);
     }
 
     return {

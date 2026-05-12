@@ -102,6 +102,12 @@
   let _loadError: string | null = null;
   let datasetProvenance = "";
   let allianceNameById: { [key: number]: string } = {};
+  let conflictStaticPayloadById: {
+    [key: number]: {
+      wikiUrl: string | null;
+      posts: Array<{ title: string; url: string; timestamp: number }>;
+    };
+  } = {};
   let allianceIdsByCoalition: { [key: string]: number[][] } = {};
   let conflictDetailsById: {
     [key: number]: {
@@ -371,6 +377,7 @@
         .then(async (result: RawData) => {
           _loadError = null;
           _rawData = result;
+          rebuildConflictStaticPayloadCache(result);
           datasetProvenance = formatDatasetProvenance(
             config.version.conflicts,
             (result as any).update_ms,
@@ -607,6 +614,7 @@
       _allowedAllianceIds.size !== _rawData?.alliance_ids.length;
     const gridRows: ConflictsIndexRow[] = rows.map((row) => {
       const id = Number(row[ConflictIndex.ID] ?? 0);
+      const staticPayload = conflictStaticPayloadById[id];
       const c1Ids = (row[ConflictIndex.C1_ID] as number[] | undefined) ?? [];
       const c2Ids = (row[ConflictIndex.C2_ID] as number[] | undefined) ?? [];
       const c1Dealt = Number(row[ConflictIndex.C1_DEALT] ?? 0);
@@ -632,22 +640,6 @@
               })),
           ]
         : [];
-      const wikiValue = `${row[ConflictIndex.WIKI] ?? ""}`.trim();
-      const wikiUrl =
-        wikiValue.length === 0
-          ? null
-          : /^https?:\/\//i.test(wikiValue)
-            ? wikiValue
-            : `https://politicsandwar.fandom.com/wiki/${encodeURIComponent(wikiValue)}`;
-      const posts = Object.entries(
-        (row[ConflictIndex.POSTS] as Record<string, [number, string, number]>) ?? {},
-      )
-        .map(([title, post]) => ({
-          title,
-          url: `https://forum.politicsandwar.com/index.php?/topic/${post[0]}-${post[1]}`,
-          timestamp: post[2],
-        }))
-        .sort((left, right) => right.timestamp - left.timestamp);
       const end = Number(row[ConflictIndex.END] ?? -1);
 
       return {
@@ -672,10 +664,10 @@
           allianceId: aaId,
           name: formatAllianceName(allianceNameById[aaId], aaId),
         })),
-        wikiUrl,
+        wikiUrl: staticPayload?.wikiUrl ?? null,
         status: (row[ConflictIndex.STATUS] as string | null) ?? null,
         cb: (row[ConflictIndex.CB] as string | null) ?? null,
-        posts,
+        posts: staticPayload?.posts ?? [],
         rowClass:
           end === -1
             ? "ux-conflicts-row-active"
@@ -691,6 +683,46 @@
     });
     conflictsGridResetVersion += 1;
   }
+
+  function rebuildConflictStaticPayloadCache(result: RawData): void {
+    const nextById: {
+      [key: number]: {
+        wikiUrl: string | null;
+        posts: Array<{ title: string; url: string; timestamp: number }>;
+      };
+    } = {};
+
+    const rows = result.conflicts as JSONValue[][];
+    for (const row of rows) {
+      const id = Number(row[ConflictIndex.ID] ?? 0);
+      if (!Number.isFinite(id)) continue;
+
+      const wikiValue = `${row[ConflictIndex.WIKI] ?? ""}`.trim();
+      const wikiUrl =
+        wikiValue.length === 0
+          ? null
+          : /^https?:\/\//i.test(wikiValue)
+            ? wikiValue
+            : `https://politicsandwar.fandom.com/wiki/${encodeURIComponent(wikiValue)}`;
+      const posts = Object.entries(
+        (row[ConflictIndex.POSTS] as Record<string, [number, string, number]>) ?? {},
+      )
+        .map(([title, post]) => ({
+          title,
+          url: `https://forum.politicsandwar.com/index.php?/topic/${post[0]}-${post[1]}`,
+          timestamp: post[2],
+        }))
+        .sort((left, right) => right.timestamp - left.timestamp);
+
+      nextById[id] = {
+        wikiUrl,
+        posts,
+      };
+    }
+
+    conflictStaticPayloadById = nextById;
+  }
+
   function selectSource(event: Event) {
     const target = event.target as HTMLSelectElement;
     const id = target.value;
@@ -942,7 +974,7 @@
       : false;
 
     const bodyHtml = `
-      <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' data-conflict-action='open-conflict-page' data-conflict-id='${conflictId}' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
+      <a class='btn ux-btn-primary w-100 fw-bold mb-2' href='${conflictUrl}' data-conflict-action='open-conflict-page' data-conflict-id='${conflictId}' data-sveltekit-preload-data='tap' data-sveltekit-preload-code='hover' aria-label='Open full conflict page for ${safeName}'>Open Conflict Page</a>
 
       <div class='ux-conflict-popup-actions' role='group' aria-label='Conflict actions'>
         <button type='button' class='btn ux-btn fw-bold' data-conflict-action='open-coalition' data-conflict-id='${conflictId}' data-conflict-index='0' data-conflict-from-card='true' aria-label='Show coalition 1 alliances for ${safeName}'>C1</button>

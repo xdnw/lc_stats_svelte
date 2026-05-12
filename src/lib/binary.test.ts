@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
     requestWorkerRpc: vi.fn(),
     incrementPerfCounter: vi.fn(),
+    isDetailedPerfEnabled: vi.fn(),
     startPerfSpan: vi.fn(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock("./workerRpc", () => ({
 
 vi.mock("./perf", () => ({
     incrementPerfCounter: mocks.incrementPerfCounter,
+    isDetailedPerfEnabled: mocks.isDetailedPerfEnabled,
     startPerfSpan: mocks.startPerfSpan,
 }));
 
@@ -28,12 +30,14 @@ import {
     decompressBson,
     getDecompressedPayloadCacheSize,
     hasDecompressedPayload,
+    loadCompressedPayloadBuffer,
 } from "./binary";
 
 describe("binary decompressed cache", () => {
     beforeEach(() => {
         clearDecompressedPayloadCache();
         vi.clearAllMocks();
+        mocks.isDetailedPerfEnabled.mockReturnValue(false);
         mocks.startPerfSpan.mockReturnValue(() => {});
         vi.mocked(fetch).mockResolvedValue(new Response(new Uint8Array([1, 2, 3])));
         delete (globalThis as typeof globalThis & {
@@ -104,12 +108,14 @@ describe("binary decompressed cache", () => {
         expect(fetch).toHaveBeenCalledWith("https://example.test/worker-bytes");
         expect(mocks.requestWorkerRpc).toHaveBeenCalledWith(
             expect.anything(),
-            {
+            expect.objectContaining({
                 mode: "inflate-bytes",
                 compressedBytes: expect.any(ArrayBuffer),
-            },
+                detailed: false,
+            }),
             expect.objectContaining({
                 operation: "decompress-bytes",
+                timeoutMs: 45_000,
                 transfer: [expect.any(ArrayBuffer)],
             }),
         );
@@ -133,7 +139,24 @@ describe("binary decompressed cache", () => {
         ).resolves.toEqual({ ok: true, mode: "plain" });
     });
 
-    it("clones shell-primed compressed bytes before transferring them to the worker", async () => {
+    it("clones shell-primed compressed bytes by default", async () => {
+        const primedBuffer = new Uint8Array([9, 8, 7]).buffer;
+
+        (globalThis as typeof globalThis & {
+            __lcPrimedCompressedPayloads?: Record<string, Promise<ArrayBuffer>>;
+        }).__lcPrimedCompressedPayloads = {
+            "https://example.test/primed-default": Promise.resolve(
+                primedBuffer,
+            ),
+        };
+
+        await expect(
+            loadCompressedPayloadBuffer("https://example.test/primed-default"),
+        ).resolves.not.toBe(primedBuffer);
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("uses shell-primed compressed bytes directly before transferring them to the worker", async () => {
         const packr = new Packr({
             largeBigIntToFloat: true,
             mapsAsObjects: true,
@@ -170,6 +193,6 @@ describe("binary decompressed cache", () => {
         expect(
             (mocks.requestWorkerRpc.mock.calls[0]?.[1] as { compressedBytes: ArrayBuffer })
                 .compressedBytes,
-        ).not.toBe(primedBuffer);
+        ).toBe(primedBuffer);
     });
 });

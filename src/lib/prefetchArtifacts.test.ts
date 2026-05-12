@@ -53,7 +53,7 @@ describe("prefetchArtifacts", () => {
         queueArtifactPrefetch.mockReturnValue(true);
     });
 
-    it("warms the bubble route bundle with shared graph dependencies", async () => {
+    it("warms the bubble route bundle with derived work when requested", async () => {
         const prefetchArtifacts = await import("./prefetchArtifacts");
 
         expect(prefetchArtifacts.warmBubbleRouteArtifacts("123", {
@@ -61,6 +61,7 @@ describe("prefetchArtifacts", () => {
             reasonBase: "route-bubble-load",
             routeTarget: "/bubble",
             intentStrength: "load",
+            includeDerivedArtifact: true,
         })).toBe(true);
 
         expect(queueArtifactPrefetch).toHaveBeenCalledTimes(2);
@@ -116,7 +117,7 @@ describe("prefetchArtifacts", () => {
         }));
     });
 
-    it("warms the tiering route bundle with the shared graph dependency", async () => {
+    it("defaults tiering route warm to the shared graph dependency", async () => {
         const prefetchArtifacts = await import("./prefetchArtifacts");
 
         expect(prefetchArtifacts.warmTieringRouteArtifacts("123", {
@@ -126,7 +127,7 @@ describe("prefetchArtifacts", () => {
             intentStrength: "idle",
         })).toBe(true);
 
-        expect(queueArtifactPrefetch).toHaveBeenCalledTimes(2);
+        expect(queueArtifactPrefetch).toHaveBeenCalledTimes(1);
         const tieringDescriptors = (
             queueArtifactPrefetch.mock.calls as unknown as Array<[Record<string, unknown>]>
         ).map((call) => call[0]);
@@ -140,14 +141,110 @@ describe("prefetchArtifacts", () => {
                 priority: "idle",
                 intentStrength: "idle",
             }),
-            expect.objectContaining({
-                key: "tiering:default:test:v1",
-                artifactKind: "tiering",
-                routeTarget: "/tiering",
-                reason: "route-tiering-idle-default-dataset",
-                priority: "idle",
-                intentStrength: "idle",
-            }),
         ]);
+    });
+
+    it("can keep bubble tab hover warm to the shared graph payload only", async () => {
+        const prefetchArtifacts = await import("./prefetchArtifacts");
+
+        expect(prefetchArtifacts.warmBubbleRouteArtifacts("123", {
+            priority: "high",
+            reasonBase: "tabs-hover-bubble",
+            routeTarget: "/bubble",
+            intentStrength: "hover",
+            includeDerivedArtifact: false,
+        })).toBe(true);
+
+        expect(queueArtifactPrefetch).toHaveBeenCalledTimes(1);
+        expect(queueArtifactPrefetch).toHaveBeenCalledWith(expect.objectContaining({
+            key: "payload:graph:test:v1",
+            artifactKind: "payload",
+            routeTarget: "/bubble",
+            reason: "tabs-hover-bubble-graph-payload",
+            priority: "high",
+            intentStrength: "hover",
+        }));
+    });
+
+    it("can keep metric-time tab warm to shared graph payload without default series work", async () => {
+        const prefetchArtifacts = await import("./prefetchArtifacts");
+
+        expect(prefetchArtifacts.warmMetricTimeRouteArtifacts("123", {
+            priority: "high",
+            reasonBase: "tabs-pointerdown-metric-time",
+            routeTarget: "/metric-time",
+            intentStrength: "pointerdown",
+            includeDerivedArtifact: false,
+        })).toBe(true);
+
+        expect(queueArtifactPrefetch).toHaveBeenCalledTimes(1);
+        expect(queueArtifactPrefetch).toHaveBeenCalledWith(expect.objectContaining({
+            key: "payload:graph:test:v1",
+            artifactKind: "payload",
+            routeTarget: "/metric-time",
+            promotionTargets: ["/metric-time", "/bubble", "/tiering"],
+            reason: "tabs-pointerdown-metric-time-graph-payload",
+            priority: "high",
+            intentStrength: "pointerdown",
+        }));
+    });
+
+    it("marks current-route conflicts index warm as non-cross-route work when requested", async () => {
+        const prefetchArtifacts = await import("./prefetchArtifacts");
+
+        expect(prefetchArtifacts.warmConflictsIndexPayload({
+            priority: "high",
+            reason: "route-conflicts-load-index",
+            intentStrength: "load",
+            crossRoute: false,
+        })).toBe(true);
+
+        expect(queueArtifactPrefetch).toHaveBeenCalledWith(expect.objectContaining({
+            artifactKind: "payload",
+            routeTarget: "/conflicts",
+            reason: "route-conflicts-load-index",
+            priority: "high",
+            intentStrength: "load",
+            crossRoute: false,
+        }));
+    });
+
+    it("marks current-route conflict payload and composite warms as non-cross-route work when requested", async () => {
+        const prefetchArtifacts = await import("./prefetchArtifacts");
+
+        expect(prefetchArtifacts.warmConflictPayload("123", {
+            priority: "high",
+            reason: "route-aava-entry-payload",
+            routeTarget: "/aava",
+            intentStrength: "load",
+            crossRoute: false,
+        })).toBe(true);
+
+        expect(prefetchArtifacts.warmCompositeContextArtifact({
+            ids: ["1", "2"],
+            aid: 7,
+            priority: "high",
+            reason: "route-composite-load-context",
+            routeTarget: "/conflicts/view",
+            intentStrength: "load",
+            crossRoute: false,
+        })).toBe(true);
+
+        expect(queueArtifactPrefetch).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            artifactKind: "payload",
+            routeTarget: "/aava",
+            reason: "route-aava-entry-payload",
+            priority: "high",
+            intentStrength: "load",
+            crossRoute: false,
+        }));
+        expect(queueArtifactPrefetch).toHaveBeenNthCalledWith(2, expect.objectContaining({
+            artifactKind: "composite",
+            routeTarget: "/conflicts/view",
+            reason: "route-composite-load-context",
+            priority: "high",
+            intentStrength: "load",
+            crossRoute: false,
+        }));
     });
 });

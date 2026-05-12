@@ -632,7 +632,7 @@ describe("conflictGrid dataset", () => {
         expect(nationPage.rows[0]?.id).toBe(1001);
     });
 
-    it("reuses query and summary results for equivalent filter matches", () => {
+    it("reuses query page result for equivalent filter matches producing the same visible rows", () => {
         const dataset = createConflictGridDataset({
             datasetKey: "conflict-grid:test:v4",
             conflictId: "test",
@@ -649,6 +649,14 @@ describe("conflictGrid dataset", () => {
         );
 
         expect(secondQuery).toBe(firstQuery);
+    });
+
+    it("keeps separate summary cache entries for distinct filter strings even when they match the same rows", () => {
+        const dataset = createConflictGridDataset({
+            datasetKey: "conflict-grid:test:v4b",
+            conflictId: "test",
+            data: createConflictFixture(),
+        });
 
         const firstSummary = dataset.querySummary(
             ConflictGridLayout.ALLIANCE,
@@ -659,7 +667,18 @@ describe("conflictGrid dataset", () => {
             createQueryState({ filters: { name: "alli" } }),
         );
 
-        expect(secondSummary).toBe(firstSummary);
+        // Summary cache is keyed by filter+sort params (not row-ID sequence), so
+        // two different filter strings produce distinct cache entries even if they
+        // happen to match the same rows.  The values must still be equivalent.
+        expect(secondSummary).not.toBe(firstSummary);
+        expect(secondSummary).toEqual(firstSummary);
+
+        // Repeating the exact same filter string does return the cached entry.
+        const thirdSummary = dataset.querySummary(
+            ConflictGridLayout.ALLIANCE,
+            createQueryState({ filters: { name: "all" } }),
+        );
+        expect(thirdSummary).toBe(firstSummary);
     });
 
     it("adds custom member rollups to coalition and alliance bootstraps but not nation bootstraps", () => {

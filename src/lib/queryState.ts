@@ -118,9 +118,16 @@ function applyQueryParamValue(
 }
 
 function commitQueryUrl(url: URL, replace = false): void {
-    const oldUrl = window.location.href;
+    if (
+        url.origin === window.location.origin &&
+        url.pathname === window.location.pathname &&
+        url.search === window.location.search &&
+        url.hash === window.location.hash
+    ) {
+        return;
+    }
+
     const newUrl = url.toString();
-    if (oldUrl === newUrl) return;
 
     const pageState =
         window.history.state && typeof window.history.state === "object"

@@ -17,6 +17,7 @@ import {
     type CityRange,
 } from "./cityRange";
 import { readGraphTimelineSnapshot } from "./graphTimelineAccess";
+import { measureDetailedSyncTask } from "./perf";
 
 type MetricTuple = [TierMetric, TierMetric, TierMetric];
 
@@ -49,7 +50,6 @@ function ensureTrace(
             id: [],
             text: [],
             customdata: [],
-            marker: { size: [] },
         };
         traceByCoalition[coalitionId] = trace;
     }
@@ -303,6 +303,7 @@ function generateCoalitionTraces(options: {
         const buffer: number[] = [0, 0, 0];
         const dayAggregateCacheByMetric: Array<Map<number, CoalitionMetricAggregate>> =
             options.metrics.map(() => new Map<number, CoalitionMetricAggregate>());
+        const metricValues = [0, 0, 0];
 
         for (let turnOrDay = start; turnOrDay <= end; turnOrDay += 1) {
             if (turnOrDay < minTime) minTime = turnOrDay;
@@ -314,7 +315,9 @@ function generateCoalitionTraces(options: {
             const day = options.kernel.isAnyTurn
                 ? Math.floor(turnOrDay / 12)
                 : turnOrDay;
-            const metricValues = [0, 0, 0];
+            metricValues[0] = 0;
+            metricValues[1] = 0;
+            metricValues[2] = 0;
 
             for (let metricIndex = 0; metricIndex < options.metrics.length; metricIndex += 1) {
                 const isTurnMetric = options.kernel.metricIsTurn[metricIndex];
@@ -423,24 +426,54 @@ export function generateTraces(
     aggregationMode: BubbleAggregationMode = DEFAULT_BUBBLE_AGGREGATION_MODE,
 ): TraceBuildResult | null {
     const metrics: MetricTuple = [x_axis, y_axis, size];
-    const kernel = buildMetricKernel(data, metrics);
+    const kernel = measureDetailedSyncTask(
+        "main.graph.bubble.compute.kernel",
+        () => buildMetricKernel(data, metrics),
+        {
+            metricCount: metrics.length,
+            aggregationMode,
+        },
+        { thresholdMs: 1 },
+    );
     if (!kernel) return null;
 
     if (aggregationMode === "coalition") {
-        return generateCoalitionTraces({
-            data,
-            metrics,
-            kernel,
-            cityRange,
-            selectedAllianceIds,
-        });
+        return measureDetailedSyncTask(
+            "main.graph.bubble.compute.coalition",
+            () =>
+                generateCoalitionTraces({
+                    data,
+                    metrics,
+                    kernel,
+                    cityRange,
+                    selectedAllianceIds,
+                }),
+            () => ({
+                coalitionCount: data.coalitions.length,
+                metricCount: metrics.length,
+                selectedAllianceCount: selectedAllianceIds
+                    ? Array.from(selectedAllianceIds).length
+                    : null,
+            }),
+        );
     }
 
-    return generateAllianceTraces({
-        data,
-        metrics,
-        kernel,
-        cityRange,
-        selectedAllianceIds,
-    });
+    return measureDetailedSyncTask(
+        "main.graph.bubble.compute.alliance",
+        () =>
+            generateAllianceTraces({
+                data,
+                metrics,
+                kernel,
+                cityRange,
+                selectedAllianceIds,
+            }),
+        () => ({
+            coalitionCount: data.coalitions.length,
+            metricCount: metrics.length,
+            selectedAllianceCount: selectedAllianceIds
+                ? Array.from(selectedAllianceIds).length
+                : null,
+        }),
+    );
 }

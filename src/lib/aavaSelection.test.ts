@@ -81,4 +81,31 @@ describe("aavaSelection source path", () => {
             },
         ]);
     });
+
+    it("normalizes non-finite matrix values once when the source is created", () => {
+        const conflict = createConflict();
+        const matrices = conflict.war_web.data as unknown as number[][][];
+        matrices[0][0][2] = Number.NaN;
+        matrices[0][2][0] = Number.POSITIVE_INFINITY;
+
+        const source = createAavaSelectionSource(conflict);
+        const rows = buildAavaSelectionRowsFromSource(source, {
+            header: "wars",
+            primaryIds: [101],
+            vsIds: [201],
+            primaryCoalitionIndex: 0,
+        });
+
+        expect(rows[0].primary_to_row).toBe(0);
+        expect(rows[0].row_to_primary).toBe(0);
+        expect(source.matrices).not.toBe(conflict.war_web.data);
+        expect(matrices[0][0][2]).toBe(Number.NaN);
+    });
+
+    it("reuses clean matrix payloads without copying them", () => {
+        const conflict = createConflict();
+        const source = createAavaSelectionSource(conflict);
+
+        expect(source.matrices).toBe(conflict.war_web.data);
+    });
 });

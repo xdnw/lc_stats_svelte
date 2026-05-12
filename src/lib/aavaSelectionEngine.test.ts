@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
     buildAavaSelectionRowsFromSource,
     createAavaSelectionSource,
@@ -6,12 +6,6 @@ import {
 } from "./aavaSelection";
 import { createAavaSelectionEngine } from "./aavaSelectionEngine";
 import type { Conflict } from "./types";
-
-const requestWorkerRpcMock = vi.hoisted(() => vi.fn());
-
-vi.mock("./workerRpc", () => ({
-    requestWorkerRpc: requestWorkerRpcMock,
-}));
 
 function createConflict(): Conflict {
     return {
@@ -48,10 +42,6 @@ function createConflict(): Conflict {
     } as unknown as Conflict;
 }
 
-class FakeWorker {
-    terminate = vi.fn();
-}
-
 const snapshot: AavaSelectionSnapshot = {
     header: "wars",
     primaryIds: [101, 102],
@@ -60,107 +50,62 @@ const snapshot: AavaSelectionSnapshot = {
 };
 
 describe("createAavaSelectionEngine", () => {
-    const originalWorker = globalThis.Worker;
+    const secondSnapshot: AavaSelectionSnapshot = {
+        ...snapshot,
+        header: "damage",
+    };
 
-    beforeEach(() => {
-        requestWorkerRpcMock.mockReset();
-        Object.defineProperty(globalThis, "Worker", {
-            configurable: true,
-            writable: true,
-            value: FakeWorker,
-        });
-    });
-
-    afterEach(() => {
-        if (originalWorker) {
-            Object.defineProperty(globalThis, "Worker", {
-                configurable: true,
-                writable: true,
-                value: originalWorker,
-            });
-            return;
-        }
-
-        Reflect.deleteProperty(globalThis, "Worker");
-    });
-
-    it("uses the worker for the first uncached build when available", async () => {
+    it("uses the local engine for the first uncached build", async () => {
         const source = createAavaSelectionSource(createConflict());
-        const workerRows = [
-            {
-                alliance: ["Worker row", 999] as [string, number],
-                primary_to_row: 12,
-                row_to_primary: 8,
-                net: 4,
-                total: 20,
-                primary_share_pct: 60,
-                row_share_pct: 40,
-                abs_net: 4,
-            },
-        ];
-
-        requestWorkerRpcMock.mockImplementation(async (_worker, request) => {
-            if (request.action === "init") {
-                return { ready: true };
-            }
-
-            if (request.action === "buildRows") {
-                return workerRows;
-            }
-
-            if (request.action === "release") {
-                return { released: true };
-            }
-
-            throw new Error(`Unexpected action: ${request.action}`);
-        });
+        const expectedLocalRows = buildAavaSelectionRowsFromSource(source, snapshot);
 
         const engine = createAavaSelectionEngine({
             dataKey: "test-key",
             source,
         });
 
-        await expect(engine.buildRows(snapshot)).resolves.toEqual(workerRows);
-        expect(
-            requestWorkerRpcMock.mock.calls.map(([, request]) => request.action),
-        ).toEqual(["init", "buildRows"]);
+        await expect(engine.buildRows(snapshot)).resolves.toEqual(expectedLocalRows);
 
         engine.destroy();
     });
 
-    it("falls back to the local engine when the worker build fails", async () => {
+    it("caches locally built rows for later requests", async () => {
         const source = createAavaSelectionSource(createConflict());
-        const expectedRows = buildAavaSelectionRowsFromSource(source, snapshot);
-
-        requestWorkerRpcMock.mockImplementation(async (_worker, request) => {
-            if (request.action === "init") {
-                return { ready: true };
-            }
-
-            if (request.action === "buildRows") {
-                const error = new Error("worker build failed") as Error & {
-                    kind?: string;
-                };
-                error.kind = "runtime";
-                throw error;
-            }
-
-            if (request.action === "release") {
-                return { released: true };
-            }
-
-            throw new Error(`Unexpected action: ${request.action}`);
-        });
+        const expectedRows = buildAavaSelectionRowsFromSource(source, secondSnapshot);
 
         const engine = createAavaSelectionEngine({
             dataKey: "test-key",
             source,
         });
 
-        await expect(engine.buildRows(snapshot)).resolves.toEqual(expectedRows);
-        requestWorkerRpcMock.mockClear();
-        await expect(engine.buildRows(snapshot)).resolves.toEqual(expectedRows);
-        expect(requestWorkerRpcMock).not.toHaveBeenCalled();
+        await expect(engine.buildRows(snapshot)).resolves.toEqual(
+            buildAavaSelectionRowsFromSource(source, snapshot),
+        );
+
+        await expect(engine.buildRows(secondSnapshot)).resolves.toEqual(expectedRows);
+        await expect(engine.buildRows(secondSnapshot)).resolves.toEqual(expectedRows);
+
+        engine.destroy();
+    });
+
+    it("caps the local row cache", async () => {
+        const source = createAavaSelectionSource(createConflict());
+        const engine = createAavaSelectionEngine({
+            dataKey: "test-key",
+            source,
+        });
+
+        await engine.buildRows(snapshot);
+        expect(engine.peekRows(snapshot)).not.toBeNull();
+
+        for (let index = 0; index < 16; index++) {
+            await engine.buildRows({
+                ...snapshot,
+                primaryIds: [10_000 + index],
+            });
+        }
+
+        expect(engine.peekRows(snapshot)).toBeNull();
 
         engine.destroy();
     });

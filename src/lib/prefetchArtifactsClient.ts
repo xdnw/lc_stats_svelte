@@ -2,7 +2,6 @@ export {
     warmBubbleDefaultArtifact,
     warmCompositeContextArtifact,
     warmConflictRouteArtifacts,
-    warmMetricTimeDefaultArtifact,
     promoteArtifactTarget,
     warmBubbleRouteArtifacts,
     warmConflictPayload,

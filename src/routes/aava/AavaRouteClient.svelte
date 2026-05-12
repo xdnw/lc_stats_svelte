@@ -113,26 +113,12 @@
         void loadPrefetchArtifacts()
             .then(
                 ({
-                    warmBubbleRouteArtifacts,
                     warmConflictTableArtifact,
-                    warmTieringRouteArtifacts,
                 }) => {
                     warmConflictTableArtifact(conflictId, {
                         priority: "idle",
                         reason: "route-aava-single-idle-conflict-grid",
                         routeTarget: "/conflict",
-                        intentStrength: "idle",
-                    });
-                    warmBubbleRouteArtifacts(conflictId, {
-                        priority: "idle",
-                        reasonBase: "route-aava-single-idle-bubble",
-                        routeTarget: "/bubble",
-                        intentStrength: "idle",
-                    });
-                    warmTieringRouteArtifacts(conflictId, {
-                        priority: "idle",
-                        reasonBase: "route-aava-single-idle-tiering",
-                        routeTarget: "/tiering",
                         intentStrength: "idle",
                     });
                 },
@@ -504,6 +490,24 @@
               primaryCoalitionIndex: primaryCoalitionIndex === 1 ? 1 : 0,
           }
         : null;
+
+    $: if (
+        aavaRows.length > 0 &&
+        (!dataGridComponent || !createAavaGridProvider) &&
+        !dataGridLoadPromise &&
+        !_loadError
+    ) {
+        void ensureDataGridLoaded();
+    }
+
+    $: if (
+        aavaRows.length > 0 &&
+        (!dataGridComponent || !createAavaGridProvider) &&
+        !dataGridLoadPromise &&
+        !_loadError
+    ) {
+        void ensureDataGridLoaded();
+    }
 
     $: {
         if (!currentAavaRowRequest || !aavaSelectionEngine) {
@@ -1248,7 +1252,6 @@
         aavaFirstMountPending = false;
         resetAavaRowsState();
         destroyAavaSelectionEngine();
-        void ensureDataGridLoaded();
 
         ensureJourneySpan("journey.conflict_to_aava.routeTransition", {
             mode: context.mode,
@@ -1617,6 +1620,12 @@
         </div>
     {:else if aavaRowsLoading}
         <Progress />
+    {:else if aavaRows.length > 0 && (!dataGridComponent || !createAavaGridProvider)}
+        <GridLoadingShell
+            loadingMessage="Loading AAvA table..."
+            caption="Alliance versus alliance table"
+            pageSize={aavaGridPageSizePreference}
+        />
     {/if}
 
     {#if aavaGridProvider}

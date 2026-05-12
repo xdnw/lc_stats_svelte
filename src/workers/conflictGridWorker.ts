@@ -1,4 +1,5 @@
 import { createConflictGridDataset } from "../lib/conflictGrid/dataset";
+import { readStreamBytes } from "../lib/compressedBytes";
 import { createAppUnpackr } from "../lib/msgpack";
 import type {
     ConflictGridWorkerRequest,
@@ -36,8 +37,8 @@ async function fetchConflict(url: string): Promise<Conflict> {
         throw new Error("Response body is null");
     }
     const stream = response.body.pipeThrough(new DecompressionStream("gzip"));
-    const arrayBuffer = await new Response(stream).arrayBuffer();
-    return unpackr.unpack(new Uint8Array(arrayBuffer)) as Conflict;
+    const bytes = await readStreamBytes(stream);
+    return unpackr.unpack(bytes) as Conflict;
 }
 
 async function ensureDataset(

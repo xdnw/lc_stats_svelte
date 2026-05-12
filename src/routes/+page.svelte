@@ -3,112 +3,128 @@
   import { getQueryParam } from "$lib/queryState";
   import { warmConflictsIndexPayload } from "$lib/prefetchArtifacts";
   import { appConfig as config } from "$lib/appConfig";
+  import versusCardUrl from "../../static/versus.jpg";
+  import sheetCardUrl from "../../static/sheet.jpg";
+  import statusCardUrl from "../../static/images/home/status.svg";
+  import commandsCardUrl from "../../static/images/home/commands.svg";
+  import multiV2CardUrl from "../../static/images/home/multi-v2.svg";
+  import graphCardUrl from "../../static/graph.png";
+  import chestCardUrl from "../../static/chest.png";
+  import mediaCardUrl from "../../static/media2.png";
 
-  type AdTemplate = {
-    id: string;
-    img: string;
+  type CardTemplate = {
+    ad: boolean;
+    svg: string;
     desc: string;
     subtitle: string;
     invite: string;
-    bg: string;
-    ad: boolean;
     label: string;
+    bg: string;
   };
+  const inlineSvgPrefix = "<svg";
+
+  const isInlineSvg = (svg: string): boolean => svg.trimStart().startsWith(inlineSvgPrefix);
 
   const locutusBaseUrl = "https://www.locutus.link/#";
 
-  export const _adTemplates: AdTemplate[] = [
-    {
-      id: "1",
-      img: "versus.jpg",
+  export const _cardTemplates: {
+    [key: string]: CardTemplate;
+  } = {
+    conflicts: {
+      svg: versusCardUrl,
       desc: "Browse a variety of tables and graphs for our featured set of ongoing and historical alliance conflicts. Data is available to download in CSV format.",
       subtitle: "Alliance Conflicts",
       invite: "conflicts",
-      bg: "",
       ad: false,
       label: "View Conflicts",
+      bg: "",
     },
-    {
-      id: "3",
-      img: "sheet.jpg",
+    table_builder: {
+      svg: sheetCardUrl,
       desc: "Browse templates or create your custom table from a variety of game data. Share or export options available.",
       subtitle: "Table Builder",
       invite: "https://www.locutus.link/#/custom_table",
-      bg: "#FFC929",
       ad: false,
       label: "Open Editor",
+      bg: "#FFC929",
     },
-    {
-      id: "status",
-      img: "images/home/status.svg",
+    status: {
+      svg: statusCardUrl,
       desc: "Check live system health, incidents, and component uptime.",
       subtitle: "Service Status",
       invite: `${locutusBaseUrl}/status`,
-      bg: "#0f172a",
       ad: false,
       label: "Open Status",
+      bg: "#0f172a",
     },
-    {
-      id: "commands",
-      img: "images/home/commands.svg",
+    commands: {
+      svg: commandsCardUrl,
       desc: "Run and explore available bot commands from the web UI.",
       subtitle: "Commands",
       invite: `${locutusBaseUrl}/commands`,
-      bg: "#0f172a",
       ad: false,
       label: "Open Commands",
+      bg: "#0f172a",
     },
-    {
-      id: "multi_v2",
-      img: "images/home/multi-v2.svg",
+    multi_v2: {
+      svg: multiV2CardUrl,
       desc: "Inspect the newer multi-check flow for a selected nation.",
       subtitle: "Multi Checker v2",
       invite: `${locutusBaseUrl}/multi_v2/`,
-      bg: "#0f172a",
       ad: false,
       label: "Open Multi v2",
+      bg: "#0f172a",
     },
-    {
-      id: "4",
-      img: "graph.png",
+    chart_viewer: {
+      svg: graphCardUrl,
       desc: "Browse templates or create your custom chart from a variety of game data. Share or export options available.",
       subtitle: "Chart Viewer",
       invite: "https://www.locutus.link/#/edit_graph",
-      bg: "#FFC929",
       ad: false,
       label: "View Charts",
+      bg: "#FFC929",
     },
-    {
-      id: "5",
-      img: "chest.png",
+    raid_finder: {
+      svg: chestCardUrl,
       subtitle: "Raid Finder",
       desc: "Find raidable nations in your score range",
       invite: "https://www.locutus.link/#/raid",
-      bg: "#2EC2A0",
       ad: false,
       label: "Find Targets",
+      bg: "#2EC2A0",
     },
-    {
-      id: "1244684694956675113",
-      img: "media2.png",
-      desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Media discord server.",
-      subtitle: "Updates & Discussions",
-      invite: "https://discord.gg/aNg9DnzqWG",
-      bg: "#111",
-      ad: true,
-      label: "Join Now!",
-    },
-    {
-      id: "0",
-      img: "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif",
-      desc: "Loading...",
-      subtitle: "Loading...",
-      invite: "#",
-      bg: "#EEE",
+    rankings: {
+      svg: `<svg viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg" role="img"><rect width="320" height="160" fill="#0f172a"/><g fill="#060e1e"><polygon points="89,80 131,80 143,160 101,160"/><polygon points="139,60 181,60 193,160 151,160"/><polygon points="189,100 231,100 243,160 201,160"/></g><line x1="70" y1="140" x2="250" y2="140" stroke="#1e2d45" stroke-width="2"/><rect x="89" y="80" width="42" height="60" rx="3" fill="#6366f1"/><rect x="139" y="60" width="42" height="80" rx="3" fill="#f59e0b"/><rect x="189" y="100" width="42" height="40" rx="3" fill="#6366f1"/><text x="110" y="73" text-anchor="middle" fill="#e0e7ff" font-size="13" font-family="sans-serif" font-weight="bold">2</text><text x="160" y="52" text-anchor="middle" fill="#fef3c7" font-size="13" font-family="sans-serif" font-weight="bold">1</text><text x="210" y="93" text-anchor="middle" fill="#e0e7ff" font-size="13" font-family="sans-serif" font-weight="bold">3</text></svg>`,
       ad: false,
-      label: "Loading...",
+      desc: "Browse templates or create a custom ranking table from a variety of game data. Share or export options available.",
+      subtitle: "Rankings",
+      invite: "https://www.locutus.link/#/edit_ranking",
+      label: "Rankings",
+      bg: "#0f172a",
     },
-  ];
+    treaty_history: {
+      svg: `<svg viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg" role="img"><rect width="320" height="160" fill="#0f172a"/><g fill="#060e1e" stroke="#060e1e" stroke-linecap="round" stroke-linejoin="round"><polygon points="88,102 152,58 1152,1058 1088,1102"/><polygon points="152,58 216,80 1216,1080 1152,1058"/><polygon points="216,80 252,116 1252,1116 1216,1080"/><polygon points="152,58 228,38 1228,1038 1152,1058"/><polygon points="228,38 216,80 1216,1080 1228,1038"/><polygon points="88,102 216,80 1216,1080 1088,1102"/><polygon points="72,86 104,86 1104,1086 1072,1086"/><polygon points="136,42 168,42 1168,1042 1136,1042"/><polygon points="200,64 232,64 1232,1064 1200,1064"/><polygon points="236,100 268,100 1268,1100 1236,1100"/><polygon points="212,22 244,22 1244,1022 1212,1022"/></g><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M88 102L152 58L216 80L252 116" stroke="#94a3b8" stroke-width="5"/><path d="M152 58L228 38L216 80L88 102" stroke="#22c55e" stroke-width="5"/></g><g stroke-width="4"><circle cx="88" cy="102" r="16" fill="#1e293b" stroke="#38bdf8"/><circle cx="152" cy="58" r="16" fill="#1e293b" stroke="#38bdf8"/><circle cx="216" cy="80" r="16" fill="#1e293b" stroke="#38bdf8"/><circle cx="252" cy="116" r="16" fill="#1e293b" stroke="#38bdf8"/><circle cx="228" cy="38" r="16" fill="#1e293b" stroke="#f59e0b"/></g><circle cx="152" cy="58" r="5" fill="#22c55e"/><circle cx="216" cy="80" r="5" fill="#22c55e"/><circle cx="228" cy="38" r="5" fill="#fef3c7"/></svg>`,
+      ad: false,
+      desc: "Explore historical treaty relationships between alliances as a connected graph.",
+      subtitle: "Treaty History",
+      invite: "https://treaty.locutus.link",
+      label: "View Treaties",
+      bg: "#0f172a",
+    },
+    // updates_discussions: {
+    //   svg: mediaCardUrl,
+    //   desc: "Get breaking news about ongoing conflicts and share in their discussions. Available on the Media discord server.",
+    //   subtitle: "Updates & Discussions",
+    //   invite: "https://discord.gg/aNg9DnzqWG",
+    //   ad: true,
+    //   label: "Join Now!",
+    //   bg: "#111",
+    // },
+  };
+
+  type CardTemplateKey = keyof typeof _cardTemplates;
+
+  const cardTemplateKeys = Object.keys(_cardTemplates) as CardTemplateKey[];
   let _guildId: string = "";
   let matrixAnimationFrame: number | null = null;
 
@@ -235,35 +251,43 @@
   </section>
   <br />
   <div class="d-flex flex-wrap justify-content-center">
-    {#each _adTemplates as adTemplate (adTemplate.id)}
-      {#if adTemplate.id !== "0"}
-        <div class="card m-2 ux-home-card">
-          <img
-            src={adTemplate.img}
-            style="background:{adTemplate.bg}"
-            class="card-img-top img-fluid object-fit-fill"
-            alt={adTemplate.subtitle + " card"}
-          />
-          <div class="card-body ux-home-card-body">
-            <h5 class="card-title ux-home-card-title">
-              {#if adTemplate.ad}
-                <span class="badge text-bg-light fs-6 me-1">Ad</span>
-              {/if}
-              {adTemplate.subtitle}
-            </h5>
-            <p class="card-text ux-home-card-text">{adTemplate.desc}</p>
-          </div>
-          <div class="card-footer ux-home-card-footer">
-            <a
-              href={adTemplate.invite === "conflicts" && _guildId
-                ? "conflicts?guild=" + _guildId
-                : adTemplate.invite}
-              class="btn ux-btn w-100 fw-semibold"
-              >{adTemplate.label}</a
-            >
-          </div>
+    {#each cardTemplateKeys as cardKey (cardKey)}
+      {@const cardTemplate = _cardTemplates[cardKey]}
+      <div class="card m-2 ux-home-card">
+        <div
+          class="card-img-top ux-home-card-media"
+          style={`background:${cardTemplate.bg}`}
+          aria-label={cardTemplate.subtitle + " card"}
+        >
+          {#if isInlineSvg(cardTemplate.svg)}
+            <div class="ux-home-card-svg" aria-hidden="true">{@html cardTemplate.svg}</div>
+          {:else}
+            <img
+              src={cardTemplate.svg}
+              class="img-fluid object-fit-fill"
+              alt={cardTemplate.subtitle + " card"}
+            />
+          {/if}
         </div>
-      {/if}
+        <div class="card-body ux-home-card-body">
+          <h5 class="card-title ux-home-card-title">
+            {#if cardTemplate.ad}
+              <span class="badge text-bg-light fs-6 me-1">Ad</span>
+            {/if}
+            {cardTemplate.subtitle}
+          </h5>
+          <p class="card-text ux-home-card-text">{cardTemplate.desc}</p>
+        </div>
+        <div class="card-footer ux-home-card-footer">
+          <a
+            href={cardTemplate.invite === "conflicts" && _guildId
+              ? "conflicts?guild=" + _guildId
+              : cardTemplate.invite}
+            class="btn ux-btn w-100 fw-semibold"
+            >{cardTemplate.label}</a
+          >
+        </div>
+      </div>
     {/each}
   </div>
 </div>
@@ -274,10 +298,33 @@
   .card-img-top {
     height: 9rem;
     width: 100%;
-    object-fit: contain;
     display: block;
     margin-left: auto;
     margin-right: auto;
+  }
+
+  .ux-home-card-media {
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+
+  .ux-home-card-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .ux-home-card-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .ux-home-card-svg :global(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
   }
 
   .ux-home-card {

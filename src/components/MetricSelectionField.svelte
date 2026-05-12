@@ -1,5 +1,6 @@
 <script lang="ts">
     import SelectionModal from "./SelectionModal.svelte";
+    import { startPerfSpan } from "$lib/perf";
     import type { SelectionId, SelectionModalItem } from "$lib/selection/types";
 
     type MetricOption = {
@@ -21,6 +22,11 @@
     export let exactSelectedCount: number | null = null;
     export let badgeOrderLabels: string[] = [];
     export let onCommit: (selectedMetrics: MetricOption[]) => void = () => {};
+
+    let metricModalItems: SelectionModalItem[] = [];
+    let metricOptionsByValue = new Map<string, MetricOption>();
+    let modalDataPrepared = false;
+    let modalOpen = false;
 
     function cloneMetricOptions(options: MetricOption[]): MetricOption[] {
         return options.map((option) => ({ ...option }));
@@ -114,6 +120,41 @@
         onCommit(cloneMetricOptions(nextMetrics));
     }
 
+    function prepareModalData(
+        currentItems: MetricOption[],
+        currentSelection: MetricOption[],
+    ): void {
+        const finishPrepareSpan = startPerfSpan("selection.metrics.prepare", {
+            itemCount: currentItems.length,
+            selectedCount: currentSelection.length,
+        });
+
+        try {
+            const preparedItems = buildMetricItems(currentItems, currentSelection);
+            metricModalItems = preparedItems;
+            metricOptionsByValue = new Map(
+                preparedItems.map((item) => [
+                    `${item.id}`,
+                    {
+                        value: `${item.id}`,
+                        label: item.label,
+                    },
+                ]),
+            );
+        } finally {
+            finishPrepareSpan();
+        }
+    }
+
+    function handleModalOpen(): void {
+        modalOpen = true;
+        modalDataPrepared = true;
+    }
+
+    function handleModalClose(): void {
+        modalOpen = false;
+    }
+
     $: normalizedItems = normalizeMetricOptions(Array.isArray(items) ? items : []);
     $: normalizedSelectedMetrics = normalizeMetricOptions(
         Array.isArray(selectedMetrics) ? selectedMetrics : [],
@@ -121,16 +162,9 @@
     $: normalizedMaxSelectedCount = normalizeCount(maxSelectedCount);
     $: normalizedMinSelectedCount = normalizeCount(minSelectedCount) ?? 0;
     $: normalizedExactSelectedCount = normalizeCount(exactSelectedCount);
-    $: metricModalItems = buildMetricItems(normalizedItems, normalizedSelectedMetrics);
-    $: metricOptionsByValue = new Map(
-        metricModalItems.map((item) => [
-            `${item.id}`,
-            {
-                value: `${item.id}`,
-                label: item.label,
-            },
-        ]),
-    );
+    $: if (modalDataPrepared || modalOpen) {
+        prepareModalData(normalizedItems, normalizedSelectedMetrics);
+    }
 </script>
 
 <div class="ux-metric-picker" role="group" aria-label={title}>
@@ -170,6 +204,8 @@
         buttonIconSize="0.9rem"
         iconOnly
         size="lg"
+        on:open={handleModalOpen}
+        on:close={handleModalClose}
         on:apply={handleApply}
     />
 </div>

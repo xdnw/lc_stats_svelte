@@ -5,7 +5,6 @@
      */
     import { browser } from "$app/environment";
     import ConflictRouteTabs from "../../components/ConflictRouteTabs.svelte";
-    import TieringControlsPanel from "../../components/TieringControlsPanel.svelte";
     import Progress from "../../components/Progress.svelte";
     import Breadcrumbs from "../../components/Breadcrumbs.svelte";
     import type { ExportMenuAction } from "../../components/exportMenuTypes";
@@ -63,9 +62,12 @@
     } from "$lib/graphArtifactKeys";
     import { isCumulativeMetricName } from "$lib/metrics";
     import { beginJourneySpan, endJourneySpan } from "$lib/perf";
+    import { measureDetailedAsyncTask } from "$lib/perf";
     import { normalizeTieringSliderValues } from "$lib/tieringSelection";
 
     type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
+    type TieringControlsPanelComponent =
+        typeof import("../../components/TieringControlsPanel.svelte").default;
 
     type MetricOption = {
         value: string;
@@ -87,6 +89,8 @@
     };
 
     let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
+    let tieringControlsPanelPromise: Promise<TieringControlsPanelComponent> | null = null;
+    let finishTieringControlsPanelLoadSpan: (() => void) | null = null;
 
     function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
         if (!prefetchArtifactsPromise) {
@@ -109,6 +113,25 @@
             .catch((error) => {
                 console.warn("Failed to load tiering prefetch helpers", error);
             });
+    }
+
+    function ensureTieringControlsPanel(): Promise<TieringControlsPanelComponent> {
+        if (tieringControlsPanelPromise) {
+            return tieringControlsPanelPromise;
+        }
+
+        finishTieringControlsPanelLoadSpan ??= startPerfSpan(
+            "journey.conflict_to_tiering.controlsPanelLoad",
+        );
+        tieringControlsPanelPromise = import(
+            "../../components/TieringControlsPanel.svelte"
+        )
+            .then((module) => module.default)
+            .finally(() => {
+                finishTieringControlsPanelLoadSpan?.();
+                finishTieringControlsPanelLoadSpan = null;
+            });
+        return tieringControlsPanelPromise;
     }
 
     let _loaded = false;
@@ -275,6 +298,15 @@
         tieringSliderValues = [];
         clearTieringInspector();
         clearTieringCanvas(tieringCanvasElement);
+    }
+
+    function tieringCoalitionSelectionLabel(coalitionIndex: 0 | 1): string {
+        if (!_rawData) return "Loading selection...";
+        const coalition = _rawData.coalitions[coalitionIndex];
+        const selectedCount = coalition.alliance_ids.filter((id) =>
+            _allowedAllianceIds.has(id)
+        ).length;
+        return `${coalition.name} selected: ${selectedCount}/${coalition.alliance_ids.length}`;
     }
 
     function scheduleTieringRefresh(): void {
@@ -739,15 +771,25 @@
         fallbackGraphData = null;
         const runId = ++latestSetupRunId;
 
-        artifacts
-            .bootstrapVisibleDataset({
-                metrics,
-                requestedAllianceIds: requestedAllianceIdsFromQuery,
+        measureDetailedAsyncTask(
+            "journey.conflict_to_tiering.visibleBootstrap",
+            () =>
+                artifacts.bootstrapVisibleDataset({
+                    metrics,
+                    requestedAllianceIds: requestedAllianceIdsFromQuery,
+                    useSingleColor,
+                    cityBandSize,
+                    contextKey: `tiering:${conflictId}`,
+                    requestId: runId,
+                }),
+            {
+                workerAvailable: artifacts.hasWorker(),
+                requestedAllianceCount: requestedAllianceIdsFromQuery?.length ?? 0,
+                metricCount: metrics.length,
                 useSingleColor,
                 cityBandSize,
-                contextKey: `tiering:${conflictId}`,
-                requestId: runId,
-            })
+            },
+        )
             .then((data) => {
                 if (runId !== latestSetupRunId) return;
                 if (!data) {
@@ -758,9 +800,9 @@
                     return;
                 }
 
+                conflictName = data.info.name;
                 _rawData = data.info;
                 fallbackGraphData = data.graphData ?? null;
-                conflictName = data.info.name;
                 _allowedAllianceIds = new Set(data.selectedAllianceIds);
                 datasetProvenance = formatDatasetProvenance(
                     config.version.graph_data,
@@ -778,6 +820,9 @@
                 endJourneySpan("journey.conflict_to_tiering.routeTransition");
                 saveCurrentQueryParams();
                 warmTieringSecondaryArtifacts(conflictId);
+                queueMicrotask(() => {
+                    void ensureTieringControlsPanel();
+                });
             })
             .catch((error) => {
                 console.error("Failed to load tiering graph data", error);
@@ -1311,33 +1356,61 @@
         <div class="col-12 ux-compact-controls p-2 border-bottom border-3">
             <div class="ux-graph-control-launcher">
                 {#if _rawData}
-                    <TieringControlsPanel
-                        rawData={_rawData}
-                        {items}
-                        selectedMetrics={selected_metrics}
-                        {normalize}
-                        {useSingleColor}
-                        {cityBandSize}
-                        allowedAllianceIds={Array.from(_allowedAllianceIds)}
-                        timeRange={tieringTimeRange}
-                        usesRangeSelection={tieringUsesRangeSelection}
-                        sliderValues={tieringCurrentSliderValues}
-                        isTurn={formatTieringTimeValue === formatTurnsToDate}
-                        selectedExportDatasetKey={selectedTieringExportDataset}
-                        exportDatasets={tieringExportDatasets}
-                        quickLayouts={tieringQuickLayouts}
-                        {isResetDirty}
-                        onSelectedMetricsCommit={handleTieringMetricsCommit}
-                        onNormalizeCommit={commitNormalizeChange}
-                        onUseSingleColorCommit={commitUseSingleColorChange}
-                        onCityBandSizeCommit={commitCityBandSizeChange}
-                        onAllowedAllianceIdsCommit={commitAllowedAllianceIdsChange}
-                        onSliderValuesCommit={commitTieringSliderValuesChange}
-                        onQuickLayoutCommit={handleTieringQuickLayoutCommit}
-                        onSelectedExportDatasetKeyChange={handleTieringExportDatasetKeyChange}
-                        onExport={handleTieringExport}
-                        onReset={resetFilters}
-                    />
+                    <div class="ux-graph-controls-shell__summary-row">
+                        <span class="fw-bold">{tieringCoalitionSelectionLabel(0)}</span>
+                        <span class="fw-bold">{tieringCoalitionSelectionLabel(1)}</span>
+                    </div>
+                    {#if tieringControlsPanelPromise}
+                        {#await tieringControlsPanelPromise}
+                            <div class="ux-graph-controls-shell">
+                                <div class="ux-graph-controls-loading small ux-muted">
+                                    Loading chart controls...
+                                </div>
+                            </div>
+                        {:then TieringControlsPanel}
+                            <svelte:component
+                                this={TieringControlsPanel}
+                                rawData={_rawData}
+                                {items}
+                                selectedMetrics={selected_metrics}
+                                {normalize}
+                                {useSingleColor}
+                                {cityBandSize}
+                                allowedAllianceIds={Array.from(_allowedAllianceIds)}
+                                timeRange={tieringTimeRange}
+                                usesRangeSelection={tieringUsesRangeSelection}
+                                sliderValues={tieringCurrentSliderValues}
+                                isTurn={formatTieringTimeValue === formatTurnsToDate}
+                                selectedExportDatasetKey={selectedTieringExportDataset}
+                                exportDatasets={tieringExportDatasets}
+                                quickLayouts={tieringQuickLayouts}
+                                {isResetDirty}
+                                showSelectionPanels={false}
+                                onSelectedMetricsCommit={handleTieringMetricsCommit}
+                                onNormalizeCommit={commitNormalizeChange}
+                                onUseSingleColorCommit={commitUseSingleColorChange}
+                                onCityBandSizeCommit={commitCityBandSizeChange}
+                                onAllowedAllianceIdsCommit={commitAllowedAllianceIdsChange}
+                                onSliderValuesCommit={commitTieringSliderValuesChange}
+                                onQuickLayoutCommit={handleTieringQuickLayoutCommit}
+                                onSelectedExportDatasetKeyChange={handleTieringExportDatasetKeyChange}
+                                onExport={handleTieringExport}
+                                onReset={resetFilters}
+                            />
+                        {:catch}
+                            <div class="ux-graph-controls-shell">
+                                <div class="ux-graph-controls-loading small ux-muted">
+                                    Controls unavailable.
+                                </div>
+                            </div>
+                        {/await}
+                    {:else}
+                        <div class="ux-graph-controls-shell">
+                            <div class="ux-graph-controls-loading small ux-muted">
+                                Loading chart controls...
+                            </div>
+                        </div>
+                    {/if}
                 {:else}
                     <div class="ux-graph-controls-loading small ux-muted">Loading chart controls...</div>
                 {/if}
@@ -1419,6 +1492,17 @@
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+
+    .ux-graph-controls-shell {
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .ux-graph-controls-shell__summary-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
     }
 
     .ux-tiering-chart-canvas {

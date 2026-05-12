@@ -50,6 +50,7 @@ export const load: PageLoad = ({ url }) => {
             reason: "route-composite-load-context",
             routeTarget: "/conflicts/view",
             intentStrength: "load",
+            crossRoute: false,
         });
     }
 

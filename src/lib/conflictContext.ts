@@ -42,6 +42,9 @@ async function loadConflictById(
 ): Promise<Conflict> {
     return (await decompressBson(
         getConflictDataUrl(id, conflictDataVersion),
+        {
+            strategy: "worker-bytes",
+        },
     )) as Conflict;
 }
 

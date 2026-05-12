@@ -12,6 +12,7 @@ type CompositeEntry<T> = {
 
 const MAX_COMPOSITE_CONTEXT_ENTRIES = 20;
 const COMPOSITE_CONTEXT_TTL_MS = 6 * 60 * 1000;
+const COMPOSITE_CONTEXT_EXPIRED_SWEEP_INTERVAL_MS = 5 * 1000;
 
 const compositeContextByKey = createTtlCache<
     CompositeContextCacheKey,
@@ -19,6 +20,7 @@ const compositeContextByKey = createTtlCache<
 >({
     ttlMs: COMPOSITE_CONTEXT_TTL_MS,
     maxEntries: MAX_COMPOSITE_CONTEXT_ENTRIES,
+    expiredSweepIntervalMs: COMPOSITE_CONTEXT_EXPIRED_SWEEP_INTERVAL_MS,
     hooks: {
         onHit() {
             incrementPerfCounter("composite.context.cache.hit", 1, {

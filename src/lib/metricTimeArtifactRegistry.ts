@@ -562,6 +562,7 @@ function createSharedMetricTimeHandle(options: {
                 const fetchStart = nowMs();
                 const compressedBytes = await loadCompressedPayloadBuffer(url, {
                     spanName: "decompress.worker.bytes.fetch",
+                    transferOwnership: true,
                 });
                 const fetchDurationMs = Math.max(0, nowMs() - fetchStart);
                 const workerResult = await request<

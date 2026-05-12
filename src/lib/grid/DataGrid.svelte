@@ -128,6 +128,11 @@
     const GRID_OVERFLOW_WIDE_MIN_PX = 80;
 
     let exportDatasets: ExportMenuDataset[] = [];
+    const rawFilterSignatureCache = new WeakMap<GridQueryState["filters"], string>();
+    const normalizedFilterSignatureCache = new WeakMap<
+        GridQueryState["filters"],
+        string
+    >();
 
     $: visibleColumns =
         bootstrap && controllerState
@@ -445,12 +450,37 @@
         });
     }
 
+    function buildFilterSignature(
+        filters: GridQueryState["filters"],
+        normalizeValues: boolean,
+    ): string {
+        const cache = normalizeValues
+            ? normalizedFilterSignatureCache
+            : rawFilterSignatureCache;
+        const cached = cache.get(filters);
+        if (cached != null) return cached;
+
+        const entries = Object.entries(filters);
+        if (entries.length === 0) {
+            cache.set(filters, "");
+            return "";
+        }
+
+        entries.sort(([left], [right]) => left.localeCompare(right));
+        const signature = entries
+            .map(([key, value]) =>
+                normalizeValues
+                    ? `${key}:${value.trim().toLowerCase()}`
+                    : `${key}:${value}`,
+            )
+            .join("|");
+        cache.set(filters, signature);
+        return signature;
+    }
+
     function buildAllRowsResetKey(state: GridControllerState | null | undefined): string {
         if (!state || state.pageSize !== "all") return "paged";
-        const filters = Object.entries(state.filters)
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([key, value]) => `${key}:${value}`)
-            .join("|");
+        const filters = buildFilterSignature(state.filters, false);
         return JSON.stringify({
             pageSize: state.pageSize,
             sort: state.sort,
@@ -784,10 +814,7 @@
     }
 
     function buildSummaryStateKey(state: GridQueryState): string {
-        const filters = Object.entries(state.filters)
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([key, value]) => `${key}:${value.trim().toLowerCase()}`)
-            .join("|");
+        const filters = buildFilterSignature(state.filters, true);
         const visibleColumns = [...state.visibleColumnKeys].sort().join("|");
         const selectedRowIds = [...state.selectedRowIds]
             .map(String)

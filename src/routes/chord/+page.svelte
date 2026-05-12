@@ -52,52 +52,6 @@
     import { arc } from "d3-shape";
     import { appConfig as config } from "$lib/appConfig";
 
-    type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
-
-    let prefetchArtifactsPromise: Promise<PrefetchArtifactsModule> | null = null;
-
-    function loadPrefetchArtifacts(): Promise<PrefetchArtifactsModule> {
-        if (!prefetchArtifactsPromise) {
-            prefetchArtifactsPromise = import("$lib/prefetchArtifactsClient");
-        }
-
-        return prefetchArtifactsPromise;
-    }
-
-    function warmChordSecondaryArtifacts(conflictId: string): void {
-        void loadPrefetchArtifacts()
-            .then(
-                ({
-                    warmBubbleRouteArtifacts,
-                    warmConflictTableArtifact,
-                    warmTieringRouteArtifacts,
-                }) => {
-                    warmConflictTableArtifact(conflictId, {
-                        priority: "idle",
-                        reason: "route-chord-idle-conflict-grid",
-                        routeTarget: "/conflict",
-                        intentStrength: "idle",
-                    });
-
-                    warmBubbleRouteArtifacts(conflictId, {
-                        priority: "idle",
-                        reasonBase: "route-chord-idle-bubble",
-                        routeTarget: "/bubble",
-                        intentStrength: "idle",
-                    });
-                    warmTieringRouteArtifacts(conflictId, {
-                        priority: "idle",
-                        reasonBase: "route-chord-idle-tiering",
-                        routeTarget: "/tiering",
-                        intentStrength: "idle",
-                    });
-                },
-            )
-            .catch((error) => {
-                console.warn("Failed to load chord prefetch helpers", error);
-            });
-    }
-
     let conflictName = "";
     let conflictId: string | null = null;
 
@@ -172,7 +126,9 @@
         _loadError = null;
         _loaded = false;
         let url = getConflictDataUrl(conflictId, config.version.conflict_data);
-        decompressBson(url)
+        decompressBson(url, {
+            strategy: "worker-bytes",
+        })
             .then(async (data) => {
                 _rawData = data;
                 conflictName = data.name;
@@ -213,7 +169,6 @@
                 setupWebWithCurrentLayout();
                 _loaded = true;
                 saveCurrentQueryParams();
-                warmChordSecondaryArtifacts(conflictId);
             })
             .catch((error) => {
                 console.error("Failed to load chord web data", error);
@@ -323,72 +278,53 @@
         });
         // let allowedAllianceIds: number[] = [...data.coalitions[0].alliance_ids, 11657];
 
-        let allianceNameById: { [key: number]: string } = {};
-        data.coalitions.forEach((coalition) => {
-            coalition.alliance_ids.forEach((id: number, index: number) => {
-                allianceNameById[id] = formatAllianceName(
-                    coalition.alliance_names[index],
-                    id,
-                );
-            });
-        });
-        let allPalette: Palette[] = [];
         let labels: string[] = [];
-        let allAllianceIds = [
-            ...data.coalitions[0].alliance_ids,
-            ...data.coalitions[1].alliance_ids,
-        ];
-        let alliance_ids = allAllianceIds.filter((id) =>
-            allowedAllianceIdsSet.has(id),
-        );
-        let coalition_ids = [];
-        for (let aaId of data.coalitions[0].alliance_ids) {
-            allPalette.push(Palette.REDS);
-            if (allowedAllianceIdsSet.has(aaId)) {
-                labels.push(allianceNameById[aaId]);
-                coalition_ids.push(0);
+        let keptIndices: number[] = [];
+        let alliance_ids: number[] = [];
+        let coalition_ids: number[] = [];
+        let palettes: Palette[] = [];
+        let globalAllianceIndex = 0;
+        for (let coalitionIndex = 0; coalitionIndex < data.coalitions.length; coalitionIndex++) {
+            const coalition = data.coalitions[coalitionIndex];
+            const palette = coalitionIndex === 0 ? Palette.REDS : Palette.BLUES;
+            for (let localIndex = 0; localIndex < coalition.alliance_ids.length; localIndex++) {
+                const aaId = coalition.alliance_ids[localIndex];
+                if (allowedAllianceIdsSet.has(aaId)) {
+                    keptIndices.push(globalAllianceIndex);
+                    alliance_ids.push(aaId);
+                    labels.push(formatAllianceName(coalition.alliance_names[localIndex], aaId));
+                    coalition_ids.push(coalitionIndex);
+                    palettes.push(palette);
+                }
+                globalAllianceIndex++;
             }
         }
-        for (let aaId of data.coalitions[1].alliance_ids) {
-            allPalette.push(Palette.BLUES);
-            if (allowedAllianceIdsSet.has(aaId)) {
-                labels.push(allianceNameById[aaId]);
-                coalition_ids.push(1);
-            }
-        }
-        let allColors = generateColorsFromPalettes(allPalette);
-        let colors = allColors.filter((value, index) =>
-            allowedAllianceIdsSet.has(allAllianceIds[index]),
-        );
+        let colors = generateColorsFromPalettes(palettes);
 
         let headers = data.war_web.headers;
         let hI = headers.indexOf(header);
 
         let allMatrix = data.war_web.data[hI];
-        let matrix: number[][] = [];
+        let matrix: number[][] = new Array(keptIndices.length);
 
-        for (let i = 0; i < allAllianceIds.length; i++) {
-            let aaId = allAllianceIds[i];
-            let row = allMatrix[i];
-            if (allowedAllianceIdsSet.has(aaId)) {
-                let rowSlice = row.filter((value, index) =>
-                    allowedAllianceIdsSet.has(allAllianceIds[index]),
-                );
-                matrix.push(rowSlice);
+        for (let rowIndex = 0; rowIndex < keptIndices.length; rowIndex++) {
+            const sourceRow = allMatrix[keptIndices[rowIndex]] ?? [];
+            const matrixRow = new Array(keptIndices.length);
+            for (let colIndex = 0; colIndex < keptIndices.length; colIndex++) {
+                const rawValue = sourceRow[keptIndices[colIndex]];
+                const value =
+                    typeof rawValue === "number" ? rawValue : Number(rawValue);
+                matrixRow[colIndex] =
+                    Number.isFinite(value) && value >= 0 ? value : 0;
             }
+            matrix[rowIndex] = matrixRow;
         }
-        matrix = matrix.map((row) =>
-            row.length === 0 ? new Array(labels.length).fill(0) : row,
-        );
-        matrix = matrix.map((row) =>
-            row.map((value) => (isNaN(value) || value < 0 ? 0 : value)),
-        );
         chordExportState = {
             header,
             labels: labels.slice(),
             allianceIds: alliance_ids.slice(),
             coalitionIds: coalition_ids.slice(),
-            matrix: matrix.map((row) => row.slice()),
+            matrix,
         };
         setupChord(matrix, labels, colors, alliance_ids, coalition_ids);
         finishSpan();
@@ -536,19 +472,23 @@
             .join("g")
             .style("cursor", "pointer");
 
-        const allPathNodes = paths.nodes() as SVGPathElement[];
+        const allPathNodes: SVGPathElement[] = [];
         const pathNodesByAllianceIndex = new Map<number, SVGPathElement[]>();
         paths.each(function (d: any) {
             const node = this as SVGPathElement;
-            const relatedIndexes = new Set([d.source.index, d.target.index]);
-            for (const index of relatedIndexes) {
+            allPathNodes.push(node);
+            const sourceIndex = d.source.index;
+            const targetIndex = d.target.index;
+            const addPathNode = (index: number) => {
                 const existing = pathNodesByAllianceIndex.get(index);
                 if (existing) {
                     existing.push(node);
                 } else {
                     pathNodesByAllianceIndex.set(index, [node]);
                 }
-            }
+            };
+            addPathNode(sourceIndex);
+            if (targetIndex !== sourceIndex) addPathNode(targetIndex);
         });
 
         groups
@@ -580,6 +520,78 @@
         let showIndex: number = -1;
         let activePathNodes: SVGPathElement[] = [];
         let pathFilterActive = false;
+        const darkColors = colors.map((color) => darkenColor(color, 50));
+        const tooltipRowsByAllianceIndex = matrix.map((row, rowIndex) => {
+            const rows: {
+                label: string;
+                color: string;
+                outgoing: number;
+                incoming: number;
+            }[] = [];
+            for (let index = 0; index < row.length; index++) {
+                const outgoing = row[index] ?? 0;
+                const incoming = matrix[index]?.[rowIndex] ?? 0;
+                if (outgoing === 0 && incoming === 0) continue;
+                rows.push({
+                    label: alliance_names[index],
+                    color: darkColors[index],
+                    outgoing,
+                    incoming,
+                });
+            }
+            rows.sort((left, right) => right.outgoing - left.outgoing);
+            return rows;
+        });
+        const toolTip = document.getElementById("myTooltip") as HTMLElement;
+        const tooltipTitle = document.createElement("h5");
+        const tooltipNote = document.createElement("div");
+        tooltipNote.className = "small text-muted mb-1";
+        tooltipNote.textContent = `${metricMeta.directionNote(_currentHeaderName)} Net = Selected value minus Compared value.`;
+
+        const tooltipTable = document.createElement("table");
+        tooltipTable.className = "table fw-bold w-auto";
+        const tooltipHead = document.createElement("thead");
+        const tooltipHeadRow = document.createElement("tr");
+        const tooltipHeaders = [
+            "Compared alliance",
+            metricMeta.primaryToRowLabel(_currentHeaderName),
+            metricMeta.rowToPrimaryLabel(_currentHeaderName),
+            "Net",
+        ];
+        for (const headerText of tooltipHeaders) {
+            const cell = document.createElement("th");
+            cell.textContent = headerText;
+            tooltipHeadRow.appendChild(cell);
+        }
+        tooltipHead.appendChild(tooltipHeadRow);
+        const tooltipBody = document.createElement("tbody");
+        tooltipTable.append(tooltipHead, tooltipBody);
+        toolTip.replaceChildren(tooltipTitle, tooltipNote, tooltipTable);
+
+        const tooltipRowNodes: {
+            row: HTMLTableRowElement;
+            label: HTMLTableCellElement;
+            outgoing: HTMLTableCellElement;
+            incoming: HTMLTableCellElement;
+            net: HTMLTableCellElement;
+        }[] = [];
+
+        function getTooltipRowNode(index: number) {
+            let node = tooltipRowNodes[index];
+            if (node != null) return node;
+
+            const row = document.createElement("tr");
+            const label = document.createElement("td");
+            label.style.color = "white";
+            const outgoing = document.createElement("td");
+            const incoming = document.createElement("td");
+            const net = document.createElement("td");
+            row.append(label, outgoing, incoming, net);
+            tooltipBody.appendChild(row);
+            node = { row, label, outgoing, incoming, net };
+            tooltipRowNodes[index] = node;
+            return node;
+        }
         if (
             alliance_ids.filter((id, index) => coalition_ids[index] === 0)
                 .length === 1
@@ -593,49 +605,25 @@
         }
 
         function displayTable(showIndex: number) {
-            let toolTip = document.getElementById("myTooltip") as HTMLElement;
-            // where value is not 0 (of either matrix[showIndex][index] or matrix[index][showIndex])
-            let allowedIndexes = new Set(
-                matrix[showIndex]
-                    .map((value, index) =>
-                        value !== 0 || matrix[index][showIndex] !== 0
-                            ? index
-                            : -1,
-                    )
-                    .filter((index) => index !== -1),
-            );
-            let labels = alliance_names.filter((value, index) =>
-                allowedIndexes.has(index),
-            );
-            let colorSlice = colors.filter((value, index) =>
-                allowedIndexes.has(index),
-            );
-            let data = matrix[showIndex].filter((value, index) =>
-                allowedIndexes.has(index),
-            );
-            let secondArray = matrix
-                .map((row, index) =>
-                    allowedIndexes.has(index) ? row[showIndex] : null,
-                )
-                .filter((item) => item !== null);
-            // sort them
-            let indices = Array.from({ length: data.length }, (_, i) => i);
-            indices.sort((a, b) => data[b] - data[a]);
-            // Use the sorted indices to sort the labels, colorSlice, data, and secondArray arrays
-            labels = indices.map((i) => labels[i]);
-            colorSlice = indices.map((i) => colorSlice[i]);
-            data = indices.map((i) => data[i]);
-            secondArray = indices.map((i) => secondArray[i]);
+            const tooltipRows = tooltipRowsByAllianceIndex[showIndex] ?? [];
 
-            let table = `<h5>Selected alliance: ${alliance_names[showIndex]} (${_currentHeaderName})</h5><div class='small text-muted mb-1'>${metricMeta.directionNote(_currentHeaderName)} Net = Selected value minus Compared value.</div><table class='table fw-bold w-auto'><tr><th>Compared alliance</th><th>${metricMeta.primaryToRowLabel(_currentHeaderName)}</th><th>${metricMeta.rowToPrimaryLabel(_currentHeaderName)}</th><th>Net</th></tr>`;
-            labels.forEach((label, index) => {
-                table += `<tr><td style='background-color:${darkenColor(colorSlice[index], 50)};color:white'>${label}</td>`;
-                table += `<td>${commafy(data[index])}</td>`;
-                table += `<td>${commafy(secondArray[index])}</td>`;
-                table += `<td>${commafy(data[index] - secondArray[index])}</td></tr>`;
-            });
-            table += "</table>";
-            toolTip.innerHTML = table;
+            tooltipTitle.textContent = `Selected alliance: ${alliance_names[showIndex]} (${_currentHeaderName})`;
+            for (let index = 0; index < tooltipRows.length; index += 1) {
+                const row = tooltipRows[index];
+                const node = getTooltipRowNode(index);
+                node.row.style.display = "";
+                node.label.style.backgroundColor = row.color;
+                node.label.textContent = row.label;
+                node.outgoing.textContent = commafy(row.outgoing);
+                node.incoming.textContent = commafy(row.incoming);
+                node.net.textContent = commafy(row.outgoing - row.incoming);
+            }
+            for (let index = tooltipRows.length; index < tooltipRowNodes.length; index += 1) {
+                const node = tooltipRowNodes[index];
+                if (node != null) {
+                    node.row.style.display = "none";
+                }
+            }
         }
 
         function setPathNodeVisibility(

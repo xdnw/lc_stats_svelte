@@ -117,6 +117,33 @@ function summarizePerfCounters(counters) {
     .sort((left, right) => right.value - left.value || left.name.localeCompare(right.name));
 }
 
+function summarizeTaggedCounters(counters, targetName, tagKey = 'owner') {
+  const summary = new Map();
+
+  for (const counter of counters) {
+    if (counter?.name !== targetName || typeof counter.value !== 'number') continue;
+    const tagValue = `${counter.tags?.[tagKey] ?? ''}`.trim() || '(unknown)';
+    const bucket = summary.get(tagValue) ?? {
+      label: tagValue,
+      total: 0,
+      maxDurationMs: 0,
+      count: 0,
+    };
+    bucket.total += counter.value;
+    bucket.count += 1;
+    const durationMs = typeof counter.tags?.durationMs === 'number' ? counter.tags.durationMs : 0;
+    bucket.maxDurationMs = Math.max(bucket.maxDurationMs, durationMs);
+    summary.set(tagValue, bucket);
+  }
+
+  return Array.from(summary.values())
+    .map((bucket) => ({
+      ...bucket,
+      maxDurationMs: roundMs(bucket.maxDurationMs),
+    }))
+    .sort((left, right) => right.maxDurationMs - left.maxDurationMs || right.count - left.count || left.label.localeCompare(right.label));
+}
+
 async function readPerfReportSnapshot(page) {
   return page.evaluate(() => {
     const perf = window.__lcPerf?.snapshot?.() ?? { events: [], counters: [] };
@@ -187,6 +214,7 @@ function buildPerfReport(route, readyDurationMs, snapshot) {
     })),
     events: summarizePerfEvents(events),
     counters: summarizePerfCounters(counters),
+    longTaskCandidates: summarizeTaggedCounters(counters, 'task.long.candidate'),
   };
 }
 
@@ -214,6 +242,15 @@ function printPerfReport(report) {
   if (report.counters.length > 0) {
     console.log(
       `[perf]   counters ${report.counters.map((counter) => `${counter.name}=${counter.value}`).join(', ')}`,
+    );
+  }
+
+  if (report.longTaskCandidates.length > 0) {
+    console.log(
+      `[perf]   long-tasks ${report.longTaskCandidates
+        .slice(0, PERF_EVENT_LIMIT)
+        .map((candidate) => `${candidate.label}:${candidate.maxDurationMs}ms x${candidate.count}`)
+        .join(', ')}`,
     );
   }
 }
@@ -787,6 +824,16 @@ async function gotoRoute(page, baseUrl, routePath, successLocator, label, option
 
 async function newReadyPage(browser, label) {
   const page = await browser.newPage();
+  if (shouldReportColdLoadPerf) {
+    await page.addInitScript(() => {
+      try {
+        window.__lcPerfMode = 'detailed';
+        window.localStorage.setItem('lc.perf.mode', 'detailed');
+      } catch {
+        window.__lcPerfMode = 'detailed';
+      }
+    });
+  }
   const pageErrors = attachPageErrors(page, label);
   return { page, pageErrors };
 }
@@ -1023,48 +1070,48 @@ async function runNavigationMatrix(baseUrl) {
         routePath: `/conflict?id=${selectedConflictId}`,
         selectorFactory: (page) => page.locator('table.ux-grid-table').first(),
         perfReadyEventName: 'journey.conflicts_to_conflict.firstMount',
-        perfEventPrefixes: ['journey.conflicts_to_conflict', 'decompress.', 'conflictGrid.', 'grid.query.'],
-        perfCounterPrefixes: ['decompress.', 'conflictGrid.', 'grid.query.'],
+        perfEventPrefixes: ['journey.conflicts_to_conflict', 'decompress.', 'conflictGrid.', 'grid.query.', 'main.'],
+        perfCounterPrefixes: ['decompress.', 'conflictGrid.', 'grid.query.', 'main.', 'task.'],
       },
       {
         label: 'bubble cold load',
         routePath: `/bubble?id=${selectedConflictId}`,
         selectorFactory: (page) => page.locator('.bubble-city-slider').first(),
         perfReadyEventName: 'journey.conflict_to_bubble.firstMount',
-        perfEventPrefixes: ['journey.conflict_to_bubble', 'decompress.', 'graph.'],
-        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.bubble.'],
+        perfEventPrefixes: ['journey.conflict_to_bubble', 'decompress.', 'graph.', 'main.'],
+        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.bubble.', 'main.', 'task.'],
       },
       {
         label: 'tiering cold load',
         routePath: `/tiering?id=${selectedConflictId}`,
         selectorFactory: (page) => page.getByText('Conflict Tiering:', { exact: false }).first(),
         perfReadyEventName: 'journey.conflict_to_tiering.firstMount',
-        perfEventPrefixes: ['journey.conflict_to_tiering', 'decompress.', 'graph.'],
-        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.tiering.'],
+        perfEventPrefixes: ['journey.conflict_to_tiering', 'decompress.', 'graph.', 'main.'],
+        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.tiering.', 'main.', 'task.'],
       },
       {
         label: 'metric-time cold load',
         routePath: `/metric-time?id=${selectedConflictId}`,
         selectorFactory: (page) => page.locator('.metric-time-stage canvas').first(),
         perfReadyEventName: 'journey.conflict_to_metric_time.firstMount',
-        perfEventPrefixes: ['journey.conflict_to_metric_time', 'decompress.', 'graph.'],
-        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.metric-time.'],
+        perfEventPrefixes: ['journey.conflict_to_metric_time', 'decompress.', 'graph.', 'main.'],
+        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.metric-time.', 'main.', 'task.'],
       },
       {
         label: 'metric-time coalition cold load',
         routePath: `/metric-time?id=${selectedConflictId}&aggregation=coalition`,
         selectorFactory: (page) => page.locator('.metric-time-stage canvas').first(),
         perfReadyEventName: 'journey.conflict_to_metric_time.firstMount',
-        perfEventPrefixes: ['journey.conflict_to_metric_time', 'decompress.', 'graph.'],
-        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.metric-time.'],
+        perfEventPrefixes: ['journey.conflict_to_metric_time', 'decompress.', 'graph.', 'main.'],
+        perfCounterPrefixes: ['decompress.', 'graph.', 'worker.metric-time.', 'main.', 'task.'],
       },
       {
         label: 'aava cold load',
         routePath: `/aava?id=${selectedConflictId}`,
         selectorFactory: (page) => page.getByText('Header:', { exact: false }).first(),
         perfReadyEventName: 'journey.conflict_to_aava.firstMount',
-        perfEventPrefixes: ['journey.conflict_to_aava', 'conflictContext.', 'decompress.', 'grid.query.'],
-        perfCounterPrefixes: ['decompress.', 'grid.query.'],
+        perfEventPrefixes: ['journey.conflict_to_aava', 'conflictContext.', 'decompress.', 'grid.query.', 'main.'],
+        perfCounterPrefixes: ['decompress.', 'grid.query.', 'main.', 'task.'],
       },
       {
         label: 'chord cold load',

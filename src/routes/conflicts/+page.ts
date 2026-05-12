@@ -5,6 +5,7 @@ export const load = () => {
         priority: "high",
         reason: "route-conflicts-load-index",
         intentStrength: "load",
+        crossRoute: false,
     });
     return {};
 };

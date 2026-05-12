@@ -43,6 +43,7 @@
     export let exportDatasets: ExportDatasetOption[] = [];
     export let quickLayouts: QuickLayoutOption[] = [];
     export let isResetDirty = false;
+    export let showSelectionPanels = true;
     export let onSelectedMetricsCommit: (selectedMetrics: MetricOption[]) => void =
         () => {};
     export let onNormalizeCommit: (normalize: boolean) => void = () => {};
@@ -56,6 +57,9 @@
         () => {};
     export let onExport: (action: ExportMenuAction) => void = () => {};
     export let onReset: () => void = () => {};
+
+    let normalizedAllowedAllianceIds: number[] = [];
+    let normalizedAllowedAllianceIdSet = new Set<number>();
 
     let localSelectedExportDatasetKey = selectedExportDatasetKey;
     let lastSyncedExportDatasetKey = selectedExportDatasetKey;
@@ -133,11 +137,8 @@
     function coalitionSelectionLabel(coalitionIndex: 0 | 1): string {
         if (!rawData) return "Loading selection...";
         const coalition = rawData.coalitions[coalitionIndex];
-        const normalizedAllowedAllianceIds = normalizeAllowedAllianceIds(
-            allowedAllianceIds,
-        );
         const selectedCount = coalition.alliance_ids.filter((id) =>
-            normalizedAllowedAllianceIds.includes(id),
+            normalizedAllowedAllianceIdSet.has(id),
         ).length;
         return `${coalition.name} selected: ${selectedCount}/${coalition.alliance_ids.length}`;
     }
@@ -165,6 +166,8 @@
     }
 
     $: sliderTicks = buildSliderTicks(timeRange, isTurn);
+    $: normalizedAllowedAllianceIds = normalizeAllowedAllianceIds(allowedAllianceIds);
+    $: normalizedAllowedAllianceIdSet = new Set(normalizedAllowedAllianceIds);
     $: if (localSelectedExportDatasetKey !== lastSyncedExportDatasetKey) {
         lastSyncedExportDatasetKey = localSelectedExportDatasetKey;
         onSelectedExportDatasetKeyChange(localSelectedExportDatasetKey);
@@ -177,7 +180,7 @@
 </script>
 
 <div class="ux-graph-controls-panel">
-    {#if rawData}
+    {#if rawData && showSelectionPanels}
         <div class="ux-graph-controls-group">
             <div class="ux-coalition-panel ux-coalition-panel--compact ux-coalition-panel--red">
                 <div class="d-flex align-items-center gap-2 flex-wrap">

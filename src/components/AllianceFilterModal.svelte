@@ -1,6 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
     import { formatAllianceName } from "$lib/formatting";
+    import { startPerfSpan } from "$lib/perf";
     import {
         buildCoalitionQuickActions,
         buildCoalitionAllianceItems,
@@ -11,7 +12,11 @@
         validateAtLeastOneSelection,
     } from "$lib/selectionModalHelpers";
     import type { AppIconName } from "$lib/icons";
-    import type { SelectionId, SelectionModalItem } from "$lib/selection/types";
+    import type {
+        SelectionId,
+        SelectionModalItem,
+        SelectionModalQuickAction,
+    } from "$lib/selection/types";
     import SelectionModal from "./SelectionModal.svelte";
 
     type AllianceFilterCoalition = {
@@ -59,6 +64,12 @@
     const dispatch = createEventDispatcher<{
         commit: { ids: number[] };
     }>();
+
+    let modalItems: SelectionModalItem[] = [];
+    let modalSelectedIds: number[] = [];
+    let visibleQuickActions: SelectionModalQuickAction[] = [];
+    let modalDataPrepared = false;
+    let modalOpen = false;
 
     function normalizeAllianceSelection(ids: Iterable<number>): number[] {
         return Array.from(
@@ -108,33 +119,65 @@
         dispatch("commit", { ids: nextIds });
     }
 
+    function prepareModalData(
+        currentMode: AllianceFilterMode,
+        currentCoalitions: AllianceFilterCoalition[],
+        currentCoalitionIndex: 0 | 1,
+        currentSelectedIds: number[],
+    ): void {
+        const selectionSet = new Set(currentSelectedIds);
+        const finishPrepareSpan = startPerfSpan("selection.alliances.prepare", {
+            coalitionCount: currentCoalitions.length,
+            selectedCount: currentSelectedIds.length,
+            mode: currentMode,
+        });
+
+        try {
+            modalItems =
+                currentMode === "direct"
+                    ? items
+                    : currentMode === "all-coalitions"
+                      ? buildCoalitionAllianceItems(currentCoalitions, formatAllianceName)
+                      : buildCoalitionAllianceItems(
+                            currentCoalitions[currentCoalitionIndex]
+                                ? [currentCoalitions[currentCoalitionIndex]]
+                                : [],
+                            formatAllianceName,
+                            {
+                                startCoalitionIndex: currentCoalitionIndex,
+                            },
+                        );
+            modalSelectedIds =
+                currentMode === "coalition-scoped" || currentMode === "coalition-merged"
+                    ? getSelectedAllianceIdsForCoalition(
+                            currentCoalitions,
+                            currentCoalitionIndex,
+                            selectionSet,
+                        )
+                    : currentSelectedIds;
+            const quickActions =
+                currentMode === "all-coalitions"
+                    ? buildCoalitionQuickActions(currentCoalitions)
+                    : [];
+            visibleQuickActions = quickActions.length > 1 ? quickActions : [];
+        } finally {
+            finishPrepareSpan();
+        }
+    }
+
+    function handleModalOpen(): void {
+        modalOpen = true;
+        modalDataPrepared = true;
+    }
+
+    function handleModalClose(): void {
+        modalOpen = false;
+    }
+
     $: normalizedSelectedIds = normalizeAllianceSelection(selectedIds);
-    $: selectionSet = new Set(normalizedSelectedIds);
-    $: modalItems =
-        mode === "direct"
-            ? items
-            : mode === "all-coalitions"
-              ? buildCoalitionAllianceItems(coalitions, formatAllianceName)
-              : buildCoalitionAllianceItems(
-                    coalitions[coalitionIndex] ? [coalitions[coalitionIndex]] : [],
-                    formatAllianceName,
-                    {
-                        startCoalitionIndex: coalitionIndex,
-                    },
-                );
-    $: modalSelectedIds =
-        mode === "coalition-scoped" || mode === "coalition-merged"
-            ? getSelectedAllianceIdsForCoalition(
-                    coalitions,
-                    coalitionIndex,
-                    selectionSet,
-                )
-            : normalizedSelectedIds;
-    $: quickActions =
-        mode === "all-coalitions"
-            ? buildCoalitionQuickActions(coalitions)
-            : [];
-    $: visibleQuickActions = quickActions.length > 1 ? quickActions : [];
+    $: if (modalDataPrepared || modalOpen) {
+        prepareModalData(mode, coalitions, coalitionIndex, normalizedSelectedIds);
+    }
 </script>
 
 <SelectionModal
@@ -160,5 +203,7 @@
     {disabled}
     quickActions={visibleQuickActions}
     validateSelection={validateSelection}
+    on:open={handleModalOpen}
+    on:close={handleModalClose}
     on:apply={handleApply}
 />

@@ -1,9 +1,11 @@
 import { inflateGzipBytes } from './compressedBytes';
 import { createAppUnpackr } from './msgpack';
-import { incrementPerfCounter, startPerfSpan } from './perf';
+import { incrementPerfCounter, isDetailedPerfEnabled, recordPerfSpan, startPerfSpan } from './perf';
 import { requestWorkerRpc } from './workerRpc';
 import type {
+    DetailedDecompressWorkerResult,
     DecompressInflateBytesRequest,
+    DecompressWorkerTimingBreakdown,
     DecompressUrlRequest,
 } from '../workers/decompressWorker';
 
@@ -47,20 +49,13 @@ function enforceDecompressedCacheLimit(): void {
         return;
     }
 
-    while (decompressedCache.size > DECOMPRESSED_CACHE_MAX_ENTRIES) {
-        let evicted = false;
-        for (const [url, entry] of decompressedCache) {
-            if (!entry.settled) continue;
-            decompressedCache.delete(url);
-            incrementPerfCounter('decompress.cache.eviction');
-            evicted = true;
-            break;
+    for (const [url, entry] of decompressedCache) {
+        if (decompressedCache.size <= DECOMPRESSED_CACHE_MAX_ENTRIES) {
+            return;
         }
-
-        // Keep in-flight promises alive for dedupe even if that means a temporary overflow.
-        if (!evicted) {
-            break;
-        }
+        if (!entry.settled) continue;
+        decompressedCache.delete(url);
+        incrementPerfCounter('decompress.cache.eviction');
     }
 }
 
@@ -107,6 +102,39 @@ function cloneArrayBuffer(buffer: ArrayBuffer): ArrayBuffer {
     return buffer.slice(0);
 }
 
+function currentNowMs(): number {
+    return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function isDetailedDecompressWorkerResult<T>(
+    value: T | DetailedDecompressWorkerResult<T>,
+): value is DetailedDecompressWorkerResult<T> {
+    return !!value && typeof value === 'object' && 'value' in value && 'timings' in value;
+}
+
+function recordDetailedDecompressWorkerTimings(
+    prefix: 'decompress.worker' | 'decompress.worker.bytes',
+    url: string,
+    timings: DecompressWorkerTimingBreakdown,
+    roundTripMs: number,
+): void {
+    if (timings.responseMs != null) {
+        recordPerfSpan(`${prefix}.response`, timings.responseMs, { url });
+    }
+    if (timings.readMs != null) {
+        recordPerfSpan(`${prefix}.read`, timings.readMs, { url });
+    }
+    if (timings.inflateMs != null) {
+        recordPerfSpan(`${prefix}.inflate.worker`, timings.inflateMs, { url });
+    }
+    if (timings.unpackMs != null) {
+        recordPerfSpan(`${prefix}.unpack.worker`, timings.unpackMs, { url });
+    }
+
+    const handoffMs = Math.max(0, roundTripMs - timings.totalMs);
+    recordPerfSpan(`${prefix}.handoff`, handoffMs, { url });
+}
+
 export function primeCompressedPayload(
     url: string,
     options?: { fetcher?: FetchLike },
@@ -126,16 +154,18 @@ export function primeCompressedPayload(
 
 export async function loadCompressedPayloadBuffer(
     url: string,
-    options?: { spanName?: string },
+    options?: { spanName?: string; transferOwnership?: boolean },
 ): Promise<ArrayBuffer> {
     const spanName = options?.spanName ?? 'decompress.compressed.fetch';
+    const transferOwnership = options?.transferOwnership === true;
     const finishFetchSpan = startPerfSpan(spanName, { url });
     try {
         const primed = getPrimedCompressedPayload(url);
         if (primed) {
             incrementPerfCounter('decompress.prime.hit');
             try {
-                return cloneArrayBuffer(await primed);
+                const buffer = await primed;
+                return transferOwnership ? buffer : cloneArrayBuffer(buffer);
             } catch {
                 incrementPerfCounter('decompress.prime.fallback');
             }
@@ -153,8 +183,14 @@ export async function loadCompressedPayloadBuffer(
 async function fetchCompressedBytes(
     url: string,
     spanName: string,
+    options?: { transferOwnership?: boolean },
 ): Promise<Uint8Array> {
-    return new Uint8Array(await loadCompressedPayloadBuffer(url, { spanName }));
+    return new Uint8Array(
+        await loadCompressedPayloadBuffer(url, {
+            spanName,
+            transferOwnership: options?.transferOwnership,
+        }),
+    );
 }
 
 async function inflateCompressedBytesOnMainThread(
@@ -212,17 +248,27 @@ function decompressViaWorker(url: string): Promise<any> {
         });
         return decompressMainThread(url);
     }
-    return new Promise<any>((resolve, reject) => {
-        requestWorkerRpc<DecompressUrlRequest, any>(
-            worker,
-            { url },
-            {
-                timeoutMs: 45_000,
-                operation: 'decompress',
-            },
-        ).then(resolve).catch(reject);
-    })
+    const detailed = isDetailedPerfEnabled();
+    const roundTripStartedAt = detailed ? currentNowMs() : 0;
+    return requestWorkerRpc<DecompressUrlRequest, any>(
+        worker,
+        { url, detailed },
+        {
+            timeoutMs: 45_000,
+            operation: 'decompress',
+        },
+    )
         .then((result) => {
+            if (detailed && isDetailedDecompressWorkerResult(result)) {
+                recordDetailedDecompressWorkerTimings(
+                    'decompress.worker',
+                    url,
+                    result.timings,
+                    Math.max(0, currentNowMs() - roundTripStartedAt),
+                );
+                incrementPerfCounter('decompress.worker.success');
+                return result.value;
+            }
             incrementPerfCounter('decompress.worker.success');
             return result;
         })
@@ -251,18 +297,25 @@ async function decompressViaWorkerBytes(url: string): Promise<any> {
     }
 
     try {
+        const detailed = isDetailedPerfEnabled();
         const compressedBytes = await fetchCompressedBytes(
             url,
             'decompress.worker.bytes.fetch',
+            { transferOwnership: true },
         );
         const finishInflateSpan = startPerfSpan('decompress.worker.bytes.inflate', {
             url,
         });
-        const bytes = await requestWorkerRpc<DecompressInflateBytesRequest, Uint8Array>(
+        const roundTripStartedAt = detailed ? currentNowMs() : 0;
+        const inflatedResult = await requestWorkerRpc<
+            DecompressInflateBytesRequest,
+            Uint8Array | DetailedDecompressWorkerResult<Uint8Array>
+        >(
             worker,
             {
                 mode: 'inflate-bytes',
                 compressedBytes: compressedBytes.buffer as ArrayBuffer,
+                detailed,
             },
             {
                 timeoutMs: 45_000,
@@ -271,6 +324,17 @@ async function decompressViaWorkerBytes(url: string): Promise<any> {
             },
         );
         finishInflateSpan();
+        const bytes = isDetailedDecompressWorkerResult(inflatedResult)
+            ? inflatedResult.value
+            : inflatedResult;
+        if (detailed && isDetailedDecompressWorkerResult(inflatedResult)) {
+            recordDetailedDecompressWorkerTimings(
+                'decompress.worker.bytes',
+                url,
+                inflatedResult.timings,
+                Math.max(0, currentNowMs() - roundTripStartedAt),
+            );
+        }
         const finishUnpackSpan = startPerfSpan('decompress.worker.bytes.unpack', { url });
         const result = extUnpackr.unpack(bytes);
         finishUnpackSpan();

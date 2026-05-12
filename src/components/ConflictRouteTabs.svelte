@@ -118,9 +118,20 @@
         };
     }
 
+    function shouldWarmDerivedArtifact(
+        tab: ConflictTab,
+        intentStrength: "hover" | "focus" | "pointerdown" | "enter",
+    ): boolean {
+        if (tab === "metric-time") {
+            return false;
+        }
+
+        return intentStrength === "pointerdown" || intentStrength === "enter";
+    }
+
     function prefetchTab(
         descriptor: ConflictTabDescriptor,
-        intentStrength: "hover" | "focus" | "pointerdown",
+        intentStrength: "hover" | "focus" | "pointerdown" | "enter",
     ): void {
         const tab = descriptor.tab;
         if (
@@ -136,6 +147,7 @@
         if (!conflictId) return;
 
         const primaryPriority = "high";
+        const includeDerivedArtifact = shouldWarmDerivedArtifact(tab, intentStrength);
 
         withPrefetchArtifacts((prefetchArtifacts) => {
             if (LAYOUT_TABS.includes(tab as ConflictLayoutTab)) {
@@ -155,6 +167,7 @@
                     reasonBase: `tabs-${intentStrength}-bubble`,
                     routeTarget: "/bubble",
                     intentStrength,
+                    includeDerivedArtifact,
                 });
             } else if (tab === "tiering") {
                 prefetchArtifacts.warmTieringRouteArtifacts(conflictId, {
@@ -162,6 +175,7 @@
                     reasonBase: `tabs-${intentStrength}-tiering`,
                     routeTarget: "/tiering",
                     intentStrength,
+                    includeDerivedArtifact,
                 });
             } else if (tab === "metric-time") {
                 prefetchArtifacts.warmMetricTimeRouteArtifacts(conflictId, {
@@ -169,6 +183,7 @@
                     reasonBase: `tabs-${intentStrength}-metric-time`,
                     routeTarget: "/metric-time",
                     intentStrength,
+                    includeDerivedArtifact,
                 });
             } else if (tab === "aava" || tab === "chord") {
                 prefetchArtifacts.warmConflictPayload(conflictId, {
@@ -219,6 +234,12 @@
         promoteTabTarget(descriptor);
         prefetchTab(descriptor, "pointerdown");
     }
+
+    function onTabKeyDown(event: KeyboardEvent, descriptor: ConflictTabDescriptor): void {
+        if (event.key !== "Enter") return;
+        promoteTabTarget(descriptor);
+        prefetchTab(descriptor, "enter");
+    }
 </script>
 
 <div class="row p-0 m-0 ux-tabstrip fw-bold">
@@ -255,6 +276,8 @@
                     on:mouseenter={() => onTabHover(descriptor)}
                     on:focus={() => onTabFocus(descriptor)}
                     on:pointerdown={() => onTabPointerDown(descriptor)}
+                    on:keydown={(event) => onTabKeyDown(event, descriptor)}
+                    data-sveltekit-preload-data="tap"
                     data-sveltekit-preload-code="hover"
                 >
                     {TAB_LABELS[tab]}
@@ -276,6 +299,8 @@
                 on:mouseenter={() => onTabHover(descriptor)}
                 on:focus={() => onTabFocus(descriptor)}
                 on:pointerdown={() => onTabPointerDown(descriptor)}
+                on:keydown={(event) => onTabKeyDown(event, descriptor)}
+                data-sveltekit-preload-data="tap"
                 data-sveltekit-preload-code="hover"
             >
                 {TAB_LABELS[tab]}

@@ -321,7 +321,6 @@ export function createConflictGridDataset(options: {
         : null;
     const filteredRowsCache = new Map<string, ConflictRowMeta[]>();
     const filteredRowIdsCache = new Map<string, GridRowId[]>();
-    const filteredRowSequenceKeyCache = new Map<string, string>();
     const pageResultCache = new Map<string, GridPageResult>();
     const summaryCache = new Map<string, GridSummaryByColumnKey>();
     const metricVectorCache = new Map<string, Float64Array>();
@@ -995,23 +994,6 @@ export function createConflictGridDataset(options: {
         return `${view.hash}::${sort}::${filters}`;
     }
 
-    function matchesAllianceSelectionFilter(
-        row: ConflictRowMeta,
-        rawTerm: string,
-    ): boolean | null {
-        const selectedAllianceIds = parseGridSelectionFilterValue(rawTerm);
-        if (selectedAllianceIds == null) {
-            return null;
-        }
-        if (selectedAllianceIds.length === 0) {
-            return true;
-        }
-        if (row.allianceId == null) {
-            return false;
-        }
-        return selectedAllianceIds.includes(String(row.allianceId));
-    }
-
     function serializeRowId(rowId: GridRowId): string {
         return `${typeof rowId === "number" ? "n" : "s"}:${String(rowId)}`;
     }
@@ -1024,17 +1006,10 @@ export function createConflictGridDataset(options: {
         layout: ConflictGridLayoutValue,
         view: ResolvedConflictGridView,
         state: GridQueryState,
-        filteredRows: ConflictRowMeta[],
     ): string {
-        const filterSortCacheKey = `${layout}::${buildFilterSortCacheKey(state, view)}`;
-        const cached = filteredRowSequenceKeyCache.get(filterSortCacheKey);
-        if (cached) return cached;
-
-        const rowIds = filteredRowIdsCache.get(filterSortCacheKey) ??
-            filteredRows.map((row) => row.id);
-        const rowSequenceKey = buildRowIdSequenceKey(rowIds);
-        filteredRowSequenceKeyCache.set(filterSortCacheKey, rowSequenceKey);
-        return rowSequenceKey;
+        // The filter+sort cache key already uniquely identifies the ordered row set,
+        // so use it directly instead of building an O(n) row-ID join string.
+        return `${layout}::${buildFilterSortCacheKey(state, view)}`;
     }
 
     function buildSummaryCacheKey(
@@ -1075,37 +1050,49 @@ export function createConflictGridDataset(options: {
         const cached = filteredRowsCache.get(cacheKey);
         if (cached) return cached;
         const dataset = getLayoutDataset(layout);
-        const filtered = dataset.rows.filter((row) => {
-            for (const [columnKey, rawTerm] of Object.entries(normalized.filters)) {
-                if (columnKey === "name") {
-                    const selectionMatch =
-                        layout === ConflictGridLayout.ALLIANCE
-                            ? matchesAllianceSelectionFilter(row, rawTerm)
-                            : null;
-                    if (selectionMatch != null) {
-                        if (!selectionMatch) return false;
+
+        // Build one predicate per active filter entry BEFORE iterating rows.
+        // This avoids: (a) re-allocating Object.entries per row, (b) calling
+        // parseGridSelectionFilterValue (which creates a Set + sorts) per row,
+        // and (c) using Array.includes for ID lookup instead of a Set.
+        type RowPredicate = (row: ConflictRowMeta) => boolean;
+        const predicates: RowPredicate[] = [];
+        for (const [columnKey, rawTerm] of Object.entries(normalized.filters)) {
+            if (columnKey === "name") {
+                if (layout === ConflictGridLayout.ALLIANCE) {
+                    const selectedIds = parseGridSelectionFilterValue(rawTerm);
+                    if (selectedIds !== null) {
+                        if (selectedIds.length === 0) continue;
+                        const idSet = new Set(selectedIds);
+                        predicates.push((row) => row.allianceId != null && idSet.has(String(row.allianceId)));
                         continue;
                     }
-                    const term = normalizeText(rawTerm);
-                    if (!term) continue;
-                    if (!row.nameFilterText.includes(term)) return false;
-                    continue;
                 }
-                if (columnKey === "alliance") {
-                    const selectionMatch = matchesAllianceSelectionFilter(row, rawTerm);
-                    if (selectionMatch != null) {
-                        if (!selectionMatch) return false;
-                        continue;
-                    }
-                    const term = normalizeText(rawTerm);
-                    if (!term) continue;
-                    if (!row.allianceFilterText.includes(term)) return false;
-                    continue;
-                }
-                return false;
+                const term = normalizeText(rawTerm);
+                if (!term) continue;
+                predicates.push((row) => row.nameFilterText.includes(term));
+                continue;
             }
-            return true;
-        });
+            if (columnKey === "alliance") {
+                const selectedIds = parseGridSelectionFilterValue(rawTerm);
+                if (selectedIds !== null) {
+                    if (selectedIds.length === 0) continue;
+                    const idSet = new Set(selectedIds);
+                    predicates.push((row) => row.allianceId != null && idSet.has(String(row.allianceId)));
+                    continue;
+                }
+                const term = normalizeText(rawTerm);
+                if (!term) continue;
+                predicates.push((row) => row.allianceFilterText.includes(term));
+                continue;
+            }
+            // Unknown column key — exclude all rows.
+            predicates.push(() => false);
+        }
+
+        const filtered = predicates.length === 0
+            ? dataset.rows
+            : dataset.rows.filter((row) => predicates.every((pred) => pred(row)));
 
         if (!normalized.sort) {
             filteredRowsCache.set(cacheKey, filtered);
@@ -1176,7 +1163,7 @@ export function createConflictGridDataset(options: {
         view: ResolvedConflictGridView,
     ): GridSummaryByColumnKey {
         const cacheKey = `${layout}::${buildSummaryCacheKey(
-            getFilteredRowSequenceKey(layout, view, state, filteredRows),
+            getFilteredRowSequenceKey(layout, view, state),
             state,
             view,
         )}`;

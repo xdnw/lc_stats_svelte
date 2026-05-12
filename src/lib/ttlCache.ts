@@ -19,6 +19,7 @@ type TtlCacheEntry<V> = {
 export type TtlCacheConfig<K, V> = {
     ttlMs: number;
     maxEntries: number;
+    expiredSweepIntervalMs?: number;
     hooks?: TtlCacheHooks<K, V>;
 };
 
@@ -41,11 +42,14 @@ export function createTtlCache<K, V>(config: TtlCacheConfig<K, V>) {
         }
 
         entry.lastAccessMs = now;
+        map.delete(key);
+        map.set(key, entry);
         hooks?.onHit?.(key, entry.value);
         return entry.value;
     }
 
     function set(key: K, value: V, now: number = nowMs()): void {
+        map.delete(key);
         map.set(key, {
             value,
             expiresAt: now + config.ttlMs,
@@ -76,7 +80,15 @@ export function createTtlCache<K, V>(config: TtlCacheConfig<K, V>) {
         map.clear();
     }
 
+    let lastExpiredSweepMs = Number.NEGATIVE_INFINITY;
+
     function evictExpired(now: number = nowMs()): number {
+        const intervalMs = config.expiredSweepIntervalMs ?? 0;
+        if (intervalMs > 0 && now - lastExpiredSweepMs < intervalMs) {
+            return 0;
+        }
+
+        lastExpiredSweepMs = now;
         let removed = 0;
         for (const [key, entry] of map.entries()) {
             if (entry.expiresAt > now) continue;
@@ -90,18 +102,15 @@ export function createTtlCache<K, V>(config: TtlCacheConfig<K, V>) {
     function enforceLimit(): number {
         if (map.size <= config.maxEntries) return 0;
 
-        const entries = Array.from(map.entries()).sort(
-            (left, right) => left[1].lastAccessMs - right[1].lastAccessMs,
-        );
-
         const removeCount = map.size - config.maxEntries;
-        for (let i = 0; i < removeCount; i += 1) {
-            const entry = entries[i];
-            if (!entry) continue;
-            map.delete(entry[0]);
-            hooks?.onEvict?.(entry[0], entry[1].value, "max-entries");
+        let removed = 0;
+        for (const [key, entry] of map.entries()) {
+            if (removed >= removeCount) break;
+            map.delete(key);
+            removed += 1;
+            hooks?.onEvict?.(key, entry.value, "max-entries");
         }
-        return removeCount;
+        return removed;
     }
 
     function entries(): IterableIterator<[K, V]> {

@@ -3,13 +3,16 @@
     import "../../styles/conflict-widgets.css";
     import { browser } from "$app/environment";
     import { appConfig as config } from "$lib/appConfig";
+    import { parseCompositeSelectionIds } from "$lib/conflictIds";
     import { startPerfSpan } from "$lib/perf";
 
     type AavaRouteClientComponent = typeof import("./AavaRouteClient.svelte").default;
+    type PrefetchArtifactsModule = typeof import("$lib/prefetchArtifactsClient");
 
     let aavaRouteClientComponent: AavaRouteClientComponent | null = null;
     let routeClientLoadError: string | null = null;
     let routeClientLoadPromise: Promise<void> | null = null;
+    let routePayloadWarmPromise: Promise<void> | null = null;
     let finishRouteClientLoadSpan: (() => void) | null = null;
 
     async function ensureAavaRouteClientLoaded(): Promise<void> {
@@ -40,12 +43,58 @@
         await routeClientLoadPromise;
     }
 
+    async function ensureAavaRoutePayloadWarmed(): Promise<void> {
+        if (routePayloadWarmPromise) {
+            return routePayloadWarmPromise;
+        }
+
+        routePayloadWarmPromise = import("$lib/prefetchArtifactsClient")
+            .then((prefetchArtifacts: PrefetchArtifactsModule) => {
+                const query = new URLSearchParams(window.location.search);
+                const conflictId = (query.get("id") ?? "").trim();
+                if (conflictId.length > 0) {
+                    prefetchArtifacts.warmConflictPayload(conflictId, {
+                        priority: "high",
+                        reason: "route-aava-entry-payload",
+                        routeTarget: "/aava",
+                        intentStrength: "load",
+                        crossRoute: false,
+                    });
+                    return;
+                }
+
+                const compositeIds = parseCompositeSelectionIds(query.get("ids")).ids;
+                const rawAllianceId = (query.get("aid") ?? "").trim();
+                const selectedAllianceId = /^\d+$/.test(rawAllianceId)
+                    ? Number.parseInt(rawAllianceId, 10)
+                    : null;
+
+                if (compositeIds.length >= 2 && selectedAllianceId != null && selectedAllianceId > 0) {
+                    prefetchArtifacts.warmCompositeContextArtifact({
+                        ids: compositeIds,
+                        aid: selectedAllianceId,
+                        priority: "high",
+                        reason: "route-aava-entry-composite-context",
+                        routeTarget: "/aava",
+                        intentStrength: "load",
+                        crossRoute: false,
+                    });
+                }
+            })
+            .catch((error) => {
+                console.warn("Failed to warm AAvA route payload", error);
+            });
+
+        await routePayloadWarmPromise;
+    }
+
     function retryRouteClientLoad(): void {
         routeClientLoadError = null;
         void ensureAavaRouteClientLoaded();
     }
 
     if (browser) {
+        void ensureAavaRoutePayloadWarmed();
         void ensureAavaRouteClientLoaded();
     }
 </script>

@@ -42,17 +42,26 @@ export function rankWarWebAllianceIdsByTotalMetric(
 
     const matrix = data.war_web.data[headerIndex] as number[][];
     const totalAllianceCount = coalition0Ids.length + coalition1Ids.length;
-    const scoreByMatrixIndex = Array.from(
-        { length: totalAllianceCount },
-        (_value, allianceIndex) => {
-            let total = 0;
-            for (let otherIndex = 0; otherIndex < totalAllianceCount; otherIndex += 1) {
-                total += normalizeWarWebMatrixValue(matrix[allianceIndex]?.[otherIndex]);
-                total += normalizeWarWebMatrixValue(matrix[otherIndex]?.[allianceIndex]);
-            }
-            return total;
-        },
-    );
+    const rowSums = new Array<number>(totalAllianceCount).fill(0);
+    const columnSums = new Array<number>(totalAllianceCount).fill(0);
+    const scoreByMatrixIndex = new Array<number>(totalAllianceCount);
+
+    for (let rowIndex = 0; rowIndex < totalAllianceCount; rowIndex += 1) {
+        const row = matrix[rowIndex];
+        if (row == null) continue;
+        let rowTotal = 0;
+        for (let columnIndex = 0; columnIndex < totalAllianceCount; columnIndex += 1) {
+            const value = normalizeWarWebMatrixValue(row[columnIndex]);
+            rowTotal += value;
+            columnSums[columnIndex] += value;
+        }
+        rowSums[rowIndex] = rowTotal;
+    }
+
+    for (let allianceIndex = 0; allianceIndex < totalAllianceCount; allianceIndex += 1) {
+        scoreByMatrixIndex[allianceIndex] =
+            rowSums[allianceIndex] + columnSums[allianceIndex];
+    }
 
     function rankCoalition(allianceIds: number[], offset: number): number[] {
         return allianceIds

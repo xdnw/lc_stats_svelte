@@ -222,6 +222,10 @@
     let latestSecondaryToken = 0;
     let lastSelectionKey = "";
     let lastSecondaryDependencyKey = "";
+    const kpiWidgetSignatureCache = new WeakMap<ConflictKPIWidget[], string>();
+    const defaultKpiWidgetSignature = JSON.stringify(
+        stripWidgetIds(DEFAULT_KPI_WIDGETS),
+    );
     let selectedConflictGridRowIds: Array<string | number> = [];
     let layoutChromeLoadPromise: Promise<void> | null = null;
     let kpiChromeLoadPromise: Promise<void> | null = null;
@@ -1296,11 +1300,24 @@
     }
 
     function selectionDependencyKey(): string {
-        return JSON.stringify({
-            allianceIds: [...selectedAllianceIdsForKpi].sort((left, right) => left - right),
-            nationIds: [...selectedNationIdsForKpi].sort((left, right) => left - right),
-            label: selectedSnapshotLabel,
-        });
+        const allianceIds = [...selectedAllianceIdsForKpi]
+            .sort((left, right) => left - right)
+            .join(",");
+        const nationIds = [...selectedNationIdsForKpi]
+            .sort((left, right) => left - right)
+            .join(",");
+        return `a:${allianceIds}|n:${nationIds}|l:${selectedSnapshotLabel}`;
+    }
+
+    function getKpiWidgetSignature(widgets: ConflictKPIWidget[]): string {
+        const cached = kpiWidgetSignatureCache.get(widgets);
+        if (cached != null) {
+            return cached;
+        }
+
+        const signature = JSON.stringify(stripWidgetIds(widgets));
+        kpiWidgetSignatureCache.set(widgets, signature);
+        return signature;
     }
 
     async function hydrateSecondaryWidgets(): Promise<void> {
@@ -1726,18 +1743,13 @@
                   ),
               });
     $: isResetDirty = (() => {
-        const currentWidgets = JSON.stringify(stripWidgetIds(kpiWidgets));
-        const defaultWidgets = JSON.stringify(stripWidgetIds(DEFAULT_KPI_WIDGETS));
-        return !(isConflictTableDefaultPresetState(_layoutData) && currentWidgets === defaultWidgets) || conflictGridPageSizePreference != null;
+        const currentWidgets = getKpiWidgetSignature(kpiWidgets);
+        return !(isConflictTableDefaultPresetState(_layoutData) && currentWidgets === defaultKpiWidgetSignature) || conflictGridPageSizePreference != null;
     })();
     $: if (!tableReady || !conflictKpiProvider) {
         lastSecondaryDependencyKey = "";
     } else {
-        const nextDependencyKey = JSON.stringify({
-            widgets: stripWidgetIds(kpiWidgets),
-            selection: selectionDependencyKey(),
-            conflictId,
-        });
+        const nextDependencyKey = `${getKpiWidgetSignature(kpiWidgets)}::${selectionDependencyKey()}::${conflictId ?? ""}`;
         if (nextDependencyKey !== lastSecondaryDependencyKey) {
             lastSecondaryDependencyKey = nextDependencyKey;
             void hydrateSecondaryWidgets();

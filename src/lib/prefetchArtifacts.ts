@@ -57,6 +57,7 @@ type RouteArtifactWarmOptions = {
     requestId?: number;
     layouts?: ConflictGridLayoutValue[];
     aggressive?: boolean;
+    includeDerivedArtifact?: boolean;
 };
 
 function buildWarmReason(
@@ -84,6 +85,7 @@ export function warmConflictsIndexPayload(options?: {
     priority?: PrefetchPriority;
     reason?: string;
     intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
+    crossRoute?: boolean;
 }): boolean {
     const version = config.version.conflicts;
     const url = getConflictsIndexUrl(version);
@@ -94,6 +96,7 @@ export function warmConflictsIndexPayload(options?: {
         routeTarget: "/conflicts",
         intentStrength: options?.intentStrength ?? "idle",
         priority: options?.priority ?? "idle",
+        crossRoute: options?.crossRoute,
         estimatedBytes: 550_000,
         estimatedCpuMs: 40,
         run: async () => {
@@ -107,6 +110,7 @@ export function warmConflictPayload(conflictId: string, options?: {
     reason?: string;
     routeTarget?: string;
     intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
+    crossRoute?: boolean;
 }): boolean {
     const descriptor = createConflictPayloadArtifactDescriptor({
         conflictId,
@@ -120,6 +124,7 @@ export function warmConflictPayload(conflictId: string, options?: {
         reason: options?.reason ?? "route-intent",
         intentStrength: options?.intentStrength ?? "hover",
         priority: options?.priority ?? "high",
+        crossRoute: options?.crossRoute,
         estimatedBytes: descriptor.estimatedBytes,
         estimatedCpuMs: 80,
         isFresh: descriptor.isFresh,
@@ -287,7 +292,7 @@ export function warmTieringDefaultArtifact(conflictId: string, options?: {
     });
 }
 
-export function warmMetricTimeDefaultArtifact(conflictId: string, options?: {
+function warmMetricTimeDefaultArtifact(conflictId: string, options?: {
     aggregationMode?: "alliance" | "coalition";
     priority?: PrefetchPriority;
     reason?: string;
@@ -341,6 +346,7 @@ export function warmCompositeContextArtifact(options: {
     reason?: string;
     routeTarget?: string;
     intentStrength?: ArtifactPrefetchTaskDescriptor["intentStrength"];
+    crossRoute?: boolean;
 }): boolean {
     const ids = options.ids
         .map((id) => id.trim())
@@ -363,6 +369,7 @@ export function warmCompositeContextArtifact(options: {
         reason: options.reason ?? "route-composite-resolve",
         intentStrength: options.intentStrength ?? "load",
         priority: options.priority ?? "high",
+        crossRoute: options.crossRoute,
         estimatedBytes: ids.length * 900_000,
         estimatedCpuMs: 550,
         isFresh: () => hasCompositeContextCacheEntry(cacheKey),
@@ -388,6 +395,7 @@ export function warmBubbleRouteArtifacts(
     options?: RouteArtifactWarmOptions,
 ): boolean {
     const routeTarget = options?.routeTarget ?? "/bubble";
+    const includeDerivedArtifact = options?.includeDerivedArtifact === true;
     const graphQueued = warmConflictGraphPayload(conflictId, {
         priority: options?.priority,
         routeTarget,
@@ -399,18 +407,20 @@ export function warmBubbleRouteArtifacts(
             "route-intent-bubble-graph-payload",
         ),
     });
-    const bubbleQueued = warmBubbleDefaultArtifact(conflictId, {
-        priority: options?.priority,
-        routeTarget,
-        intentStrength: options?.intentStrength,
-        contextKey: options?.contextKey,
-        requestId: options?.requestId,
-        reason: buildWarmReason(
-            options?.reasonBase,
-            "default-trace",
-            "route-intent-bubble-default-trace",
-        ),
-    });
+    const bubbleQueued = includeDerivedArtifact
+        ? warmBubbleDefaultArtifact(conflictId, {
+            priority: options?.priority,
+            routeTarget,
+            intentStrength: options?.intentStrength,
+            contextKey: options?.contextKey,
+            requestId: options?.requestId,
+            reason: buildWarmReason(
+                options?.reasonBase,
+                "default-trace",
+                "route-intent-bubble-default-trace",
+            ),
+        })
+        : false;
 
     return graphQueued || bubbleQueued;
 }
@@ -420,6 +430,7 @@ export function warmTieringRouteArtifacts(
     options?: RouteArtifactWarmOptions,
 ): boolean {
     const routeTarget = options?.routeTarget ?? "/tiering";
+    const includeDerivedArtifact = options?.includeDerivedArtifact === true;
     const graphQueued = warmConflictGraphPayload(conflictId, {
         priority: options?.priority,
         routeTarget,
@@ -431,18 +442,20 @@ export function warmTieringRouteArtifacts(
             "route-intent-tiering-graph-payload",
         ),
     });
-    const tieringQueued = warmTieringDefaultArtifact(conflictId, {
-        priority: options?.priority,
-        routeTarget,
-        intentStrength: options?.intentStrength,
-        contextKey: options?.contextKey,
-        requestId: options?.requestId,
-        reason: buildWarmReason(
-            options?.reasonBase,
-            "default-dataset",
-            "route-intent-tiering-default-dataset",
-        ),
-    });
+    const tieringQueued = includeDerivedArtifact
+        ? warmTieringDefaultArtifact(conflictId, {
+            priority: options?.priority,
+            routeTarget,
+            intentStrength: options?.intentStrength,
+            contextKey: options?.contextKey,
+            requestId: options?.requestId,
+            reason: buildWarmReason(
+                options?.reasonBase,
+                "default-dataset",
+                "route-intent-tiering-default-dataset",
+            ),
+        })
+        : false;
 
     return graphQueued || tieringQueued;
 }
@@ -452,6 +465,7 @@ export function warmMetricTimeRouteArtifacts(
     options?: RouteArtifactWarmOptions,
 ): boolean {
     const routeTarget = options?.routeTarget ?? "/metric-time";
+    const includeDerivedArtifact = options?.includeDerivedArtifact === true;
     const graphQueued = warmConflictGraphPayload(conflictId, {
         priority: options?.priority,
         routeTarget,
@@ -463,18 +477,20 @@ export function warmMetricTimeRouteArtifacts(
             "route-intent-metric-time-graph-payload",
         ),
     });
-    const metricTimeQueued = warmMetricTimeDefaultArtifact(conflictId, {
-        priority: options?.priority,
-        routeTarget,
-        intentStrength: options?.intentStrength,
-        contextKey: options?.contextKey,
-        requestId: options?.requestId,
-        reason: buildWarmReason(
-            options?.reasonBase,
-            "default-series",
-            "route-intent-metric-time-default-series",
-        ),
-    });
+    const metricTimeQueued = includeDerivedArtifact
+        ? warmMetricTimeDefaultArtifact(conflictId, {
+            priority: options?.priority,
+            routeTarget,
+            intentStrength: options?.intentStrength,
+            contextKey: options?.contextKey,
+            requestId: options?.requestId,
+            reason: buildWarmReason(
+                options?.reasonBase,
+                "default-series",
+                "route-intent-metric-time-default-series",
+            ),
+        })
+        : false;
 
     return graphQueued || metricTimeQueued;
 }

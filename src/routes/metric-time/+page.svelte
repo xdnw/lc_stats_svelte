@@ -99,6 +99,7 @@
     let latestRequestId = 0;
     let metricTimeCanvasModel: MetricTimeCanvasModel | null = null;
     let metricTimeControlsPanelPromise: Promise<MetricTimeControlsPanelComponent> | null = null;
+    let finishMetricTimeControlsPanelLoadSpan: (() => void) | null = null;
     let metricTimeHoverDatum: MetricTimeHoverDatum | null = null;
     let metricTimeTooltipAnchor: MetricTimeTooltipAnchor | null = null;
     let hasBootstrappedUrlState = false;
@@ -169,9 +170,17 @@
             return metricTimeControlsPanelPromise;
         }
 
+        finishMetricTimeControlsPanelLoadSpan ??= startPerfSpan(
+            "journey.conflict_to_metric_time.controlsPanelLoad",
+        );
         metricTimeControlsPanelPromise = import(
             "../../components/MetricTimeControlsPanel.svelte"
-        ).then((module) => module.default);
+        )
+            .then((module) => module.default)
+            .finally(() => {
+                finishMetricTimeControlsPanelLoadSpan?.();
+                finishMetricTimeControlsPanelLoadSpan = null;
+            });
         return metricTimeControlsPanelPromise;
     }
 
@@ -532,10 +541,16 @@
     }
 
     function handleCanvasRendered(): void {
-        void ensureMetricTimeControlsPanel();
-        if (hasCompletedFirstMetricTimeMount) return;
+        if (hasCompletedFirstMetricTimeMount) {
+            void ensureMetricTimeControlsPanel();
+            return;
+        }
+
         hasCompletedFirstMetricTimeMount = true;
         endJourneySpan("journey.conflict_to_metric_time.firstMount");
+        queueMicrotask(() => {
+            void ensureMetricTimeControlsPanel();
+        });
     }
 
     onMount(() => {
