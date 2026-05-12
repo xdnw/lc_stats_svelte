@@ -1,7 +1,0 @@
-Default stance: assume you’re allowed to refactor for clarity/root-cause fixes. Only optimize for minimal diffs when explicitly asked.
-Before editing, write a brief change plan: goal, invariants (externally visible behavior), boundaries/ownership, key data flow, and what will become simpler.
-Consider at least two approaches (minimal patch vs structural fix). Prefer the structural fix that makes the code easiest to understand in isolation and removes the root cause—even if it touches more code. Ask first only if it changes public APIs/contracts or crosses unclear ownership boundaries.
-Implementation rules: make behavior explicit; keep dependencies intentional and one-way; avoid reach-through/cycles; prefer deleting/merging/replacing over layering wrappers/flags/special-cases; introduce abstractions only when they eliminate real complexity.
-Priority order: correctness > local comprehensibility > architecture/root-cause > performance > speed. Reuse project patterns only when they improve clarity (don’t preserve bad structure for consistency).
-Tests: Never shape structure solely for test compatibility. Treat as guardrails/spec when behavior or boundaries are unclear; update/add after the change. Keep the tree green.
-Afterwards, confirm the intended simplification happened (cleaner boundaries/data flow, less coupling) and update docs/comments as needed.
